@@ -1,44 +1,44 @@
 <template>
   <div class="declaration-history">
-    <a-card title="申报单历史记录">
-      <!-- 搜索条件 -->
-      <div style="margin-bottom: 20px;">
-        <a-row :gutter="16">
-          <a-col :span="6">
-            <a-input-search 
-              v-model:value="searchForm.formNo" 
-              placeholder="搜索申报单号" 
-              @search="loadHistory"
-            />
-          </a-col>
-          <a-col :span="6">
-            <a-range-picker 
-              v-model:value="searchForm.dateRange" 
-              style="width: 100%"
-              @change="loadHistory"
-            />
-          </a-col>
-          <a-col :span="6">
-            <a-select 
-              v-model:value="searchForm.status" 
-              placeholder="状态筛选" 
-              style="width: 100%"
-              @change="loadHistory"
-            >
-              <a-select-option value="">全部状态</a-select-option>
-              <a-select-option :value="0">草稿</a-select-option>
-              <a-select-option :value="1">已提交</a-select-option>
-              <a-select-option :value="2">已审核</a-select-option>
-              <a-select-option :value="3">已完成</a-select-option>
-            </a-select>
-          </a-col>
-          <a-col :span="6">
-            <a-button type="primary" @click="loadHistory">查询</a-button>
-          </a-col>
-        </a-row>
-      </div>
+    <!-- 搜索条件 -->
+    <a-card class="search-card">
+      <a-row :gutter="16">
+        <a-col :span="6">
+          <a-input-search 
+            v-model:value="searchForm.formNo" 
+            placeholder="搜索申报单号" 
+            @search="loadHistory"
+          />
+        </a-col>
+        <a-col :span="6">
+          <a-range-picker 
+            v-model:value="searchForm.dateRange" 
+            style="width: 100%"
+            @change="loadHistory"
+          />
+        </a-col>
+        <a-col :span="6">
+          <a-select 
+            v-model:value="searchForm.status" 
+            placeholder="状态筛选" 
+            style="width: 100%"
+            @change="loadHistory"
+          >
+            <a-select-option value="">全部状态</a-select-option>
+            <a-select-option :value="0">草稿</a-select-option>
+            <a-select-option :value="1">已提交</a-select-option>
+            <a-select-option :value="2">已审核</a-select-option>
+            <a-select-option :value="3">已完成</a-select-option>
+          </a-select>
+        </a-col>
+        <a-col :span="6">
+          <a-button type="primary" @click="loadHistory">查询</a-button>
+        </a-col>
+      </a-row>
+    </a-card>
 
-      <!-- 数据表格 -->
+    <!-- 数据表格 -->
+    <a-card>
       <a-table 
         :dataSource="historyList" 
         :columns="columns" 
@@ -302,9 +302,63 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 列表页面样式 - 与系统管理页面统一 */
+:deep(.ant-card) {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+}
+
+:deep(.ant-card-body) {
+  padding: 24px;
+}
+
+:deep(.ant-card-head) {
+  border-bottom: 1px solid #e8e8e8;
+  border-radius: 8px 8px 0 0;
+}
+
+:deep(.ant-card-head-title) {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* 表格样式 - 与系统管理完全一致 */
+:deep(.ant-table) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:deep(.ant-table-thead > tr > th) {
+  background-color: #fafafa;
+  font-weight: 600;
+  color: #333;
+}
+
+:deep(.ant-table-cell) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* 主按钮样式 - 与系统管理完全一致 */
+:deep(.ant-btn-primary) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+:deep(.ant-btn-primary:hover) {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+}
+
+/* 搜索卡片样式 */
+:deep(.ant-card.search-card) {
+  margin-bottom: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+  border: none;
+}
+
 .declaration-history {
-  padding: 20px;
-  background: #f5f5f5;
-  min-height: calc(100vh - 64px);
+  height: 100%;
+  overflow-x: hidden;
 }
 </style>

@@ -1,17 +1,16 @@
 <template>
   <div class="declaration-statistics">
-    <a-card title="申报统计">
-      <!-- 统计概览 -->
-      <a-row :gutter="16" class="stats-overview">
-        <a-col :span="6">
-          <a-card class="stat-card">
-            <a-statistic
-              title="总申报单数"
-              :value="statistics.totalForms"
-              :value-style="{ color: '#1890ff' }"
-            />
-          </a-card>
-        </a-col>
+    <!-- 统计概览 -->
+    <a-row :gutter="16" class="stats-overview">
+      <a-col :span="6">
+        <a-card class="stat-card">
+          <a-statistic
+            title="总申报单数"
+            :value="statistics.totalForms"
+            :value-style="{ color: '#1890ff' }"
+          />
+        </a-card>
+      </a-col>
         <a-col :span="6">
           <a-card class="stat-card">
             <a-statistic
@@ -74,7 +73,6 @@
           </a-tab-pane>
         </a-tabs>
       </a-card>
-    </a-card>
   </div>
 </template>
 
@@ -138,26 +136,70 @@ const destinationColumns = [
 </script>
 
 <style scoped>
+/* 列表页面样式 - 与系统管理页面统一 */
+:deep(.ant-card) {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+}
+
+:deep(.ant-card-body) {
+  padding: 24px;
+}
+
+:deep(.ant-card-head) {
+  border-bottom: 1px solid #e8e8e8;
+  border-radius: 8px 8px 0 0;
+}
+
+:deep(.ant-card-head-title) {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* 表格样式 - 与系统管理完全一致 */
+:deep(.ant-table) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:deep(.ant-table-thead > tr > th) {
+  background-color: #fafafa;
+  font-weight: 600;
+  color: #333;
+}
+
+:deep(.ant-table-cell) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* 主按钮样式 - 与系统管理完全一致 */
+:deep(.ant-btn-primary) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+:deep(.ant-btn-primary:hover) {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+}
+
 .declaration-statistics {
-  padding: 20px;
-  background: #f5f5f5;
-  min-height: calc(100vh - 64px);
+  height: 100%;
+  overflow-x: hidden;
 }
 
 .stats-overview {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .stat-card {
   text-align: center;
-}
-
-.chart-card {
-  margin-bottom: 20px;
+  border: none;
 }
 
 .detail-card {
-  margin-top: 20px;
+  margin-top: 16px;
+  border: none;
 }
 
 :deep(.ant-statistic-content) {

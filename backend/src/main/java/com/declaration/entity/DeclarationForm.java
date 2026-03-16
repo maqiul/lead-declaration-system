@@ -144,6 +144,12 @@ public class DeclarationForm {
     private Integer delFlag;
 
     /**
+     * 附件列表（非数据库字段）
+     */
+    @TableField(exist = false)
+    private List<DeclarationAttachment> attachments;
+
+    /**
      * 产品明细列表（非数据库字段）
      */
     @TableField(exist = false)
@@ -160,4 +166,10 @@ public class DeclarationForm {
      */
     @TableField(exist = false)
     private List<DeclarationCartonProduct> cartonProducts;
+
+    /**
+     * 水单信息列表（非数据库字段）
+     */
+    @TableField(exist = false)
+    private List<DeclarationRemittance> remittances;
 }

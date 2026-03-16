@@ -40,6 +40,78 @@ public class DeclarationFormController {
     private final DeclarationProductService declarationProductService;
     private final DeclarationCartonService declarationCartonService;
     private final DeclarationCartonProductService declarationCartonProductService;
+    private final com.declaration.service.ExcelExportService excelExportService;
+    private final com.declaration.service.DeclarationAttachmentService attachmentService;
+    private final com.declaration.service.DeclarationRemittanceService remittanceService;
+
+    /**
+     * 保存水单信息
+     */
+    @PostMapping("/{id}/remittance")
+    @Operation(summary = "保存水单信息")
+    @RequiresPermissions("business:declaration:edit")
+    public Result<Void> saveRemittance(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @RequestBody com.declaration.entity.DeclarationRemittance remittance) {
+        
+        DeclarationForm form = declarationFormService.getById(id);
+        if (form == null) {
+            return Result.fail("申报单不存在");
+        }
+        
+        remittance.setFormId(id);
+        remittanceService.saveOrUpdate(remittance);
+        
+        try {
+            // 自动生成水单记录导出文件
+            com.declaration.entity.DeclarationAttachment attachment = excelExportService.generateAndSaveRemittanceReport(remittance, form);
+            if (attachment != null) {
+                attachmentService.save(attachment);
+            }
+        } catch (java.io.IOException e) {
+            log.error("生成水单文件失败", e);
+        }
+        
+        return Result.success();
+    }
+
+    /**
+     * 审核申报单
+     */
+    @PostMapping("/{id}/audit")
+    @Operation(summary = "审核申报单")
+    @RequiresPermissions("business:declaration:audit")
+    public Result<Void> auditDeclaration(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @RequestBody java.util.Map<String, Object> auditData) throws java.io.IOException {
+        
+        DeclarationForm form = declarationFormService.getFullDeclarationForm(id);
+        if (form == null) {
+            return Result.fail("申报单不存在");
+        }
+
+        Integer result = (Integer) auditData.get("result"); // 1-通过, 2-驳回
+        if (Integer.valueOf(1).equals(result)) {
+            form.setStatus(2); // 已审核
+            declarationFormService.updateById(form);
+            
+            // 自动生成导出文件
+            log.info("申报单 {} 审核通过，开始自动生成导出文件", form.getFormNo());
+            try {
+                com.declaration.entity.DeclarationAttachment attachment = excelExportService.generateAndSaveExportDocuments(form);
+                attachmentService.save(attachment);
+                log.info("申报单 {} 导出文件生成成功", form.getFormNo());
+            } catch (Exception e) {
+                log.error("申报单 {} 自动生成导出文件失败", form.getFormNo(), e);
+                // 即使生成文件失败，审核状态也可以算成功，或者根据业务决定是否回滚
+            }
+        } else {
+            form.setStatus(0); // 驳回到草稿
+            declarationFormService.updateById(form);
+        }
+        
+        return Result.success();
+    }
 
     /**
      * 分页查询申报单列表

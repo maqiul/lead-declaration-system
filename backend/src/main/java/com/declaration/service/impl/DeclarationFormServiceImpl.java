@@ -38,6 +38,7 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     private final DeclarationCartonService cartonService;
     private final DeclarationCartonProductService cartonProductService;
     private final DeclarationElementValueService elementValueService;
+    private final com.declaration.service.DeclarationRemittanceService remittanceService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -165,6 +166,13 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                     product.setElementValues(elementValues);
                 }
             }
+            
+            // 查询水单信息
+            List<com.declaration.entity.DeclarationRemittance> remittances = remittanceService.lambdaQuery()
+                    .eq(com.declaration.entity.DeclarationRemittance::getFormId, id)
+                    .orderByAsc(com.declaration.entity.DeclarationRemittance::getRemittanceDate)
+                    .list();
+            form.setRemittances(remittances);
         }
         return form;
     }

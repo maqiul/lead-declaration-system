@@ -1,57 +1,59 @@
 <template>
   <div class="declaration-manage">
-    <a-card title="申报单管理">
-      <!-- 搜索区域 -->
-      <div class="search-area">
-        <a-row :gutter="16">
-          <a-col :span="6">
-            <a-input-search 
-              v-model:value="searchForm.formNo" 
-              placeholder="搜索申报单号" 
-              @search="loadData"
-            />
-          </a-col>
-          <a-col :span="6">
-            <a-select 
-              v-model:value="searchForm.status" 
-              placeholder="状态筛选" 
-              style="width: 100%"
-              @change="loadData"
-            >
-              <a-select-option value="">全部状态</a-select-option>
-              <a-select-option :value="0">草稿</a-select-option>
-              <a-select-option :value="1">已提交</a-select-option>
-              <a-select-option :value="2">已审核</a-select-option>
-              <a-select-option :value="3">已完成</a-select-option>
-            </a-select>
-          </a-col>
-          <a-col :span="6">
-            <a-range-picker 
-              v-model:value="searchForm.dateRange" 
-              style="width: 100%"
-              @change="loadData"
-            />
-          </a-col>
-          <a-col :span="6">
-            <a-button type="primary" @click="loadData">查询</a-button>
-            <a-button style="margin-left: 8px" @click="resetSearch">重置</a-button>
-          </a-col>
-        </a-row>
-      </div>
+    <!-- 搜索区域 -->
+    <a-card class="search-card">
+      <a-form :model="searchForm" layout="inline">
+        <a-form-item label="申报单号">
+          <a-input-search 
+            v-model:value="searchForm.formNo" 
+            placeholder="搜索申报单号" 
+            @search="loadData"
+          />
+        </a-form-item>
+        <a-form-item label="状态">
+          <a-select 
+            v-model:value="searchForm.status" 
+            placeholder="状态筛选" 
+            style="width: 120px"
+            @change="loadData"
+          >
+            <a-select-option value="">全部状态</a-select-option>
+            <a-select-option :value="0">草稿</a-select-option>
+            <a-select-option :value="1">已提交</a-select-option>
+            <a-select-option :value="2">已审核</a-select-option>
+            <a-select-option :value="3">已完成</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="日期">
+          <a-range-picker 
+            v-model:value="searchForm.dateRange" 
+            style="width: 200px"
+            @change="loadData"
+          />
+        </a-form-item>
+        <a-form-item>
+          <a-button type="primary" @click="loadData">查询</a-button>
+          <a-button style="margin-left: 8px" @click="resetSearch">重置</a-button>
+        </a-form-item>
+      </a-form>
+    </a-card>
 
-      <!-- 操作按钮 -->
-      <div class="operation-area" style="margin: 16px 0;">
+    <!-- 操作按钮 -->
+    <a-card class="operation-card">
+      <a-space>
         <a-button type="primary" @click="handleAdd">
           <template #icon><plus-outlined /></template>
           新增申报单
         </a-button>
-        <a-button @click="handleExport" style="margin-left: 8px;">
+        <a-button @click="handleExport">
           <template #icon><download-outlined /></template>
           导出
         </a-button>
-      </div>
+      </a-space>
+    </a-card>
 
-      <!-- 数据表格 -->
+    <!-- 数据表格 -->
+    <a-card>
       <a-table 
         :dataSource="dataSource" 
         :columns="columns" 
@@ -62,7 +64,7 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'formNo'">
-            <a @click="handleView(record.id)">{{ record.formNo }}</a>
+            <a @click="handleView(record as any)">{{ record.formNo }}</a>
           </template>
           <template v-else-if="column.key === 'status'">
             <a-tag :color="getStatusColor(record.status)">
@@ -71,17 +73,32 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record.id)">查看</a-button>
+              <a-button type="link" size="small" @click="handleView(record as any)">
+                <template #icon><EyeOutlined /></template>
+                查看
+              </a-button>
               <!-- 只有草稿状态才显示编辑按钮 -->
-              <a-button v-if="record.status === 0" type="link" size="small" @click="handleEdit(record.id)">编辑</a-button>
-              <a-button type="link" size="small" @click="handleExportSingle(record.id)">导出</a-button>
+              <a-button v-if="record.status === 0" type="link" size="small" @click="handleEdit(record as any)">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
+              <a-button v-if="record.status === 1" type="link" size="small" color="warning" @click="handleAudit(record as any)">
+                <template #icon><CheckCircleOutlined /></template>
+                审核
+              </a-button>
+              <a-button v-if="record.status >= 2" type="link" size="small" @click="handleDownload(record as any)">
+                <template #icon><DownloadOutlined /></template>
+                下载
+              </a-button>
               <!-- 只有草稿状态才显示删除按钮 -->
               <a-popconfirm
-                v-if="record.status === 0"
-                title="确定要删除这个申报单吗？"
-                @confirm="handleDelete(record.id)"
+                title="确定要删除该申报单吗？"
+                @confirm="handleDelete(record as any)"
               >
-                <a-button type="link" size="small" danger>删除</a-button>
+                <a-button type="link" size="small" danger>
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -111,6 +128,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
 import { PlusOutlined, DownloadOutlined } from '@ant-design/icons-vue'
+import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList,
   deleteDeclaration as deleteDeclarationApi
@@ -120,7 +138,7 @@ const router = useRouter()
 const searchForm = reactive({
   formNo: '',
   status: '',
-  dateRange: []
+  dateRange: undefined as [Dayjs, Dayjs] | undefined
 })
 
 // 表格数据
@@ -151,12 +169,12 @@ const pagination = reactive({
 
 // 表格列配置
 const columns = [
-  { title: '申报单号', dataIndex: 'formNo', key: 'formNo', width: 150 },
-  { title: '发货人', dataIndex: 'shipperCompany', key: 'shipperCompany', width: 200 },
-  { title: '收货人', dataIndex: 'consigneeCompany', key: 'consigneeCompany', width: 200 },
-  { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate', width: 120 },
-  { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', width: 100 },
-  { title: '总箱数', dataIndex: 'totalCartons', key: 'totalCartons', width: 80 },
+  { title: '申报单号', dataIndex: 'formNo', key: 'formNo' },
+  { title: '发货人', dataIndex: 'shipperCompany', key: 'shipperCompany' },
+  { title: '收货人', dataIndex: 'consigneeCompany', key: 'consigneeCompany' },
+  { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate' },
+  { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount' },
+  { title: '总箱数', dataIndex: 'totalCartons', key: 'totalCartons' },
   { 
     title: '状态', 
     key: 'status', 
@@ -167,35 +185,58 @@ const columns = [
       return h('a-tag', { color: statusColor }, statusText)
     }
   },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime' },
   {
     title: '操作',
     key: 'action',
     width: 200,
     fixed: 'right' as const,
     customRender: ({ record }: { record: any }) => {
-      return [
+      const actions = [
         h('a-button', {
           type: 'link',
           size: 'small',
-          onClick: () => handleView(record.id)
-        }, '查看'),
-        h('a-button', {
-          type: 'link',
-          size: 'small',
-          onClick: () => handleEdit(record.id)
-        }, '编辑'),
-        h('a-popconfirm', {
-          title: '确定要删除这条申报单吗？',
-          onConfirm: () => handleDelete(record.id)
-        }, {
-          default: () => h('a-button', {
-            type: 'link',
-            size: 'small',
-            danger: true
-          }, '删除')
-        })
+          onClick: () => handleView(record as any)
+        }, '查看')
       ]
+      
+      if (record.status === 0) {
+        actions.push(h('a-button', {
+          type: 'link',
+          size: 'small',
+          onClick: () => handleEdit(record as any)
+        }, '编辑'))
+      }
+      
+      if (record.status === 1) {
+        actions.push(h('a-button', {
+          type: 'link',
+          size: 'small',
+          style: { color: '#faad14' },
+          onClick: () => handleAudit(record as any)
+        }, '审核'))
+      }
+      
+      if (record.status >= 2) {
+        actions.push(h('a-button', {
+          type: 'link',
+          size: 'small',
+          onClick: () => handleDownload(record as any)
+        }, '下载'))
+      }
+      
+      actions.push(h('a-popconfirm', {
+        title: '确定要删除这条申报单吗？',
+        onConfirm: () => handleDelete(record as any)
+      }, {
+        default: () => h('a-button', {
+          type: 'link',
+          size: 'small',
+          danger: true
+        }, '删除')
+      }))
+      
+      return h('a-space', {}, actions)
     }
   }
 ]
@@ -242,7 +283,7 @@ const loadData = async () => {
 const resetSearch = () => {
   searchForm.formNo = ''
   searchForm.status = ''
-  searchForm.dateRange = []
+  searchForm.dateRange = undefined
   pagination.current = 1
   loadData()
 }
@@ -260,19 +301,30 @@ const handleAdd = () => {
 }
 
 // 查看详情
-const handleView = (id: number) => {
-  router.push(`/declaration/form?id=${id}&readonly=true`)
+const handleView = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&readonly=true`)
 }
 
 // 编辑申报单
-const handleEdit = (id: number) => {
+const handleEdit = (record: DeclarationRecord) => {
   // 检查状态,如果已提交则不允许编辑
-  const record = dataSource.value.find((item: any) => item.id === id)
-  if (!record || record.status !== 0) {
+  if (record.status !== 0) {
     message.warning('只有草稿状态的申报单可以编辑')
     return
   }
-  router.push(`/declaration/form?id=${id}`)
+  router.push(`/declaration/form?id=${record.id}`)
+}
+
+// 审核申报单
+const handleAudit = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&mode=audit`)
+}
+
+// 下载单证
+const handleDownload = (record: DeclarationRecord) => {
+  // 这里暂时直接调用导出接口，后续优化为展示附件列表
+  message.loading('正在准备下载...', 0)
+  router.push(`/declaration/form?id=${record.id}&readonly=true#attachments`)
 }
 
 // 导出申报单
@@ -280,15 +332,10 @@ const handleExport = () => {
   message.info('批量导出功能开发中...')
 }
 
-// 导出单个申报单
-const handleExportSingle = (id: number) => {
-  message.info(`导出申报单 ${id} 功能开发中...`)
-}
-
 // 删除申报单
-const handleDelete = async (id: number) => {
+const handleDelete = async (record: DeclarationRecord) => {
   try {
-    await deleteDeclarationApi(id)
+    await deleteDeclarationApi(record.id)
     message.success('删除成功')
     loadData()
   } catch (error) {
@@ -325,22 +372,71 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.declaration-manage {
-  padding: 20px;
-  background: #f5f5f5;
-  min-height: calc(100vh - 64px);
+/* 列表页面样式 - 与系统管理页面统一 */
+:deep(.ant-card) {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
 }
 
-.search-area {
-  background: white;
-  padding: 16px;
-  border-radius: 4px;
+:deep(.ant-card-body) {
+  padding: 24px;
+}
+
+:deep(.ant-card-head) {
+  border-bottom: 1px solid #e8e8e8;
+  border-radius: 8px 8px 0 0;
+}
+
+:deep(.ant-card-head-title) {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* 表格样式 - 与系统管理完全一致 */
+:deep(.ant-table) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:deep(.ant-table-thead > tr > th) {
+  background-color: #fafafa;
+  font-weight: 600;
+  color: #333;
+}
+
+:deep(.ant-table-cell) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* 主按钮样式 - 与系统管理完全一致 */
+:deep(.ant-btn-primary) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+:deep(.ant-btn-primary:hover) {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+}
+
+/* 搜索卡片样式 */
+:deep(.ant-card.search-card) {
   margin-bottom: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+  border: none;
 }
 
-.operation-area {
-  background: white;
-  padding: 16px;
-  border-radius: 4px;
+/* 操作按钮卡片样式 */
+:deep(.ant-card.operation-card) {
+  margin-bottom: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+  border: none;
+}
+
+.declaration-manage {
+  height: 100%;
+  overflow-x: hidden;
 }
 </style>

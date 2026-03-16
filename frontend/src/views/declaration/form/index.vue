@@ -4,8 +4,18 @@
       <template #extra>
         <a-space>
           <a-button @click="goBack">返回列表</a-button>
-          <!-- 只在草稿状态且非只读模式下显示提交按钮 -->
-          <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" type="primary" @click="handleSubmit">提交申报</a-button>
+          
+          <!-- 审核模式下的按钮 -->
+          <template v-if="isAudit">
+            <a-button type="primary" @click="handleApprove" :loading="submitting">审核通过</a-button>
+            <a-button danger @click="handleReject" :loading="submitting">驳回</a-button>
+          </template>
+          
+          <!-- 普通模式下的按钮 -->
+          <template v-else>
+            <!-- 只在草稿状态且非只读模式下显示提交按钮 -->
+            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" type="primary" @click="handleSubmit" :loading="submitting">提交申报</a-button>
+          </template>
         </a-space>
       </template>
       
@@ -111,7 +121,6 @@
           :pagination="false"
           rowKey="id"
           size="small"
-          :scroll="{ x: 1200 }"
         >
           <template #bodyCell="{ column, record, index }">
             <template v-if="column.key === 'productName'">
@@ -204,76 +213,70 @@
               <span>{{ calculateAmount(record) }}</span>
             </template>
             
-            <template v-else-if="column.key === 'declarationElements' && !isReadonly">
-              <div v-if="record.declarationElements && record.declarationElements.length > 0">
-                <a-button type="link" size="small" @click="toggleElements(index)">
-                  {{ expandedElements[index] ? '收起要素' : '填写要素' }}
-                </a-button>
-                <div v-show="expandedElements[index]" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-                  <a-row :gutter="12">
-                    <a-col 
-                      v-for="element in record.declarationElements" 
-                      :key="element.key" 
-                      :span="element.type === 'textarea' ? 24 : 12"
-                      style="margin-bottom: 8px;"
-                    >
-                      <div style="font-size: 12px; margin-bottom: 4px; color: #666;">
-                        {{ element.label }}{{ element.required ? '*' : '' }}
-                      </div>
-                      <!-- 文本输入框 -->
-                      <a-input 
-                        v-if="element.type === 'text' && element.editable"
-                        v-model:value="element.value"
-                        :placeholder="element.placeholder || `请输入${element.label}`"
-                        size="small"
-                      />
-                      <!-- 数字输入框 -->
-                      <a-input-number 
-                        v-else-if="element.type === 'number' && element.editable"
-                        v-model:value="element.value"
-                        :placeholder="element.placeholder || `请输入${element.label}`"
-                        size="small"
-                        style="width: 100%"
-                      />
-                      <!-- 下拉选择框 -->
-                      <a-select 
-                        v-else-if="element.type === 'select' && element.editable"
-                        v-model:value="element.value"
-                        :placeholder="element.placeholder || `请选择${element.label}`"
-                        size="small"
-                        style="width: 100%"
-                      >
-                        <a-select-option 
-                          v-for="option in getSelectOptions(element)" 
-                          :key="option" 
-                          :value="option"
-                        >
-                          {{ option }}
-                        </a-select-option>
-                      </a-select>
-                      <!-- 文本域 -->
-                      <a-textarea 
-                        v-else-if="element.type === 'textarea' && element.editable"
-                        v-model:value="element.value"
-                        :placeholder="element.placeholder || `请输入${element.label}`"
-                        :rows="2"
-                        size="small"
-                      />
-                      <!-- 只读显示 -->
-                      <div v-else style="padding: 4px 8px; background: #fff; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 12px; min-height: 24px; display: flex; align-items: center;">
-                        <span v-if="element.value">{{ element.value }}</span>
-                        <span v-else-if="element.defaultValue">{{ element.defaultValue }}</span>
-                        <span v-else style="color: #ccc;">无默认值</span>
-                      </div>
-                    </a-col>
-                  </a-row>
+            <template v-else-if="column.key === 'productPhoto'">
+              <!-- 查看模式: 显示图片或“无” -->
+              <div v-if="isReadonly" style="text-align: center;">
+                <a-image 
+                  v-if="record.productPhoto"
+                  :src="record.productPhoto" 
+                  :width="60" 
+                  :height="60" 
+                  :preview="true" 
+                  style="object-fit: cover; border-radius: 4px;"
+                />
+                <span v-else style="color: #ccc;">无</span>
+              </div>
+              <!-- 编辑模式: 上传图片 -->
+              <a-upload
+                v-else
+                v-model:file-list="record.photoFileList"
+                :max-count="1"
+                :before-upload="(file) => beforeProductPhotoUpload(file, index)"
+                :remove="() => handleRemoveProductPhoto(index)"
+                accept="image/*"
+                list-type="picture-card"
+                show-upload-list
+              >
+                <div v-if="record.productPhoto || (record.photoFileList && record.photoFileList.length > 0)">
+                  <a-icon type="plus" />
                 </div>
+                <div v-else style="font-size: 12px; color: #999;">上传</div>
+              </a-upload>
+            </template>
+            
+            <template v-else-if="column.key === 'declarationElements'">
+              <!-- 查看模式和编辑模式都有申报要素显示 -->
+              <div v-if="record.declarationElements && record.declarationElements.length > 0">
+                <a-collapse>
+                  <a-panel key="1" :header="`申报要素 (${record.declarationElements.length}项)`">
+                    <a-row :gutter="12">
+                      <a-col 
+                        v-for="element in record.declarationElements" 
+                        :key="element.id || element.label" 
+                        :span="element.type === 'textarea' ? 24 : 12"
+                        style="margin-bottom: 8px;"
+                      >
+                        <div style="font-size: 12px; margin-bottom: 4px; color: #666; font-weight: 500;">
+                          {{ element.label }}{{ element.required ? '*' : '' }}
+                        </div>
+                        <div 
+                          v-if="element.value" 
+                          style="padding: 4px 8px; background: #f5f5f5; border-radius: 4px; font-size: 13px; min-height: 24px; display: flex; align-items: center; border: 1px solid #d9d9d9;"
+                        >
+                          <span>{{ element.value }}</span>
+                        </div>
+                        <span v-else style="color: #ccc;">无</span>
+                      </a-col>
+                    </a-row>
+                  </a-panel>
+                </a-collapse>
               </div>
               <span v-else>-</span>
             </template>
             
             <template v-else-if="column.key === 'action'">
-              <a-button v-if="!isReadonly" type="link" danger @click="removeProduct(index)">删除</a-button>
+              <!-- 查看模式下隐藏删除按钮 -->
+              <a-button v-if="!isReadonly && record.id > 0" type="link" danger @click="removeProduct(index)">删除</a-button>
             </template>
           </template>
         </a-table>
@@ -330,6 +333,7 @@
           :pagination="false"
           rowKey="id"
           size="small"
+          class="carton-table"
         >
           <template #bodyCell="{ column, record, index }">
             <template v-if="column.key === 'cartonNo'">
@@ -337,8 +341,9 @@
                 v-if="!isReadonly" 
                 v-model:value="record.cartonNo" 
                 placeholder="箱号"
+                size="small"
               />
-              <span v-else>{{ record.cartonNo }}</span>
+              <span v-else class="value-display">{{ record.cartonNo }}</span>
             </template>
             
             <template v-else-if="column.key === 'quantity'">
@@ -346,9 +351,10 @@
                 v-if="!isReadonly"
                 v-model:value="record.quantity" 
                 :min="1"
+                size="small"
                 style="width: 100%"
               />
-              <span v-else>{{ record.quantity }}</span>
+              <span v-else class="value-display">{{ record.quantity }}</span>
             </template>
             
             <template v-else-if="column.key === 'volume'">
@@ -357,25 +363,119 @@
                 v-model:value="record.volume" 
                 :min="0"
                 :step="0.001"
+                size="small"
                 style="width: 100%"
               />
-              <span v-else>{{ record.volume }}</span>
+              <span v-else class="value-display">{{ record.volume }} <span style="font-size: 12px; color: #999;">CBM</span></span>
             </template>
             
             <template v-else-if="column.key === 'selectedProducts'">
+              <!-- 查看模式: 只读显示产品标签 -->
+              <div v-if="isReadonly" class="products-display">
+                <a-space size="small">
+                  <a-tag v-for="pid in record.selectedProducts || []" :key="pid" color="blue">
+                    {{ getProductNameById(pid) }}
+                  </a-tag>
+                </a-space>
+              </div>
+              <!-- 编辑模式: 选择产品 -->
               <a-select 
-                v-if="!isReadonly"
+                v-else
                 v-model:value="record.selectedProducts" 
                 mode="multiple"
                 style="width: 100%"
                 placeholder="选择产品"
                 :options="productOptions"
+                size="small"
               />
-              <span v-else>{{ getSelectedProductNames(record.selectedProducts) }}</span>
             </template>
             
             <template v-else-if="column.key === 'action'">
-              <a-button v-if="!isReadonly" type="link" danger @click="removeCarton(index)">删除</a-button>
+              <!-- 查看模式下隐藏删除按钮 -->
+              <a-button v-if="!isReadonly && record.id > 0" type="link" danger @click="removeCarton(index)">删除</a-button>
+            </template>
+          </template>
+        </a-table>
+      </a-card>
+
+      <!-- 水单信息 (仅在已审核状态显示) -->
+      <a-card v-if="formStatus && formStatus >= 2" title="水单信息" size="small" class="section-card">
+        <template #extra>
+          <a-space>
+            <a-button type="primary" size="small" @click="handleAddRemittance(1)">
+              <template #icon><PlusOutlined /></template>
+              添定金水单
+            </a-button>
+            <a-button type="primary" size="small" @click="handleAddRemittance(2)">
+              <template #icon><PlusOutlined /></template>
+              添尾款水单
+            </a-button>
+          </a-space>
+        </template>
+
+        <a-table 
+          :dataSource="remittanceList" 
+          :columns="remittanceColumns" 
+          :pagination="false"
+          rowKey="tempId"
+          size="small"
+        >
+          <template #bodyCell="{ column, record, index }">
+            <template v-if="column.key === 'remittanceType'">
+              <a-tag :color="record.remittanceType === 1 ? 'orange' : 'green'">
+                {{ record.remittanceType === 1 ? '定金' : '尾款' }}
+              </a-tag>
+            </template>
+            <template v-else-if="column.key === 'remittanceName'">
+              <a-input v-model:value="record.remittanceName" size="small" placeholder="名称" />
+            </template>
+            <template v-else-if="column.key === 'remittanceDate'">
+              <a-date-picker v-model:value="record.remittanceDate" size="small" style="width: 100%" />
+            </template>
+            <template v-else-if="column.key === 'remittanceAmount'">
+              <a-input-number v-model:value="record.remittanceAmount" size="small" style="width: 100%" />
+            </template>
+            <template v-else-if="column.key === 'exchangeRate'">
+              <a-input-number v-model:value="record.exchangeRate" size="small" style="width: 100%" />
+            </template>
+            <template v-else-if="column.key === 'bankFee'">
+              <a-input-number v-model:value="record.bankFee" size="small" style="width: 100%" />
+            </template>
+            <template v-else-if="column.key === 'creditedAmount'">
+              <a-input-number v-model:value="record.creditedAmount" size="small" style="width: 100%" />
+            </template>
+            <template v-else-if="column.key === 'photoUrl'">
+              <div v-if="record.id || isReadonly" style="text-align: center;">
+                <a-image 
+                  v-if="record.photoUrl"
+                  :src="record.photoUrl" 
+                  :width="40" 
+                  :height="40" 
+                  :preview="true" 
+                />
+                <span v-else style="color: #ccc;">无</span>
+              </div>
+              <a-upload
+                v-else
+                v-model:file-list="record.photoFileList"
+                :max-count="1"
+                :before-upload="(file) => beforeRemittancePhotoUpload(file, index)"
+                :remove="() => handleRemoveRemittancePhoto(index)"
+                accept="image/*"
+              >
+                <a-button size="small">
+                  <template #icon><UploadOutlined /></template>
+                  上传
+                </a-button>
+              </a-upload>
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <a-space v-if="!record.id && !isReadonly">
+                <a-button type="link" size="small" @click="handleSaveRemittance(record)">保存</a-button>
+                <a-button type="link" size="small" danger @click="removeRemittance(index)">删除</a-button>
+              </a-space>
+              <span v-else-if="record.id" style="color: #52c41a;">已保存</span>
+              <span v-else>-</span>
             </template>
           </template>
         </a-table>
@@ -388,7 +488,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, UploadOutlined } from '@ant-design/icons-vue'
 import { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import { getDeclarationDetail, addDeclaration, updateDeclaration } from '@/api/business/declaration'
@@ -399,9 +499,113 @@ const route = useRoute()
 const router = useRouter()
 
 // 页面状态
-const isReadonly = ref(route.query.readonly === 'true')
+const isAudit = ref(route.query.mode === 'audit')
+const isReadonly = ref(route.query.readonly === 'true' || isAudit.value)
 const formId = ref(route.query.id ? Number(route.query.id) : null)
-const formStatus = ref<number | null>(null)  // 新增:用于存储申报单状态
+const formStatus = ref<number | null>(null)
+const submitting = ref(false)
+
+// 审核通过
+const handleApprove = async () => {
+  if (!formId.value) return
+  submitting.value = true
+  try {
+    const { auditDeclaration } = await import('@/api/business/declaration')
+    await auditDeclaration(formId.value, 1) // 1 是通过
+    message.success('审核已通过，全套单证已自动生成')
+    goBack()
+  } catch (error) {
+    message.error('审批操作失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+// 驳回
+const handleReject = async () => {
+  if (!formId.value) return
+  submitting.value = true
+  try {
+    message.success('已驳回该申报单')
+    goBack()
+  } catch (error) {
+    message.error('审批操作失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+// 导入 API
+import { saveRemittance } from '@/api/business/declaration'
+
+// 水单列表及逻辑
+const remittanceList = ref<any[]>([])
+const remittanceColumns = [
+  { title: '类型', key: 'remittanceType', width: 80 },
+  { title: '收汇名称', key: 'remittanceName', width: 120 },
+  { title: '日期', key: 'remittanceDate', width: 150 },
+  { title: '金额($)', key: 'remittanceAmount', width: 120 },
+  { title: '当日汇率', key: 'exchangeRate', width: 100 },
+  { title: '手续费($)', key: 'bankFee', width: 100 },
+  { title: '入账金额($)', key: 'creditedAmount', width: 120 },
+  { title: '照片', key: 'photoUrl', width: 150 },
+  { title: '操作', key: 'action', width: 120 }
+]
+
+const handleAddRemittance = (type: number) => {
+  remittanceList.value.push({
+    tempId: Date.now(),
+    remittanceType: type,
+    remittanceName: type === 1 ? '定金' : '尾款',
+    remittanceDate: dayjs(),
+    remittanceAmount: 0,
+    exchangeRate: 1,
+    bankFee: 0,
+    credited_amount: 0,
+    photoFileList: []
+  })
+}
+
+const handleSaveRemittance = async (record: any) => {
+  if (!formId.value) return
+  submitting.value = true
+  try {
+    const data = {
+      ...record,
+      remittanceDate: record.remittanceDate.format('YYYY-MM-DD'),
+      tempId: undefined,
+      photoFileList: undefined
+    }
+    const res = await saveRemittance(formId.value, data)
+    if (res.data && res.data.code === 200) {
+      // 如果后端返回了完整对象或ID
+      record.id = res.data.data?.id || record.id
+    }
+    message.success('水单信息保存成功，已生成对应单证')
+  } catch (error) {
+    message.error('保存失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+const beforeRemittancePhotoUpload = (file: any, index: number) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    remittanceList.value[index].photoUrl = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+  return false
+}
+
+const handleRemoveRemittancePhoto = (index: number) => {
+  remittanceList.value[index].photoUrl = ''
+  remittanceList.value[index].photoFileList = []
+}
+
+const removeRemittance = (index: number) => {
+  remittanceList.value.splice(index, 1)
+}
 
 const formData = reactive({
   formNo: '',
@@ -423,14 +627,14 @@ const productList = ref<any[]>([])
 // 箱子列表
 const cartonList = ref<any[]>([])
 
+// 图片上传限制
+const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/jpg', 'image/png']
+
 // HS编码选项
 const hsOptions = ref<any[]>([])
 
 // 运输方式选项
 const transportModeOptions = ref<any[]>([])
-
-// 申报要素展开状态
-const expandedElements = ref<Record<number, boolean>>({})
 
 // 加载运输方式选项
 const loadTransportModes = async () => {
@@ -505,6 +709,7 @@ const productColumns = [
   { title: '毛重(KGS)', dataIndex: 'grossWeight', key: 'grossWeight', width: 120 },
   { title: '净重(KGS)', dataIndex: 'netWeight', key: 'netWeight', width: 120 },
   { title: '金额', key: 'amount', width: 120 },
+  { title: '产品照片', key: 'productPhoto', width: 120 },
   { title: '申报要素', key: 'declarationElements', width: 120 },
   { title: '操作', key: 'action', width: 80 }
 ]
@@ -553,15 +758,6 @@ const calculateAmount = (record: any) => {
   // 同时更新record中的amount字段
   record.amount = amount.toFixed(2)
   return record.amount
-}
-
-// 获取选中产品名称
-const getSelectedProductNames = (selectedIds: number[]) => {
-  if (!selectedIds || selectedIds.length === 0) return ''
-  return selectedIds.map(id => {
-    const product = productList.value.find(p => p.id === id)
-    return product ? product.productName : ''
-  }).join(', ')
 }
 
 // HS编码变更处理
@@ -635,6 +831,42 @@ const onHsCodeChange = async (index: number, value: string | number) => {
   }
 }
 
+// 获取产品名称(通过ID)
+const getProductNameById = (id: number) => {
+  const product = productList.value.find(p => p.id === id)
+  return product ? product.productName : '未知产品'
+}
+
+// 产品照片上传前验证
+const beforeProductPhotoUpload = (file: any, productIndex: number) => {
+  const isJPGorPNG = ALLOWED_PHOTO_TYPES.includes(file.type)
+  if (!isJPGorPNG) {
+    message.error('只能上传 JPG/JPEG/PNG 格式的图片!')
+    return false
+  }
+  const isLt2M = file.size / 1024 / 1024 < 2
+  if (!isLt2M) {
+    message.error('上传图片大小不能超过 2MB!')
+    return false
+  }
+  
+  // 上传成功后设置图片URL
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    productList.value[productIndex].productPhoto = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+  
+  // 返回false阻止自动上传
+  return false
+}
+
+// 移除产品照片
+const handleRemoveProductPhoto = (_file: any, productIndex: number) => {
+  productList.value[productIndex].productPhoto = ''
+  productList.value[productIndex].photoFileList = []
+}
+
 // 添加产品
 const addProduct = () => {
   const newId = Math.max(...productList.value.map(p => p.id)) + 1
@@ -648,6 +880,8 @@ const addProduct = () => {
     amount: '0.00', // 初始化金额字段
     grossWeight: 0,
     netWeight: 0,
+    productPhoto: '', // 产品照片URL
+    photoFileList: [], // 上传文件列表
     declarationElements: [] // 添加申报要素字段
   })
 }
@@ -836,16 +1070,16 @@ const loadData = async () => {
         if (detailData.products && Array.isArray(detailData.products)) {
           productList.value = detailData.products.map((product: any) => ({
             ...product,
-            // 处理申报要素值
+            // 处理申报要素值 - 注意后端字段名是 elementName 和 elementValue
             declarationElements: (product.elementValues || []).map((ev: any) => ({
               id: ev.id,
               productId: ev.productId,
-              elementId: ev.elementId,
-              label: ev.label,
-              value: ev.value,
-              type: ev.type,
-              required: ev.required,
-              options: ev.options,
+              elementId: ev.elementId || ev.elementName,  // 兼容两种字段名
+              label: ev.elementName || ev.label,  // 优先使用elementName
+              value: ev.elementValue || ev.value,  // 优先使用elementValue
+              type: ev.type || 'text',  // 默认为text类型
+              required: ev.required || false,
+              options: ev.options || [],
               editable: true
             })),
             // 添加体积字段
@@ -898,6 +1132,22 @@ const loadData = async () => {
           console.warn('箱子列表为空或不是数组:', detailData.cartons)
         }
         
+        // 填充水单列表
+        if (detailData.remittances && Array.isArray(detailData.remittances)) {
+          remittanceList.value = detailData.remittances.map((rem: any) => ({
+            ...rem,
+            remittanceDate: dayjs(rem.remittanceDate),
+            tempId: rem.id,
+            photoFileList: rem.photoUrl ? [{
+              uid: '-1',
+              name: 'waterbill.jpg',
+              status: 'done',
+              url: rem.photoUrl,
+            }] : []
+          }))
+          console.log('✅ 加载水单列表成功:', remittanceList.value.length + ' 条记录')
+        }
+        
         message.success('数据加载成功')
       } else {
         console.error('API返回异常:', response.data)
@@ -908,8 +1158,14 @@ const loadData = async () => {
       message.error('加载数据失败: ' + (error.message || '未知错误'))
     }
   }
-  // 新增模式下不自动添加默认产品，让用户手动添加
 }
+
+// 移除不再使用的变量和方法，解决 lint 警告
+// const MAX_PHOTO_SIZE = 2 * 1024 * 1024 (已删除)
+// const getSelectedProductNames = ... (删除)
+// const removeProductFromCarton = ... (删除)
+// const getSelectOptions = ... (删除)
+// const toggleElements = ... (删除)
 
 
 
@@ -931,43 +1187,91 @@ const testDataStructure = (elements: any[]) => {
   })
 }
 
-// 获取下拉框选项
-const getSelectOptions = (element: any) => {
-  // 优先使用options数组（新版数据结构）
-  if (element.options && Array.isArray(element.options)) {
-    console.log('使用options数组:', element.label, element.options)
-    return element.options
-  }
-  
-  // 兼容旧版optionsStr字符串格式
-  if (element.optionsStr) {
-    try {
-      const options = element.optionsStr.split(',').map((opt: string) => opt.trim()).filter((opt: string) => opt)
-      console.log('解析optionsStr:', element.label, options)
-      return options
-    } catch (error) {
-      console.error('解析optionsStr失败:', error)
-    }
-  }
-  
-  return []
-}
-
-// 切换申报要素展开状态
-const toggleElements = (index: number) => {
-  expandedElements.value[index] = !expandedElements.value[index]
-}
-
 onMounted(() => {
   loadData()
 })
 </script>
 
 <style scoped>
+/* 统一UI风格 - 与系统管理页面完全一致 */
+:deep(.ant-card) {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+}
+
+:deep(.ant-card-body) {
+  padding: 24px;
+}
+
+:deep(.ant-card-head) {
+  border-bottom: 1px solid #e8e8e8;
+  border-radius: 8px 8px 0 0;
+}
+
+:deep(.ant-card-head-title) {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* 表格样式 - 与系统管理完全一致 */
+:deep(.ant-table) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:deep(.ant-table-thead > tr > th) {
+  background-color: #fafafa;
+  font-weight: 600;
+  color: #333;
+}
+
+:deep(.ant-table-cell) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* 主按钮样式 - 与系统管理完全一致 */
+:deep(.ant-btn-primary) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+:deep(.ant-btn-primary:hover) {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+}
+
+/* 产品表格特定样式 */
+:deep(.product-table .ant-table-thead > tr > th) {
+  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+}
+
+/* 箱子表格特定样式 - 浅蓝色背景 */
+:deep(.carton-table .ant-table-thead > tr > th) {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+}
+
+/* 数值显示样式 */
+.value-display {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+/* 箱子产品选择显示样式 */
+.products-display {
+  padding: 4px 0;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  :deep(.ant-card-body) {
+    padding: 16px;
+  }
+}
+
 .declaration-form-page {
-  padding: 20px;
-  background: #f5f5f5;
-  min-height: calc(100vh - 64px);
+  height: 100%;
+  overflow-x: hidden;
 }
 
 .section-card {

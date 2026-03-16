@@ -111,6 +111,24 @@ export function submitDeclaration(id: number) {
   })
 }
 
+// 审核申报单
+export function auditDeclaration(id: number, result: number, remark?: string) {
+  return request({
+    url: `/api/v1/declarations/${id}/audit`,
+    method: 'post',
+    data: { result, remark }
+  })
+}
+
+// 保存水单信息
+export function saveRemittance(id: number, data: any) {
+  return request({
+    url: `/api/v1/declarations/${id}/remittance`,
+    method: 'post',
+    data
+  })
+}
+
 // 获取申报单产品列表
 export function getDeclarationProducts(formId: number) {
   return request({
