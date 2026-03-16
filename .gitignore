@@ -1,1 +1,7 @@
 /frontend/node_modules/
+/.vscode/
+/.qoder/
+/.idea/
+/backend/target/
+/backend/apache-maven-3.9.14-bin.zip
+/backend/apache-maven-3.9.14/
