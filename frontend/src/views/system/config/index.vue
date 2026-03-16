@@ -1,0 +1,773 @@
+<template>
+  <div class="system-config">
+    <!-- 搜索区域 -->
+    <a-card class="search-card">
+      <a-form :model="searchForm" layout="inline">
+        <a-form-item label="配置键">
+          <a-input v-model:value="searchForm.configKey" placeholder="请输入配置键" />
+        </a-form-item>
+        <a-form-item label="配置名称">
+          <a-input v-model:value="searchForm.configName" placeholder="请输入配置名称" />
+        </a-form-item>
+        <a-form-item>
+          <a-button type="primary" @click="handleSearch">搜索</a-button>
+          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+        </a-form-item>
+      </a-form>
+    </a-card>
+
+    <!-- 操作按钮区域 -->
+    <a-card class="operation-card">
+      <a-space>
+        <a-button type="primary" @click="showAddModal">
+          <template #icon><plus-outlined /></template>
+          新增配置
+        </a-button>
+        <a-button @click="refreshData">
+          <template #icon><reload-outlined /></template>
+          刷新
+        </a-button>
+      </a-space>
+    </a-card>
+
+    <!-- 配置分类区域 -->
+    <a-tabs v-model:activeKey="activeTab" @change="handleTabChange">
+      <a-tab-pane key="basic" tab="基本信息">
+        <a-card>
+          <a-form
+            :model="basicForm"
+            :label-col="{ span: 4 }"
+            :wrapper-col="{ span: 16 }"
+            @finish="saveBasicConfig"
+          >
+            <a-form-item label="系统名称" name="system.name">
+              <a-input v-model:value="basicForm['system.name']" placeholder="请输入系统名称" />
+              <div style="margin-top: 8px; font-size: 12px; color: #666;">
+                预览效果：当前系统名称为 "{{ basicForm['system.name'] || '未设置' }}"
+              </div>
+            </a-form-item>
+            <a-form-item label="系统版本" name="system.version">
+              <a-input v-model:value="basicForm['system.version']" placeholder="请输入系统版本" />
+            </a-form-item>
+            <a-form-item label="系统描述" name="system.description">
+              <a-textarea v-model:value="basicForm['system.description']" placeholder="请输入系统描述" :rows="3" />
+            </a-form-item>
+            <a-form-item label="公司名称" name="system.company">
+              <a-input v-model:value="basicForm['system.company']" placeholder="请输入公司名称" />
+            </a-form-item>
+            <a-form-item label="版权信息" name="system.copyright">
+              <a-input v-model:value="basicForm['system.copyright']" placeholder="请输入版权信息" />
+            </a-form-item>
+            <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
+              <a-button type="primary" html-type="submit">保存</a-button>
+            </a-form-item>
+          </a-form>
+        </a-card>
+      </a-tab-pane>
+
+      <a-tab-pane key="ui" tab="界面配置">
+        <a-card>
+          <a-form
+            :model="uiForm"
+            :label-col="{ span: 4 }"
+            :wrapper-col="{ span: 16 }"
+            @finish="saveUiConfig"
+          >
+            <a-form-item label="Logo图片" name="ui.logo">
+              <a-input v-model:value="uiForm['ui.logo']" placeholder="请输入Logo图片URL" />
+            </a-form-item>
+            <a-form-item label="网站图标" name="ui.favicon">
+              <a-input v-model:value="uiForm['ui.favicon']" placeholder="请输入网站图标URL" />
+            </a-form-item>
+            <a-form-item label="主题颜色" name="ui.theme">
+              <a-select 
+                v-model:value="uiForm['ui.theme']" 
+                placeholder="请选择主题颜色"
+                :options="themeOptions"
+              />
+            </a-form-item>
+            <a-form-item label="底部文字" name="ui.footer.text">
+              <a-textarea v-model:value="uiForm['ui.footer.text']" placeholder="请输入底部显示文字" :rows="2" />
+            </a-form-item>
+            <a-form-item label="显示底部" name="ui.footer.show">
+              <a-switch v-model:checked="uiForm['ui.footer.show']" checked-children="是" un-checked-children="否" />
+            </a-form-item>
+            <a-form-item label="侧边栏折叠" name="ui.sidebar.collapsed">
+              <a-switch v-model:checked="uiForm['ui.sidebar.collapsed']" checked-children="是" un-checked-children="否" />
+            </a-form-item>
+            <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
+              <a-button type="primary" html-type="submit">保存</a-button>
+            </a-form-item>
+          </a-form>
+        </a-card>
+      </a-tab-pane>
+
+      <a-tab-pane key="business" tab="业务配置">
+        <a-card>
+          <a-form
+            :model="businessForm"
+            :label-col="{ span: 4 }"
+            :wrapper-col="{ span: 16 }"
+            @finish="saveBusinessConfig"
+          >
+            <a-form-item label="启用税务退费" name="business.tax-refund.enabled">
+              <a-switch v-model:checked="businessForm['business.tax-refund.enabled']" checked-children="是" un-checked-children="否" />
+            </a-form-item>
+            <a-form-item label="审批层级" name="business.tax-refund.approval-level">
+              <a-select 
+                v-model:value="businessForm['business.tax-refund.approval-level']" 
+                placeholder="请选择审批层级"
+                :options="approvalLevelOptions"
+              />
+            </a-form-item>
+            <a-form-item label="文件上传限制" name="business.file.upload.max-size">
+              <a-input v-model:value="businessForm['business.file.upload.max-size']" placeholder="例如: 10MB" />
+            </a-form-item>
+            <a-form-item label="启用邮件通知" name="business.notification.email-enabled">
+              <a-switch v-model:checked="businessForm['business.notification.email-enabled']" checked-children="是" un-checked-children="否" />
+            </a-form-item>
+            <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
+              <a-button type="primary" html-type="submit">保存</a-button>
+            </a-form-item>
+          </a-form>
+        </a-card>
+      </a-tab-pane>
+
+      <a-tab-pane key="all" tab="全部配置">
+        <a-card>
+          <a-table
+            :dataSource="allConfigs"
+            :columns="columns"
+            :loading="loading"
+            :pagination="pagination"
+            rowKey="id"
+          >
+            <template #configType="{ record }">
+              <a-tag :color="getTypeColor(record.configType)">
+                {{ getTypeLabel(record.configType) }}
+              </a-tag>
+            </template>
+            
+            <template #status="{ record }">
+              <a-tag :color="record.status === 1 ? 'green' : 'red'">
+                {{ record.status === 1 ? '启用' : '禁用' }}
+              </a-tag>
+            </template>
+
+            <template #action="{ record }">
+              <a-space>
+                <a-button type="link" size="small" @click="editConfig(record)">编辑</a-button>
+                <a-popconfirm
+                  title="确定要删除这个配置吗？"
+                  @confirm="deleteConfig(record.id)"
+                >
+                  <a-button type="link" size="small" danger>删除</a-button>
+                </a-popconfirm>
+              </a-space>
+            </template>
+          </a-table>
+        </a-card>
+      </a-tab-pane>
+    </a-tabs>
+
+    <!-- 新增/编辑配置弹窗 -->
+    <a-modal
+      v-model:open="modalVisible"
+      :title="modalTitle"
+      @ok="handleOk"
+      @cancel="handleCancel"
+      :confirm-loading="confirmLoading"
+    >
+      <a-form
+        ref="formRef"
+        :model="formData"
+        :rules="formRules"
+        :label-col="{ span: 6 }"
+        :wrapper-col="{ span: 16 }"
+      >
+        <a-form-item label="配置键" name="configKey">
+          <a-input v-model:value="formData.configKey" placeholder="请输入配置键" />
+        </a-form-item>
+        <a-form-item label="配置名称" name="configName">
+          <a-input v-model:value="formData.configName" placeholder="请输入配置名称" />
+        </a-form-item>
+        <a-form-item label="输入类型" name="inputType">
+          <a-select v-model:value="formData.inputType" placeholder="请选择输入类型" @change="handleInputTypeChange">
+            <a-select-option :value="1">文本框</a-select-option>
+            <a-select-option :value="2">下拉框</a-select-option>
+            <a-select-option :value="3">开关</a-select-option>
+            <a-select-option :value="4">数字输入框</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="配置值" name="configValue">
+          <template v-if="formData.inputType === 1">
+            <a-input v-model:value="formData.configValue" placeholder="请输入配置值" />
+          </template>
+          <template v-else-if="formData.inputType === 2">
+            <a-select 
+              v-model:value="formData.configValue" 
+              :options="parseSelectOptions(formData.selectOptions)"
+              placeholder="请选择配置值"
+              allowClear
+            />
+          </template>
+          <template v-else-if="formData.inputType === 3">
+            <a-switch v-model:checked="formData.configValue" checked-children="开启" un-checked-children="关闭" />
+          </template>
+          <template v-else-if="formData.inputType === 4">
+            <a-input-number v-model:value="formData.configValue" placeholder="请输入数值" style="width: 100%" />
+          </template>
+          <template v-else>
+            <a-textarea v-model:value="formData.configValue" placeholder="请输入配置值" :rows="3" />
+          </template>
+        </a-form-item>
+        <a-form-item 
+          v-if="formData.inputType === 2" 
+          label="下拉框选项" 
+          name="selectOptions"
+        >
+          <div class="select-options-editor">
+            <a-button type="primary" size="small" @click="addSelectOption" style="margin-bottom: 8px;">
+              添加选项
+            </a-button>
+            <div 
+              v-for="(option, index) in selectOptionsList" 
+              :key="index" 
+              class="option-item"
+            >
+              <a-input 
+                v-model:value="option.label" 
+                placeholder="显示标签" 
+                style="width: 40%; margin-right: 8px;"
+              />
+              <a-input 
+                v-model:value="option.value" 
+                placeholder="选项值" 
+                style="width: 40%; margin-right: 8px;"
+              />
+              <a-button 
+                type="link" 
+                danger 
+                size="small" 
+                @click="removeSelectOption(index)"
+              >
+                删除
+              </a-button>
+            </div>
+          </div>
+        </a-form-item>
+        <a-form-item label="配置类型" name="configType">
+          <a-select v-model:value="formData.configType" placeholder="请选择配置类型">
+            <a-select-option :value="1">系统配置</a-select-option>
+            <a-select-option :value="2">UI配置</a-select-option>
+            <a-select-option :value="3">业务配置</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="配置分组" name="configGroup">
+          <a-input v-model:value="formData.configGroup" placeholder="请输入配置分组" />
+        </a-form-item>
+        <a-form-item label="备注说明" name="remark">
+          <a-textarea v-model:value="formData.remark" placeholder="请输入备注说明" :rows="2" />
+        </a-form-item>
+        <a-form-item label="状态" name="status">
+          <a-radio-group v-model:value="formData.status">
+            <a-radio :value="1">启用</a-radio>
+            <a-radio :value="0">禁用</a-radio>
+          </a-radio-group>
+        </a-form-item>
+      </a-form>
+    </a-modal>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted, watch } from 'vue'
+import { message } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
+import { 
+  PlusOutlined, 
+  ReloadOutlined
+} from '@ant-design/icons-vue'
+import { 
+  getSystemBasicInfo, 
+  getUiConfig, 
+  getAllConfigs,
+  updateConfig,
+  addConfig,
+  deleteConfig as deleteConfigApi
+} from '@/api/system/config'
+
+const router = useRouter()
+
+// 响应式数据
+const activeTab = ref('basic')
+const loading = ref(false)
+const modalVisible = ref(false)
+const modalTitle = ref('新增配置')
+const confirmLoading = ref(false)
+const formRef = ref()
+
+// 搜索表单
+const searchForm = reactive({
+  configKey: '',
+  configName: ''
+})
+
+// 搜索处理方法
+const handleSearch = () => {
+  // 这里可以添加搜索逻辑
+  console.log('搜索配置:', searchForm)
+}
+
+const handleReset = () => {
+  searchForm.configKey = ''
+  searchForm.configName = ''
+  // 重置搜索逻辑
+}
+
+
+
+// 下拉框选项数据
+const approvalLevelOptions = ref([
+  { label: '1级审批', value: '1' },
+  { label: '2级审批', value: '2' },
+  { label: '3级审批', value: '3' },
+  { label: '4级审批', value: '4' },
+  { label: '5级审批', value: '5' }
+])
+
+const themeOptions = ref([
+  { label: '默认蓝', value: '#1890ff' },
+  { label: '科技蓝', value: '#001529' },
+  { label: '活力橙', value: '#fa8c16' },
+  { label: '清新绿', value: '#52c41a' }
+])
+
+// 表单数据
+const basicForm = reactive<Record<string, any>>({})
+const uiForm = reactive<Record<string, any>>({})
+const businessForm = reactive<Record<string, any>>({})
+const allConfigs = ref<any[]>([])
+
+const formData = reactive({
+  id: undefined as number | undefined,
+  configKey: '',
+  configName: '',
+  configValue: '',
+  inputType: 1,
+  selectOptions: '',
+  configType: 1,
+  configGroup: '',
+  remark: '',
+  status: 1
+})
+
+// 下拉框选项管理
+const selectOptionsList = ref<Array<{label: string, value: string}>>([])
+
+// 表格配置
+const columns = [
+  {
+    title: '配置键',
+    dataIndex: 'configKey',
+    key: 'configKey',
+    width: 200
+  },
+  {
+    title: '配置名称',
+    dataIndex: 'configName',
+    key: 'configName',
+    width: 150
+  },
+  {
+    title: '配置值',
+    dataIndex: 'configValue',
+    key: 'configValue',
+    ellipsis: true
+  },
+  {
+    title: '配置类型',
+    key: 'configType',
+    width: 100,
+    slots: { customRender: 'configType' }
+  },
+  {
+    title: '配置分组',
+    dataIndex: 'configGroup',
+    key: 'configGroup',
+    width: 100
+  },
+  {
+    title: '状态',
+    key: 'status',
+    width: 80,
+    slots: { customRender: 'status' }
+  },
+  {
+    title: '操作',
+    key: 'action',
+    width: 150,
+    slots: { customRender: 'action' }
+  }
+]
+
+const pagination = {
+  pageSize: 10,
+  showSizeChanger: true,
+  showQuickJumper: true,
+  showTotal: (total: number) => `共 ${total} 条`
+}
+
+// 表单验证规则
+const formRules = {
+  configKey: [
+    { required: true, message: '请输入配置键', trigger: 'blur' }
+  ],
+  configName: [
+    { required: true, message: '请输入配置名称', trigger: 'blur' }
+  ],
+  configType: [
+    { required: true, message: '请选择配置类型', trigger: 'change' }
+  ],
+  configGroup: [
+    { required: true, message: '请输入配置分组', trigger: 'blur' }
+  ]
+}
+
+// 方法
+const refreshData = async () => {
+  await loadData()
+}
+
+const handleTabChange = (key: string) => {
+  if (key === 'all') {
+    loadAllConfigs()
+  }
+}
+
+const loadAllConfigs = async () => {
+  loading.value = true
+  try {
+    const response = await getAllConfigs()
+    if (response.data?.code === 200) {
+      allConfigs.value = response.data.data || []
+    }
+  } catch (error) {
+    message.error('加载配置列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+const loadData = async () => {
+  try {
+    // 加载基本信息
+    const basicResponse = await getSystemBasicInfo()
+    if (basicResponse.data?.code === 200) {
+      Object.assign(basicForm, basicResponse.data.data)
+    }
+
+    // 加载UI配置
+    const uiResponse = await getUiConfig()
+    if (uiResponse.data?.code === 200) {
+      const uiData = uiResponse.data.data
+      // 处理布尔值
+      uiData['ui.footer.show'] = uiData['ui.footer.show'] === 'true'
+      uiData['ui.sidebar.collapsed'] = uiData['ui.sidebar.collapsed'] === 'true'
+      Object.assign(uiForm, uiData)
+    }
+
+    // 加载业务配置
+    const businessResponse = await getAllConfigs()
+    if (businessResponse.data?.code === 200) {
+      const configs = businessResponse.data.data || []
+      const businessConfigs = configs.filter((c: any) => c.configGroup === 'business')
+      businessConfigs.forEach((config: any) => {
+        businessForm[config.configKey] = config.configValue
+      })
+    }
+  } catch (error) {
+    message.error('加载配置失败')
+  }
+}
+
+const saveBasicConfig = async () => {
+  try {
+    for (const [key, value] of Object.entries(basicForm)) {
+      await updateConfig(key, { configValue: value })
+    }
+    message.success('基本信息保存成功')
+    
+    // 如果修改了系统名称，更新页面标题
+    if (basicForm['system.name']) {
+      const titleElement = document.getElementById('app-title')
+      if (titleElement) {
+        titleElement.textContent = basicForm['system.name']
+      }
+      document.title = basicForm['system.name']
+      
+      // 显示更新提示
+      message.info(`系统名称已更新为: ${basicForm['system.name']}`)
+    }
+  } catch (error) {
+    message.error('保存失败')
+  }
+}
+
+const saveUiConfig = async () => {
+  try {
+    for (const [key, value] of Object.entries(uiForm)) {
+      await updateConfig(key, { configValue: String(value) })
+    }
+    message.success('界面配置保存成功')
+  } catch (error) {
+    message.error('保存失败')
+  }
+}
+
+const saveBusinessConfig = async () => {
+  try {
+    for (const [key, value] of Object.entries(businessForm)) {
+      await updateConfig(key, { configValue: String(value) })
+    }
+    message.success('业务配置保存成功')
+  } catch (error) {
+    message.error('保存失败')
+  }
+}
+
+const showAddModal = () => {
+  modalTitle.value = '新增配置'
+  Object.assign(formData, {
+    id: undefined,
+    configKey: '',
+    configName: '',
+    configValue: '',
+    inputType: 1,
+    selectOptions: '',
+    configType: 1,
+    configGroup: '',
+    remark: '',
+    status: 1
+  })
+  selectOptionsList.value = []
+  modalVisible.value = true
+}
+
+const editConfig = (record: any) => {
+  modalTitle.value = '编辑配置'
+  Object.assign(formData, {
+    id: record.id,
+    configKey: record.configKey,
+    configName: record.configName,
+    configValue: record.configValue,
+    inputType: record.inputType || 1,
+    selectOptions: record.selectOptions || '',
+    configType: record.configType,
+    configGroup: record.configGroup,
+    remark: record.remark,
+    status: record.status
+  })
+  
+  // 初始化下拉框选项列表
+  if (formData.inputType === 2 && formData.selectOptions) {
+    try {
+      selectOptionsList.value = JSON.parse(formData.selectOptions)
+    } catch (error) {
+      selectOptionsList.value = []
+    }
+  } else {
+    selectOptionsList.value = []
+  }
+  
+  modalVisible.value = true
+}
+
+const handleOk = async () => {
+  try {
+    await formRef.value.validateFields()
+    confirmLoading.value = true
+    
+    if (formData.id) {
+      await updateConfig(formData.configKey, { configValue: formData.configValue })
+      message.success('配置更新成功')
+    } else {
+      await addConfig(formData)
+      message.success('配置添加成功')
+    }
+    
+    modalVisible.value = false
+    await loadData()
+    if (activeTab.value === 'all') {
+      await loadAllConfigs()
+    }
+  } catch (error) {
+    message.error('操作失败')
+  } finally {
+    confirmLoading.value = false
+  }
+}
+
+const handleCancel = () => {
+  modalVisible.value = false
+}
+
+// 输入类型变化处理
+const handleInputTypeChange = (value: any) => {
+  const numValue = Number(value)
+  formData.inputType = numValue
+  if (numValue !== 2) {
+    selectOptionsList.value = []
+    formData.selectOptions = ''
+  }
+}
+
+// 解析下拉框选项
+const parseSelectOptions = (optionsStr: string) => {
+  if (!optionsStr) return []
+  try {
+    return JSON.parse(optionsStr)
+  } catch (error) {
+    return []
+  }
+}
+
+// 添加下拉框选项
+const addSelectOption = () => {
+  selectOptionsList.value.push({ label: '', value: '' })
+}
+
+// 删除下拉框选项
+const removeSelectOption = (index: number) => {
+  selectOptionsList.value.splice(index, 1)
+  updateSelectOptionsString()
+}
+
+// 更新下拉框选项字符串
+const updateSelectOptionsString = () => {
+  formData.selectOptions = JSON.stringify(selectOptionsList.value)
+}
+
+// 监听下拉框选项变化
+watch(selectOptionsList, () => {
+  updateSelectOptionsString()
+}, { deep: true })
+
+const deleteConfig = async (id: number) => {
+  try {
+    await deleteConfigApi(id)
+    message.success('删除成功')
+    await loadAllConfigs()
+  } catch (error) {
+    message.error('删除失败')
+  }
+}
+
+const getTypeColor = (type: number) => {
+  const colors = { 1: 'blue', 2: 'green', 3: 'orange' }
+  return colors[type as keyof typeof colors] || 'default'
+}
+
+const getTypeLabel = (type: number) => {
+  const labels = { 1: '系统配置', 2: 'UI配置', 3: '业务配置' }
+  return labels[type as keyof typeof labels] || '未知'
+}
+
+onMounted(() => {
+  loadData()
+})
+</script>
+
+<style scoped>
+.system-config {
+  height: 100%;
+  overflow-x: hidden;
+}
+
+.search-card {
+  margin-bottom: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+}
+
+.operation-card {
+  margin-bottom: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+}
+
+:deep(.ant-card) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:deep(.ant-card-body) {
+  padding: 24px;
+}
+
+:deep(.ant-table) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:deep(.ant-table-thead > tr > th) {
+  background-color: #fafafa;
+  font-weight: 600;
+}
+
+:deep(.ant-btn-primary) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+:deep(.ant-btn-primary:hover) {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+}
+
+:deep(.ant-input-affix-wrapper:focus),
+:deep(.ant-input:focus) {
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+  border-color: #667eea;
+}
+
+:deep(.ant-select-focused:not(.ant-select-disabled).ant-select:not(.ant-select-customize-input) .ant-select-selector) {
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+  border-color: #667eea;
+}
+
+.select-options-editor {
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  padding: 12px;
+  background-color: #fafafa;
+}
+
+.option-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #e8e8e8;
+}
+
+.option-item:last-child {
+  margin-bottom: 0;
+}
+
+/* 响应式表单布局 */
+@media (max-width: 768px) {
+  .system-config {
+    padding: 16px;
+  }
+  
+  :deep(.ant-card-body) {
+    padding: 16px;
+  }
+  
+  :deep(.ant-form-item) {
+    margin-bottom: 12px;
+  }
+}
+</style>

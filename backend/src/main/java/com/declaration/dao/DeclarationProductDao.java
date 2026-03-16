@@ -1,0 +1,13 @@
+package com.declaration.dao;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.declaration.entity.DeclarationProduct;
+
+/**
+ * 申报单产品明细DAO接口
+ *
+ * @author Administrator
+ * @since 2026-03-13
+ */
+public interface DeclarationProductDao extends BaseMapper<DeclarationProduct> {
+}

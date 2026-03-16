@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+             targetNamespace="http://flowable.org/bpmn">
+
+  <process id="tax_refund_process" name="税务退费审批流程" isExecutable="true">
+    
+    <!-- 开始事件 -->
+    <startEvent id="startEvent" name="开始" />
+    
+    <!-- 部门提交信息任务 -->
+    <userTask id="departmentSubmit" name="部门提交信息" 
+              flowable:assignee="${initiator}">
+      <extensionElements>
+        <flowable:taskListener event="create" class="com.declaration.listener.DepartmentSubmitListener" />
+      </extensionElements>
+    </userTask>
+    
+    <!-- 财务初审任务 -->
+    <userTask id="financeFirstReview" name="财务初审" 
+              flowable:candidateGroups="finance">
+      <extensionElements>
+        <flowable:taskListener event="create" class="com.declaration.listener.FinanceReviewListener" />
+      </extensionElements>
+    </userTask>
+    
+    <!-- 生成文件服务任务 -->
+    <serviceTask id="generateDocument" name="生成财务文件" 
+                 flowable:class="com.declaration.service.DocumentGenerationService" />
+    
+    <!-- 返回发起人任务 -->
+    <userTask id="returnToInitiator" name="文件返回发起人" 
+              flowable:assignee="${initiator}">
+      <extensionElements>
+        <flowable:taskListener event="create" class="com.declaration.listener.ReturnDocumentListener" />
+      </extensionElements>
+    </userTask>
+    
+    <!-- 提交发票退税信息任务 -->
+    <userTask id="submitInvoiceInfo" name="提交发票退税信息" 
+              flowable:assignee="${initiator}">
+      <extensionElements>
+        <flowable:taskListener event="create" class="com.declaration.listener.InvoiceSubmitListener" />
+      </extensionElements>
+    </userTask>
+    
+    <!-- 财务复审任务 -->
+    <userTask id="financeSecondReview" name="财务复审" 
+              flowable:candidateGroups="finance">
+      <extensionElements>
+        <flowable:taskListener event="create" class="com.declaration.listener.FinanceFinalReviewListener" />
+      </extensionElements>
+    </userTask>
+    
+    <!-- 文件归档服务任务 -->
+    <serviceTask id="archiveDocument" name="文件归档" 
+                 flowable:class="com.declaration.service.DocumentArchiveService" />
+    
+    <!-- 结束事件 -->
+    <endEvent id="endEvent" name="结束" />
+    
+    <!-- 流程连线 -->
+    <sequenceFlow id="flow1" sourceRef="startEvent" targetRef="departmentSubmit" />
+    <sequenceFlow id="flow2" sourceRef="departmentSubmit" targetRef="financeFirstReview" />
+    <sequenceFlow id="flow3" sourceRef="financeFirstReview" targetRef="generateDocument" />
+    <sequenceFlow id="flow4" sourceRef="generateDocument" targetRef="returnToInitiator" />
+    <sequenceFlow id="flow5" sourceRef="returnToInitiator" targetRef="submitInvoiceInfo" />
+    <sequenceFlow id="flow6" sourceRef="submitInvoiceInfo" targetRef="financeSecondReview" />
+    <sequenceFlow id="flow7" sourceRef="financeSecondReview" targetRef="archiveDocument" />
+    <sequenceFlow id="flow8" sourceRef="archiveDocument" targetRef="endEvent" />
+    
+  </process>
+  
+  <!-- BPMN 图形定义 -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_tax_refund_process">
+    <bpmndi:BPMNPlane bpmnElement="tax_refund_process" id="BPMNPlane_tax_refund_process">
+      <bpmndi:BPMNShape bpmnElement="startEvent" id="BPMNShape_startEvent">
+        <dc:Bounds height="30.0" width="30.0" x="100.0" y="160.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="departmentSubmit" id="BPMNShape_departmentSubmit">
+        <dc:Bounds height="80.0" width="100.0" x="180.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="financeFirstReview" id="BPMNShape_financeFirstReview">
+        <dc:Bounds height="80.0" width="100.0" x="330.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="generateDocument" id="BPMNShape_generateDocument">
+        <dc:Bounds height="80.0" width="100.0" x="480.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="returnToInitiator" id="BPMNShape_returnToInitiator">
+        <dc:Bounds height="80.0" width="100.0" x="630.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="submitInvoiceInfo" id="BPMNShape_submitInvoiceInfo">
+        <dc:Bounds height="80.0" width="100.0" x="780.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="financeSecondReview" id="BPMNShape_financeSecondReview">
+        <dc:Bounds height="80.0" width="100.0" x="930.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="archiveDocument" id="BPMNShape_archiveDocument">
+        <dc:Bounds height="80.0" width="100.0" x="1080.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="endEvent" id="BPMNShape_endEvent">
+        <dc:Bounds height="28.0" width="28.0" x="1230.0" y="161.0" />
+      </bpmndi:BPMNShape>
+      
+      <!-- 连线定义 -->
+      <bpmndi:BPMNEdge bpmnElement="flow1" id="BPMNEdge_flow1">
+        <di:waypoint x="130.0" y="175.0" />
+        <di:waypoint x="180.0" y="175.0" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="flow2" id="BPMNEdge_flow2">
+        <di:waypoint x="280.0" y="175.0" />
+        <di:waypoint x="330.0" y="175.0" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="flow3" id="BPMNEdge_flow3">
+        <di:waypoint x="430.0" y="175.0" />
+        <di:waypoint x="480.0" y="175.0" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="flow4" id="BPMNEdge_flow4">
+        <di:waypoint x="580.0" y="175.0" />
+        <di:waypoint x="630.0" y="175.0" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="flow5" id="BPMNEdge_flow5">
+        <di:waypoint x="730.0" y="175.0" />
+        <di:waypoint x="780.0" y="175.0" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="flow6" id="BPMNEdge_flow6">
+        <di:waypoint x="880.0" y="175.0" />
+        <di:waypoint x="930.0" y="175.0" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="flow7" id="BPMNEdge_flow7">
+        <di:waypoint x="1030.0" y="175.0" />
+        <di:waypoint x="1080.0" y="175.0" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="flow8" id="BPMNEdge_flow8">
+        <di:waypoint x="1180.0" y="175.0" />
+        <di:waypoint x="1230.0" y="175.0" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
