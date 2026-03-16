@@ -39,6 +39,7 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     private final DeclarationCartonProductService cartonProductService;
     private final DeclarationElementValueService elementValueService;
     private final com.declaration.service.DeclarationRemittanceService remittanceService;
+    private final com.declaration.service.DeclarationAttachmentService attachmentService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -173,6 +174,13 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                     .orderByAsc(com.declaration.entity.DeclarationRemittance::getRemittanceDate)
                     .list();
             form.setRemittances(remittances);
+
+            // 查询附件信息
+            List<com.declaration.entity.DeclarationAttachment> attachments = attachmentService.lambdaQuery()
+                    .eq(com.declaration.entity.DeclarationAttachment::getFormId, id)
+                    .orderByDesc(com.declaration.entity.DeclarationAttachment::getCreateTime)
+                    .list();
+            form.setAttachments(attachments);
         }
         return form;
     }

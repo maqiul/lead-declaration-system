@@ -7,14 +7,20 @@
           
           <!-- 审核模式下的按钮 -->
           <template v-if="isAudit">
-            <a-button type="primary" @click="handleApprove" :loading="submitting">审核通过</a-button>
-            <a-button danger @click="handleReject" :loading="submitting">驳回</a-button>
+            <a-button type="primary" @click="handleApprove" :loading="submitting">{{ getAuditActionText() }}通过</a-button>
+            <a-button danger @click="handleReject" :loading="submitting">{{ getAuditActionText() }}驳回</a-button>
           </template>
           
           <!-- 普通模式下的按钮 -->
           <template v-else>
             <!-- 只在草稿状态且非只读模式下显示提交按钮 -->
             <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" type="primary" @click="handleSubmit" :loading="submitting">提交申报</a-button>
+            
+            <!-- 定金提交按钮: 待付定金(2)状态 -->
+            <a-button v-if="formStatus === 2" type="primary" @click="handleSubmitAudit('deposit')" :loading="submitting">提交定金审核</a-button>
+            
+            <!-- 尾款提交按钮: 待付尾款(4)状态 -->
+            <a-button v-if="formStatus === 4" type="primary" @click="handleSubmitAudit('balance')" :loading="submitting">提交尾款审核</a-button>
           </template>
         </a-space>
       </template>
@@ -398,15 +404,16 @@
         </a-table>
       </a-card>
 
-      <!-- 水单信息 (仅在已审核状态显示) -->
+      <!-- 水单信息 (初审通过后显示) -->
       <a-card v-if="formStatus && formStatus >= 2" title="水单信息" size="small" class="section-card">
         <template #extra>
-          <a-space>
-            <a-button type="primary" size="small" @click="handleAddRemittance(1)">
+          <a-space v-if="!isAudit && !isReadonly">
+            <!-- 只有在待付定金(2)或定金审核中(3)或定金通过(4)等状态下，控制新增按钮 -->
+            <a-button v-if="formStatus === 2 || formStatus === 3" type="primary" size="small" @click="handleAddRemittance(1)">
               <template #icon><PlusOutlined /></template>
               添定金水单
             </a-button>
-            <a-button type="primary" size="small" @click="handleAddRemittance(2)">
+            <a-button v-if="formStatus === 4 || formStatus === 5" type="primary" size="small" @click="handleAddRemittance(2)">
               <template #icon><PlusOutlined /></template>
               添尾款水单
             </a-button>
@@ -505,6 +512,30 @@ const formId = ref(route.query.id ? Number(route.query.id) : null)
 const formStatus = ref<number | null>(null)
 const submitting = ref(false)
 
+// 获取当前审核阶段文本
+const getAuditActionText = () => {
+  if (formStatus.value === 1) return '初审'
+  if (formStatus.value === 3) return '定金审核'
+  if (formStatus.value === 5) return '尾款审核'
+  return '审批'
+}
+
+// 提交审核（定金/尾款）
+const handleSubmitAudit = async (type: 'deposit' | 'balance') => {
+  if (!formId.value) return
+  submitting.value = true
+  try {
+    const { submitForAudit } = await import('@/api/business/declaration')
+    await submitForAudit(formId.value, type)
+    message.success(type === 'deposit' ? '定金信息已提交审核' : '尾款信息已提交审核')
+    goBack()
+  } catch (error) {
+    message.error('提交失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
 // 审核通过
 const handleApprove = async () => {
   if (!formId.value) return
@@ -512,7 +543,10 @@ const handleApprove = async () => {
   try {
     const { auditDeclaration } = await import('@/api/business/declaration')
     await auditDeclaration(formId.value, 1) // 1 是通过
-    message.success('审核已通过，全套单证已自动生成')
+    message.success(`${getAuditActionText()}已通过`)
+    if (formStatus.value === 1) {
+      message.info('全套单证已自动生成')
+    }
     goBack()
   } catch (error) {
     message.error('审批操作失败')
@@ -526,7 +560,9 @@ const handleReject = async () => {
   if (!formId.value) return
   submitting.value = true
   try {
-    message.success('已驳回该申报单')
+    const { auditDeclaration } = await import('@/api/business/declaration')
+    await auditDeclaration(formId.value, 2) // 2 是驳回
+    message.success(`${getAuditActionText()}已驳回`)
     goBack()
   } catch (error) {
     message.error('审批操作失败')
@@ -862,7 +898,7 @@ const beforeProductPhotoUpload = (file: any, productIndex: number) => {
 }
 
 // 移除产品照片
-const handleRemoveProductPhoto = (_file: any, productIndex: number) => {
+const handleRemoveProductPhoto = (productIndex: number) => {
   productList.value[productIndex].productPhoto = ''
   productList.value[productIndex].photoFileList = []
 }

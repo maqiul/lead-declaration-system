@@ -82,13 +82,13 @@
                 <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
-              <a-button v-if="record.status === 1" type="link" size="small" color="warning" @click="handleAudit(record as any)">
+              <a-button v-if="[1, 3, 5].includes(record.status)" type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any)">
                 <template #icon><CheckCircleOutlined /></template>
-                审核
+                {{ getAuditBtnText(record.status) }}
               </a-button>
               <a-button v-if="record.status >= 2" type="link" size="small" @click="handleDownload(record as any)">
                 <template #icon><DownloadOutlined /></template>
-                下载
+                单证
               </a-button>
               <!-- 只有草稿状态才显示删除按钮 -->
               <a-popconfirm
@@ -106,19 +106,30 @@
       </a-table>
     </a-card>
 
-    <!-- 表单弹窗 -->
+    <!-- 附件下载弹窗 -->
     <a-modal 
-      v-model:open="modalVisible" 
-      :title="modalTitle" 
-      width="80%"
+      v-model:open="attachmentModalVisible" 
+      title="附件下载" 
+      width="600px"
       :footer="null"
     >
-      <iframe 
-        v-if="formUrl" 
-        :src="formUrl" 
-        style="width: 100%; height: 600px; border: none;"
-        frameborder="0"
-      ></iframe>
+      <a-list :dataSource="currentAttachments" bordered size="small">
+        <template #renderItem="{ item }">
+          <a-list-item>
+            <a-list-item-meta :title="item.fileName">
+              <template #description>
+                {{ item.fileType }} | {{ item.createTime }}
+              </template>
+            </a-list-item-meta>
+            <template #actions>
+              <a :href="item.fileUrl" target="_blank" download>下载</a>
+            </template>
+          </a-list-item>
+        </template>
+        <template v-if="currentAttachments.length === 0" #header>
+          <div style="text-align: center; color: #999;">暂无自动生成的全套单证或水单文件</div>
+        </template>
+      </a-list>
     </a-modal>
   </div>
 </template>
@@ -131,8 +142,10 @@ import { PlusOutlined, DownloadOutlined } from '@ant-design/icons-vue'
 import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList,
-  deleteDeclaration as deleteDeclarationApi
+  deleteDeclaration as deleteDeclarationApi,
+  getDeclarationDetail
 } from '@/api/business/declaration'
+import { h } from 'vue'
 
 const router = useRouter()
 const searchForm = reactive({
@@ -208,13 +221,13 @@ const columns = [
         }, '编辑'))
       }
       
-      if (record.status === 1) {
+      if ([1, 3, 5].includes(record.status)) {
         actions.push(h('a-button', {
           type: 'link',
           size: 'small',
           style: { color: '#faad14' },
           onClick: () => handleAudit(record as any)
-        }, '审核'))
+        }, getAuditBtnText(record.status)))
       }
       
       if (record.status >= 2) {
@@ -222,7 +235,7 @@ const columns = [
           type: 'link',
           size: 'small',
           onClick: () => handleDownload(record as any)
-        }, '下载'))
+        }, '单证'))
       }
       
       actions.push(h('a-popconfirm', {
@@ -242,9 +255,9 @@ const columns = [
 ]
 
 // 弹窗相关
-const modalVisible = ref(false)
-const modalTitle = ref('')
-const formUrl = ref('')
+// 附件下载弹窗
+const attachmentModalVisible = ref(false)
+const currentAttachments = ref<any[]>([])
 
 // 加载数据
 const loadData = async () => {
@@ -321,10 +334,21 @@ const handleAudit = (record: DeclarationRecord) => {
 }
 
 // 下载单证
-const handleDownload = (record: DeclarationRecord) => {
-  // 这里暂时直接调用导出接口，后续优化为展示附件列表
-  message.loading('正在准备下载...', 0)
-  router.push(`/declaration/form?id=${record.id}&readonly=true#attachments`)
+const handleDownload = async (record: DeclarationRecord) => {
+  try {
+    loading.value = true
+    const response = await getDeclarationDetail(record.id)
+    if (response.data && response.data.code === 200) {
+      currentAttachments.value = response.data.data.attachments || []
+      attachmentModalVisible.value = true
+    } else {
+      message.error('获取附件列表失败')
+    }
+  } catch (error) {
+    message.error('获取附件列表失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 // 导出申报单
@@ -343,13 +367,24 @@ const handleDelete = async (record: DeclarationRecord) => {
   }
 }
 
+// 获取审核按钮文本
+const getAuditBtnText = (status: number) => {
+  if (status === 1) return '初审'
+  if (status === 3) return '定金审核'
+  if (status === 5) return '尾款审核'
+  return '审核'
+}
+
 // 获取状态文本
 const getStatusText = (status: number) => {
   const statusMap: Record<number, string> = {
     0: '草稿',
-    1: '已提交',
-    2: '已审核',
-    3: '已完成'
+    1: '待初审',
+    2: '待付定金',
+    3: '定金待审',
+    4: '定金已过/待尾款',
+    5: '尾款待审',
+    6: '已完成'
   }
   return statusMap[status] || '未知'
 }
@@ -359,8 +394,11 @@ const getStatusColor = (status: number) => {
   const colorMap: Record<number, string> = {
     0: 'default',
     1: 'processing',
-    2: 'success',
-    3: 'success'
+    2: 'warning',
+    3: 'processing',
+    4: 'warning',
+    5: 'processing',
+    6: 'success'
   }
   return colorMap[status] || 'default'
 }

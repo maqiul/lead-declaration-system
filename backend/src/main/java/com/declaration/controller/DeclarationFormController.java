@@ -91,25 +91,85 @@ public class DeclarationFormController {
         }
 
         Integer result = (Integer) auditData.get("result"); // 1-通过, 2-驳回
+        Integer currentStatus = form.getStatus();
+
         if (Integer.valueOf(1).equals(result)) {
-            form.setStatus(2); // 已审核
-            declarationFormService.updateById(form);
-            
-            // 自动生成导出文件
-            log.info("申报单 {} 审核通过，开始自动生成导出文件", form.getFormNo());
-            try {
-                com.declaration.entity.DeclarationAttachment attachment = excelExportService.generateAndSaveExportDocuments(form);
-                attachmentService.save(attachment);
-                log.info("申报单 {} 导出文件生成成功", form.getFormNo());
-            } catch (Exception e) {
-                log.error("申报单 {} 自动生成导出文件失败", form.getFormNo(), e);
-                // 即使生成文件失败，审核状态也可以算成功，或者根据业务决定是否回滚
+            // 根据当前状态决定下一步状态
+            if (currentStatus == 1) {
+                // 初审通过 -> 定金待提交
+                form.setStatus(2);
+                log.info("申报单 {} 初审通过，开始自动生成全套单证", form.getFormNo());
+                generateAndSaveExport(form);
+            } else if (currentStatus == 3) {
+                // 定金审核通过 -> 尾款待提交
+                form.setStatus(4);
+                log.info("申报单 {} 定金审核通过", form.getFormNo());
+                // 这里水单文件在 saveRemittance 时已生成，如果需要聚合生成可以调相关逻辑
+            } else if (currentStatus == 5) {
+                // 尾款审核通过 -> 已完成
+                form.setStatus(6);
+                log.info("申报单 {} 尾款审核通过，流程正式结束", form.getFormNo());
+            } else {
+                return Result.fail("当前状态不支持审核操作");
             }
+            
+            declarationFormService.updateById(form);
         } else {
-            form.setStatus(0); // 驳回到草稿
+            // 驳回逻辑：根据当前状态回退
+            if (currentStatus == 1) {
+                form.setStatus(0); // 驳回到草稿
+            } else if (currentStatus == 3) {
+                form.setStatus(2); // 驳回到待提交定金
+            } else if (currentStatus == 5) {
+                form.setStatus(4); // 驳回到待提交尾款
+            }
             declarationFormService.updateById(form);
         }
         
+        return Result.success();
+    }
+
+    /**
+     * 辅助方法：生成并保存全套单证
+     */
+    private void generateAndSaveExport(DeclarationForm form) {
+        try {
+            com.declaration.entity.DeclarationAttachment attachment = excelExportService.generateAndSaveExportDocuments(form);
+            if (attachment != null) {
+                attachmentService.save(attachment);
+            }
+        } catch (Exception e) {
+            log.error("申报单 {} 自动生成导出文件失败", form.getFormNo(), e);
+        }
+    }
+
+    /**
+     * 提交到下一步审核
+     * @param id 申报单ID
+     * @param auditType 提交类型: deposit-定金, balance-尾款
+     */
+    @PostMapping("/{id}/submit-audit")
+    @Operation(summary = "提交到下一步审核")
+    @RequiresPermissions("business:declaration:submit")
+    public Result<Void> submitForAudit(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @RequestParam String auditType) {
+        DeclarationForm form = declarationFormService.getById(id);
+        if (form == null) {
+            return Result.fail("申报单不存在");
+        }
+
+        if ("deposit".equals(auditType)) {
+            if (form.getStatus() != 2) return Result.fail("当前状态无法提交定金审核");
+            form.setStatus(3);
+        } else if ("balance".equals(auditType)) {
+            if (form.getStatus() != 4) return Result.fail("当前状态无法提交尾款审核");
+            form.setStatus(5);
+        } else {
+            return Result.fail("未知的提交类型");
+        }
+
+        declarationFormService.updateById(form);
         return Result.success();
     }
 
