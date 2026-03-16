@@ -4,6 +4,7 @@ import router from './router'
 import { createPinia } from 'pinia'
 import 'ant-design-vue/dist/reset.css'
 import './styles/index.less'
+import './styles/ui-ux-pro-max.css'  // UI-UX Pro Max 全局样式
 import { setupPermissionDirective } from './directives/permission'
 import { loadSystemParams, getSystemParam } from './utils/system-params'
 
@@ -11,7 +12,7 @@ const app = createApp(App)
 
 // 加载系统参数并更新页面标题
 loadSystemParams().then(() => {
-  const systemName = getSystemParam('system.name', '线索申报系统')
+  const systemName = getSystemParam('system.name', '海关申报系统')
   const titleElement = document.getElementById('app-title')
   if (titleElement) {
     titleElement.textContent = systemName

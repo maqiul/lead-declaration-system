@@ -8,9 +8,17 @@
       width="256"
       class="sider"
     >
+      <!-- 品牌区域 -->
       <div class="logo">
-        <span v-if="!collapsed" class="logo-text">{{ systemConfig['system.name'] || '线索申报系统' }}</span>
-        <span v-else class="logo-mini">{{ (systemConfig['system.name'] || '线索').substring(0, 2) }}</span>
+        <div v-if="!collapsed" class="logo-inner">
+          <div class="logo-icon-wrap">
+            <thunderbolt-outlined class="logo-icon" />
+          </div>
+          <span class="logo-text">{{ systemConfig['system.name'] || '线索申报系统' }}</span>
+        </div>
+        <div v-else class="logo-icon-wrap logo-icon-wrap--mini">
+          <thunderbolt-outlined class="logo-icon" />
+        </div>
       </div>
       
       <a-menu
@@ -24,49 +32,49 @@
       />
     </a-layout-sider>
 
-    <a-layout :style="{ marginLeft: collapsed ? '80px' : '256px' }">
+    <a-layout :style="{ marginLeft: collapsed ? '80px' : '256px', transition: 'margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)' }">
       <!-- 头部 -->
       <a-layout-header class="header">
         <div class="header-left">
-          <menu-unfold-outlined
-            v-if="collapsed"
-            class="trigger"
-            @click="() => (collapsed = !collapsed)"
-          />
-          <menu-fold-outlined
-            v-else
-            class="trigger"
-            @click="() => (collapsed = !collapsed)"
-          />
+          <div class="trigger-wrap" @click="() => (collapsed = !collapsed)">
+            <menu-unfold-outlined v-if="collapsed" class="trigger" />
+            <menu-fold-outlined v-else class="trigger" />
+          </div>
           
           <!-- 面包屑导航 -->
           <a-breadcrumb class="breadcrumb">
-            <a-breadcrumb-item>首页</a-breadcrumb-item>
-            <a-breadcrumb-item>系统管理</a-breadcrumb-item>
-            <a-breadcrumb-item>用户管理</a-breadcrumb-item>
+            <a-breadcrumb-item>
+              <home-outlined style="margin-right: 4px" />
+              首页
+            </a-breadcrumb-item>
+            <a-breadcrumb-item v-for="item in breadcrumbItems" :key="item">
+              {{ item }}
+            </a-breadcrumb-item>
           </a-breadcrumb>
         </div>
         
         <div class="header-right">
-          <a-dropdown>
-            <a class="ant-dropdown-link" @click.prevent>
-              <a-avatar :src="userStore.avatar" :size="32" />
-              <span style="margin-left: 8px">{{ userStore.name }}</span>
+          <a-dropdown placement="bottomRight">
+            <a class="ant-dropdown-link user-info" @click.prevent>
+              <a-avatar :src="userStore.avatar" :size="32" class="user-avatar">
+                <template #icon><user-outlined /></template>
+              </a-avatar>
+              <span class="user-name">{{ userStore.name || '用户' }}</span>
             </a>
             <template #overlay>
-              <a-menu>
+              <a-menu class="user-dropdown-menu">
                 <a-menu-item key="profile">
                   <user-outlined />
-                  个人中心
+                  <span style="margin-left: 8px">个人中心</span>
                 </a-menu-item>
                 <a-menu-item key="settings">
                   <setting-outlined />
-                  系统设置
+                  <span style="margin-left: 8px">系统设置</span>
                 </a-menu-item>
                 <a-menu-divider />
-                <a-menu-item key="logout" @click="handleLogout">
+                <a-menu-item key="logout" @click="handleLogout" style="color: #F43F5E">
                   <logout-outlined />
-                  退出登录
+                  <span style="margin-left: 8px">退出登录</span>
                 </a-menu-item>
               </a-menu>
             </template>
@@ -88,8 +96,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, h } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, h, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { getUserRoutes } from '@/api/system'
 import { getSystemBasicInfo, getUiConfig } from '@/api/system/config'
@@ -110,16 +118,30 @@ import {
   FundViewOutlined,
   BranchesOutlined,
   DatabaseOutlined,
-  ApiOutlined
+  ApiOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 const collapsed = ref(false)
 const selectedKeys = ref<string[]>(['dashboard'])
 const openKeys = ref<string[]>([])
 const menuData = ref<any[]>([])
 const loading = ref(false)
+
+// 面包屑
+const breadcrumbItems = computed(() => {
+  const matched = route.matched
+  const items: string[] = []
+  matched.forEach(r => {
+    if (r.meta?.title && r.path !== '/') {
+      items.push(r.meta.title as string)
+    }
+  })
+  return items.length > 0 ? items : ['系统管理']
+})
 
 // 系统配置
 const systemConfig = ref<Record<string, string>>({
@@ -128,15 +150,18 @@ const systemConfig = ref<Record<string, string>>({
   'ui.footer.show': 'true'
 })
 
+// 监听路由变化更新选中菜单
+watch(() => route.path, (path) => {
+  selectedKeys.value = [path]
+}, { immediate: true })
+
 // 加载系统配置
 const loadSystemConfig = async () => {
   try {
-    // 加载系统基本信息
     const basicResponse = await getSystemBasicInfo()
     if (basicResponse.data?.code === 200) {
       Object.assign(systemConfig.value, basicResponse.data.data)
       
-      // 更新页面标题
       const systemName = systemConfig.value['system.name'] || '线索申报系统'
       const titleElement = document.getElementById('app-title')
       if (titleElement) {
@@ -145,7 +170,6 @@ const loadSystemConfig = async () => {
       document.title = systemName
     }
     
-    // 加载UI配置
     const uiResponse = await getUiConfig()
     if (uiResponse.data?.code === 200) {
       Object.assign(systemConfig.value, uiResponse.data.data)
@@ -162,25 +186,11 @@ const loadMenuData = async () => {
     const response = await getUserRoutes()
     menuData.value = response.data.data || []
     
-    console.log('获取到的菜单数据:', menuData.value)
-    console.log('菜单数据详细结构:')
-    menuData.value.forEach((menu: any) => {
-      console.log(`  ${menu.menuName}: path=${menu.path}, type=${menu.menuType}`)
-      if (menu.children) {
-        menu.children.forEach((child: any) => {
-          console.log(`    └─ ${child.menuName}: path=${child.path}, type=${child.menuType}`)
-        })
-      }
-    })
-    
-    // 如果后端没有返回菜单数据，使用默认菜单
     if (!menuData.value || menuData.value.length === 0) {
-      console.log('使用默认菜单')
       menuData.value = getDefaultMenu()
     }
   } catch (error) {
     console.error('加载菜单失败:', error)
-    // 使用默认菜单
     menuData.value = getDefaultMenu()
   } finally {
     loading.value = false
@@ -203,34 +213,10 @@ const getDefaultMenu = () => [
     icon: 'SettingOutlined',
     isShow: 1,
     children: [
-      {
-        id: 3,
-        menuName: '用户管理',
-        path: '/system/user',
-        icon: 'UserOutlined',
-        isShow: 1
-      },
-      {
-        id: 4,
-        menuName: '角色管理',
-        path: '/system/role',
-        icon: 'TeamOutlined',
-        isShow: 1
-      },
-      {
-        id: 5,
-        menuName: '组织管理',
-        path: '/system/org',
-        icon: 'ApartmentOutlined',
-        isShow: 1
-      },
-      {
-        id: 6,
-        menuName: '菜单管理',
-        path: '/system/menu',
-        icon: 'MenuOutlined',
-        isShow: 1
-      }
+      { id: 3, menuName: '用户管理', path: '/system/user', icon: 'UserOutlined', isShow: 1 },
+      { id: 4, menuName: '角色管理', path: '/system/role', icon: 'TeamOutlined', isShow: 1 },
+      { id: 5, menuName: '组织管理', path: '/system/org', icon: 'ApartmentOutlined', isShow: 1 },
+      { id: 6, menuName: '菜单管理', path: '/system/menu', icon: 'MenuOutlined', isShow: 1 }
     ]
   },
   {
@@ -240,58 +226,17 @@ const getDefaultMenu = () => [
     icon: 'BranchesOutlined',
     isShow: 1,
     children: [
-      {
-        id: 8,
-        menuName: '流程定义',
-        path: '/workflow/definition',
-        icon: 'FileDoneOutlined',
-        isShow: 1
-      },
-      {
-        id: 9,
-        menuName: '流程设计',
-        path: '/workflow/modeler',
-        icon: 'EditOutlined',
-        isShow: 1
-      },
-      {
-        id: 10,
-        menuName: '流程监控',
-        path: '/workflow/monitor',
-        icon: 'FundViewOutlined',
-        isShow: 1
-      },
-      {
-        id: 11,
-        menuName: '流程实例',
-        path: '/workflow/instance',
-        icon: 'ProfileOutlined',
-        isShow: 1
-      },
-      {
-        id: 12,
-        menuName: '我的任务',
-        path: '/workflow/task',
-        icon: 'CheckCircleOutlined',
-        isShow: 1
-      }
+      { id: 8, menuName: '流程定义', path: '/workflow/definition', icon: 'FileDoneOutlined', isShow: 1 },
+      { id: 9, menuName: '流程设计', path: '/workflow/modeler', icon: 'EditOutlined', isShow: 1 },
+      { id: 10, menuName: '流程监控', path: '/workflow/monitor', icon: 'FundViewOutlined', isShow: 1 },
+      { id: 11, menuName: '流程实例', path: '/workflow/instance', icon: 'ProfileOutlined', isShow: 1 },
+      { id: 12, menuName: '我的任务', path: '/workflow/task', icon: 'CheckCircleOutlined', isShow: 1 }
     ]
   }
 ]
 
 // 菜单项配置
 const menuItems = computed(() => {
-  console.log('原始menuData值:', menuData.value)
-  
-  // 显示过滤前的菜单统计
-  const allMenus = Array.isArray(menuData.value) ? menuData.value.flat() : [menuData.value]
-  console.log('菜单类型统计:', {
-    total: allMenus.length,
-    directories: allMenus.filter(m => m.menuType === 1).length,
-    menus: allMenus.filter(m => m.menuType === 2).length,
-    buttons: allMenus.filter(m => m.menuType === 3).length
-  })
-  
   const convertMenu = (menus: any[]): any[] => {
     return menus
       .filter(menu => menu.status === 1 && menu.menuType !== 3)
@@ -301,7 +246,6 @@ const menuItems = computed(() => {
           label: menu.menuName
         }
         
-        // 设置图标
         if (menu.icon) {
           const IconComponent = getIconComponent(menu.icon)
           if (IconComponent) {
@@ -309,7 +253,6 @@ const menuItems = computed(() => {
           }
         }
         
-        // 处理子菜单
         if (menu.children && menu.children.length > 0) {
           const filteredChildren = menu.children.filter((child: any) => child.status === 1 && child.menuType !== 3)
           if (filteredChildren.length > 0) {
@@ -345,34 +288,24 @@ const getIconComponent = (iconName: string) => {
   return iconMap[iconName] || MenuUnfoldOutlined
 }
 
-// 防抖节流变量
-let menuClickTimeout: number | null = null
+// 防抖
+let menuClickTimeout: any = null
 
 const handleMenuClick = ({ key }: { key: string | number }) => {
-  // 防止重复点击
   if (menuClickTimeout) {
     clearTimeout(menuClickTimeout)
   }
   
   menuClickTimeout = setTimeout(() => {
-    console.log('点击菜单key:', key)
-    console.log('菜单数据:', menuData.value)
-    console.log('当前路由:', router.currentRoute.value.path)
-    
-    // 根据key找到对应的菜单路径
     const findMenuPath = (menus: any[], targetKey: string, parentPath: string = ''): string | null => {
       for (const menu of menus) {
         const menuKey = menu.path || `menu-${menu.id}`
-        console.log(`比较菜单: ${menu.menuName}, key: ${menuKey}, target: ${targetKey}`)
         
         if (menuKey === targetKey) {
-          // 构造完整路径：父路径 + 当前路径
           const fullPath = parentPath ? `${parentPath}/${menu.path}` : menu.path
-          console.log('找到匹配路径:', fullPath)
           return fullPath
         }
         
-        // 递归查找子菜单
         if (menu.children) {
           const childPath = findMenuPath(menu.children, targetKey, menu.path)
           if (childPath) return childPath
@@ -382,20 +315,13 @@ const handleMenuClick = ({ key }: { key: string | number }) => {
     }
     
     const path = findMenuPath(menuData.value, key.toString())
-    console.log('最终跳转路径:', path)
     
     if (path) {
-      router.push(path).catch(err => {
-        console.error('路由跳转失败:', err)
-      })
+      router.push(path).catch(() => {})
     } else {
-      const fallbackPath = `/${key}`
-      console.log('使用备选路径:', fallbackPath)
-      router.push(fallbackPath).catch(err => {
-        console.error('备选路由跳转失败:', err)
-      })
+      router.push(`/${key}`).catch(() => {})
     }
-  }, 100) // 100ms防抖
+  }, 100)
 }
 
 const handleLogout = async () => {
@@ -403,7 +329,6 @@ const handleLogout = async () => {
   router.push('/login')
 }
 
-// 组件挂载时加载菜单
 onMounted(() => {
   loadSystemConfig()
   loadMenuData()
@@ -413,7 +338,7 @@ onMounted(() => {
 <style scoped>
 .layout-wrapper {
   height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: linear-gradient(145deg, #F8FAFC 0%, #EEF2FF 50%, #E0E7FF 100%);
   overflow-x: hidden;
 }
 
@@ -424,54 +349,86 @@ onMounted(() => {
   left: 0;
   top: 0;
   bottom: 0;
-  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
-  box-shadow: 2px 0 20px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(10px);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, #0F172A 0%, #1E293B 100%) !important;
+  box-shadow: 4px 0 24px rgba(15, 23, 42, 0.15);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
 }
 
+/* 品牌区域 */
 .logo {
   height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--glass-bg);
   margin: 16px;
   border-radius: 16px;
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-  transition: var(--transition-ease);
-  flex-shrink: 0; /* 防止Logo被压缩 */
-  
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 40px rgba(31, 38, 135, 0.25);
-  }
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.logo:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.2);
+}
+
+.logo-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.logo-icon-wrap--mini {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+}
+
+.logo-icon {
+  color: white;
+  font-size: 18px;
 }
 
 .logo-text {
   color: white;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #E0E7FF, #C7D2FE, #A5B4FC);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.logo-mini {
-  color: white;
-  font-size: 16px;
-  font-weight: 600;
-}
-
+/* 顶栏 */
 .header {
-  background: var(--glass-bg);
-  padding: 0 24px;
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.88) !important;
+  padding: 0 24px !important;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 1px 6px rgba(0, 0, 0, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
+  height: 64px !important;
+  z-index: 100 !important;
 }
 
 .header-left {
@@ -479,49 +436,91 @@ onMounted(() => {
   align-items: center;
 }
 
+.trigger-wrap {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.trigger-wrap:hover {
+  background: rgba(30, 64, 175, 0.06);
+}
+
 .trigger {
   font-size: 18px;
-  line-height: 64px;
-  padding: 0 24px;
-  cursor: pointer;
-  transition: var(--transition-ease);
-  border-radius: 12px;
-  margin: 8px 0;
-  
-  &:hover {
-    color: #667eea;
-    background: rgba(102, 126, 234, 0.1);
-    transform: scale(1.05);
-  }
-  
-  &:active {
-    transform: scale(0.95);
-  }
+  color: #475569;
+  transition: color 0.2s;
+}
+
+.trigger-wrap:hover .trigger {
+  color: #1E40AF;
 }
 
 .breadcrumb {
   margin-left: 16px;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+  position: relative;
+  z-index: 101;
+}
+
+/* 用户信息 */
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  text-decoration: none;
+  background: transparent;
+  border: 1px solid transparent;
+  position: relative;
+  z-index: 10;
+}
+
+.user-info:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  transform: translateY(-1px);
+}
+
+.user-avatar {
+  border: 1.5px solid #fff;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15);
+}
+
+.user-name {
+  font-weight: 500;
+  color: #1E293B;
+  font-size: 14px;
+}
+
+/* 内容区域 */
 .content {
   margin: 24px;
   padding: 24px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
+  background: #ffffff;
   border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  min-height: calc(100vh - 64px - 64px - 48px); /* 只减去头部和margin高度 */
-  transition: var(--transition-ease);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  min-height: calc(100vh - 64px - 64px - 48px);
   box-sizing: border-box;
   overflow-x: hidden;
-  
-  &:hover {
-    box-shadow: 0 12px 40px rgba(31, 38, 135, 0.2);
-  }
 }
 
-/* 响应式调整 */
 @media (max-width: 768px) {
   .content {
     margin: 16px;
@@ -530,51 +529,65 @@ onMounted(() => {
   }
 }
 
+/* 底栏 */
 .footer {
   text-align: center;
-  padding: 24px;
-  color: #6b7280;
-  font-size: 14px;
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 20px 24px !important;
+  color: #94A3B8 !important;
+  font-size: 13px;
+  background: transparent !important;
+  letter-spacing: 0.3px;
 }
 
-/* 现代化菜单样式 */
+/* 菜单样式 */
 :deep(.modern-menu) {
   background: transparent !important;
   border: none !important;
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 16px;
 }
 
 :deep(.modern-menu .ant-menu-item) {
-  margin: 4px 16px !important;
+  margin: 3px 12px !important;
   border-radius: 12px !important;
-  transition: var(--transition-ease) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  height: 42px !important;
+  line-height: 42px !important;
+  color: rgba(255, 255, 255, 0.6) !important;
 }
 
 :deep(.modern-menu .ant-menu-item:hover) {
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.95) !important;
 }
 
 :deep(.modern-menu .ant-menu-item-selected) {
-  background: var(--primary-gradient) !important;
-  color: white !important;
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
+  background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%) !important;
+  box-shadow: 0 4px 16px rgba(30, 64, 175, 0.3) !important;
+  font-weight: 600 !important;
 }
 
 :deep(.modern-menu .ant-menu-submenu-title) {
-  margin: 4px 16px !important;
+  margin: 3px 12px !important;
   border-radius: 12px !important;
-  transition: var(--transition-ease) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  height: 42px !important;
+  line-height: 42px !important;
+  color: rgba(255, 255, 255, 0.6) !important;
 }
 
 :deep(.modern-menu .ant-menu-submenu-title:hover) {
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.95) !important;
 }
 
 :deep(.modern-menu .ant-menu-submenu-arrow) {
-  color: rgba(255, 255, 255, 0.6) !important;
+  color: rgba(255, 255, 255, 0.35) !important;
+}
+
+:deep(.modern-menu .ant-menu-sub) {
+  background: transparent !important;
 }
 </style>

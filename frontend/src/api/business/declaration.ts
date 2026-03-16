@@ -111,6 +111,15 @@ export function submitDeclaration(id: number) {
   })
 }
 
+// 提交审核（定金/尾款）
+export function submitForAudit(id: number, type: 'deposit' | 'balance') {
+  return request({
+    url: `/api/v1/declarations/${id}/submit-audit`,
+    method: 'post',
+    params: { type }
+  })
+}
+
 // 审核申报单
 export function auditDeclaration(id: number, result: number, remark?: string) {
   return request({

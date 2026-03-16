@@ -238,7 +238,7 @@
                 v-model:file-list="record.photoFileList"
                 :max-count="1"
                 :before-upload="(file) => beforeProductPhotoUpload(file, index)"
-                :remove="() => handleRemoveProductPhoto(index)"
+                @remove="() => handleRemoveProductPhoto(index)"
                 accept="image/*"
                 list-type="picture-card"
                 show-upload-list
@@ -251,33 +251,61 @@
             </template>
             
             <template v-else-if="column.key === 'declarationElements'">
-              <!-- 查看模式和编辑模式都有申报要素显示 -->
+              <!-- 申报要素容器 -->
               <div v-if="record.declarationElements && record.declarationElements.length > 0">
-                <a-collapse>
-                  <a-panel key="1" :header="`申报要素 (${record.declarationElements.length}项)`">
-                    <a-row :gutter="12">
+                <a-collapse :ghost="true" size="small" :bordered="false">
+                  <a-collapse-panel key="1" :header="`申报要素 (${record.declarationElements.length}项)`">
+                    <a-row :gutter="[12, 12]">
                       <a-col 
                         v-for="element in record.declarationElements" 
                         :key="element.id || element.label" 
                         :span="element.type === 'textarea' ? 24 : 12"
-                        style="margin-bottom: 8px;"
                       >
-                        <div style="font-size: 12px; margin-bottom: 4px; color: #666; font-weight: 500;">
+                        <div style="font-size: 12px; margin-bottom: 4px; color: #64748b; font-weight: 600;">
                           {{ element.label }}{{ element.required ? '*' : '' }}
                         </div>
+                        
+                        <!-- 编辑模式: 显示对应的输入组件 -->
+                        <template v-if="!isReadonly">
+                          <a-select
+                            v-if="element.type === 'select' && element.options && element.options.length > 0"
+                            v-model:value="element.value"
+                            placeholder="请选择"
+                            size="small"
+                            style="width: 100%"
+                            :options="element.options.map((opt: any) => ({ label: opt, value: opt }))"
+                          />
+                          <a-textarea
+                            v-else-if="element.type === 'textarea'"
+                            v-model:value="element.value"
+                            placeholder="请输入内容"
+                            size="small"
+                            :auto-size="{ minRows: 2, maxRows: 4 }"
+                            style="width: 100%; border-radius: 6px;"
+                          />
+                          <a-input
+                            v-else
+                            v-model:value="element.value"
+                            placeholder="请输入"
+                            size="small"
+                            style="width: 100%; border-radius: 6px;"
+                          />
+                        </template>
+                        
+                        <!-- 只读/查看模式: 显示静态文本 -->
                         <div 
-                          v-if="element.value" 
-                          style="padding: 4px 8px; background: #f5f5f5; border-radius: 4px; font-size: 13px; min-height: 24px; display: flex; align-items: center; border: 1px solid #d9d9d9;"
+                          v-else
+                          class="readonly-element-value"
                         >
-                          <span>{{ element.value }}</span>
+                          <span v-if="element.value">{{ element.value }}</span>
+                          <span v-else style="color: #cbd5e1; font-style: italic;">未填写</span>
                         </div>
-                        <span v-else style="color: #ccc;">无</span>
                       </a-col>
                     </a-row>
-                  </a-panel>
+                  </a-collapse-panel>
                 </a-collapse>
               </div>
-              <span v-else>-</span>
+              <span v-else style="color: #94a3b8; font-size: 13px;">无要素配置</span>
             </template>
             
             <template v-else-if="column.key === 'action'">
@@ -467,7 +495,7 @@
                 v-model:file-list="record.photoFileList"
                 :max-count="1"
                 :before-upload="(file) => beforeRemittancePhotoUpload(file, index)"
-                :remove="() => handleRemoveRemittancePhoto(index)"
+                @remove="() => handleRemoveRemittancePhoto(index)"
                 accept="image/*"
               >
                 <a-button size="small">
@@ -571,50 +599,18 @@ const handleReject = async () => {
   }
 }
 
-// 导入 API
-import { saveRemittance } from '@/api/business/declaration'
-
-// 水单列表及逻辑
-const remittanceList = ref<any[]>([])
-const remittanceColumns = [
-  { title: '类型', key: 'remittanceType', width: 80 },
-  { title: '收汇名称', key: 'remittanceName', width: 120 },
-  { title: '日期', key: 'remittanceDate', width: 150 },
-  { title: '金额($)', key: 'remittanceAmount', width: 120 },
-  { title: '当日汇率', key: 'exchangeRate', width: 100 },
-  { title: '手续费($)', key: 'bankFee', width: 100 },
-  { title: '入账金额($)', key: 'creditedAmount', width: 120 },
-  { title: '照片', key: 'photoUrl', width: 150 },
-  { title: '操作', key: 'action', width: 120 }
-]
-
-const handleAddRemittance = (type: number) => {
-  remittanceList.value.push({
-    tempId: Date.now(),
-    remittanceType: type,
-    remittanceName: type === 1 ? '定金' : '尾款',
-    remittanceDate: dayjs(),
-    remittanceAmount: 0,
-    exchangeRate: 1,
-    bankFee: 0,
-    credited_amount: 0,
-    photoFileList: []
-  })
-}
-
+// 保存水单
 const handleSaveRemittance = async (record: any) => {
   if (!formId.value) return
   submitting.value = true
   try {
+    const { saveRemittance } = await import('@/api/business/declaration')
     const data = {
       ...record,
       remittanceDate: record.remittanceDate.format('YYYY-MM-DD'),
-      tempId: undefined,
-      photoFileList: undefined
     }
     const res = await saveRemittance(formId.value, data)
     if (res.data && res.data.code === 200) {
-      // 如果后端返回了完整对象或ID
       record.id = res.data.data?.id || record.id
     }
     message.success('水单信息保存成功，已生成对应单证')
@@ -642,6 +638,35 @@ const handleRemoveRemittancePhoto = (index: number) => {
 const removeRemittance = (index: number) => {
   remittanceList.value.splice(index, 1)
 }
+
+const remittanceList = ref<any[]>([])
+const remittanceColumns = [
+  { title: '类型', key: 'remittanceType', width: 80 },
+  { title: '名称', key: 'remittanceName', width: 120 },
+  { title: '日期', key: 'remittanceDate', width: 130 },
+  { title: '金额', key: 'remittanceAmount', width: 100 },
+  { title: '汇率', key: 'exchangeRate', width: 80 },
+  { title: '手续费', key: 'bankFee', width: 80 },
+  { title: '入账金额', key: 'creditedAmount', width: 100 },
+  { title: '附件', key: 'photoUrl', width: 100 },
+  { title: '操作', key: 'action', width: 100 }
+]
+
+const handleAddRemittance = (type: number) => {
+  remittanceList.value.push({
+    tempId: Date.now(),
+    remittanceType: type,
+    remittanceName: type === 1 ? '定金水单' : '尾款水单',
+    remittanceDate: dayjs(),
+    remittanceAmount: 0,
+    exchangeRate: 7.2,
+    bankFee: 30,
+    creditedAmount: 0,
+    photoUrl: '',
+    photoFileList: []
+  })
+}
+
 
 const formData = reactive({
   formNo: '',
@@ -1250,52 +1275,73 @@ onMounted(() => {
   font-size: 16px;
 }
 
-/* 表格样式 - 与系统管理完全一致 */
+/* 表格样式 */
 :deep(.ant-table) {
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
 }
 
 :deep(.ant-table-thead > tr > th) {
-  background-color: #fafafa;
+  background-color: #f8fafc !important;
   font-weight: 600;
-  color: #333;
+  color: #475569;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 :deep(.ant-table-cell) {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #f1f5f9;
 }
 
-/* 主按钮样式 - 与系统管理完全一致 */
+/* 主按钮样式 */
 :deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
   border: none;
+  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.25);
+  border-radius: 10px;
 }
 
 :deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.35);
+  transform: translateY(-1px);
 }
 
 /* 产品表格特定样式 */
 :deep(.product-table .ant-table-thead > tr > th) {
-  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+  background: #f8fafc !important;
 }
 
-/* 箱子表格特定样式 - 浅蓝色背景 */
+/* 箱子表格特定样式 */
 :deep(.carton-table .ant-table-thead > tr > th) {
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  background: #f1f5f9 !important;
 }
 
 /* 数值显示样式 */
 .value-display {
   font-size: 14px;
-  color: #333;
-  font-weight: 500;
+  color: #1e293b;
+  font-weight: 600;
 }
 
 /* 箱子产品选择显示样式 */
 .products-display {
   padding: 4px 0;
+}
+
+.readonly-element-value {
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  color: #1e293b;
+  font-weight: 500;
 }
 
 /* 响应式布局 */
@@ -1311,31 +1357,51 @@ onMounted(() => {
 }
 
 .section-card {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+:deep(.ant-card-head) {
+  background: #f8fafc;
+  border-bottom: 1px solid #f1f5f9;
+  min-height: 48px;
+}
+
+:deep(.ant-card-head-title) {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
 }
 
 .totals-section {
-  margin-top: 20px;
-  padding: 16px;
-  background: #f8f9fa;
-  border-radius: 6px;
+  margin-top: 24px;
+  padding: 24px;
+  background: #f8fafc;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
 }
 
 .total-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .total-label {
-  font-weight: 500;
-  color: #666;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .total-value {
-  font-weight: 600;
-  color: #333;
-  font-size: 16px;
+  font-weight: 800;
+  color: #1e40af;
+  font-size: 18px;
+  letter-spacing: -0.5px;
 }
 </style>

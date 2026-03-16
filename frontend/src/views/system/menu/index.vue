@@ -209,6 +209,7 @@ import {
   FolderOutlined,
   FolderOpenOutlined
 } from '@ant-design/icons-vue'
+import type { Rule } from 'ant-design-vue/es/form'
 import { getMenuTree, addMenu, updateMenu, deleteMenu } from '@/api/system'
 
 interface Menu {
@@ -325,7 +326,7 @@ const formData = reactive({
 })
 
 // 表单验证规则
-const formRules: any = {
+const formRules: Record<string, Rule[]> = {
   menuName: [
     { required: true, message: '请输入菜单名称', trigger: 'blur' }
   ],
@@ -551,158 +552,81 @@ const handleModalOk = async () => {
 <style scoped>
 .menu-management {
   padding: 0;
-  background: transparent;
-  min-height: 100%;
-  box-sizing: border-box;
-  overflow-x: hidden;
-}
-
-/* 展开/折叠按钮样式优化 */
-.expand-toggle-btn {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  color: white;
-  border-radius: 6px;
-  padding: 4px 12px;
-  font-weight: 500;
-}
-
-.expand-toggle-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
-
-/* 展开状态指示器 */
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #8c8c8c;
-  margin-bottom: 16px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background-color: #f5f5f5;
-  transition: all 0.3s ease;
-}
-
-.status-indicator.expanded {
-  color: #52c41a;
-  background-color: #f6ffed;
-  border: 1px solid #b7eb8f;
-}
-
-.status-indicator.collapsed {
-  color: #faad14;
-  background-color: #fffbe6;
-  border: 1px solid #ffe58f;
-}
-
-/* 表格展开图标美化 - 简洁 +/- 样式 */
-:deep(.ant-table-row-expand-icon) {
-  border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: 2px solid white;
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-}
-
-:deep(.ant-table-row-expand-icon:hover) {
-  transform: scale(1.15);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
-
-:deep(.ant-table-row-expand-icon:focus) {
-  outline: none;
-}
-
-/* 隐藏默认的图标内容 */
-:deep(.ant-table-row-expand-icon .ant-table-row-expand-icon-spaced),
-:deep(.ant-table-row-expand-icon .ant-table-row-expand-icon-collapsed),
-:deep(.ant-table-row-expand-icon .ant-table-row-expand-icon-expanded) {
-  display: none;
-}
-
-/* 使用伪元素显示展开/折叠图标 */
-:deep(.ant-table-row-expand-icon:not(.ant-table-row-expanded))::before {
-  content: '+';
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
-}
-
-:deep(.ant-table-row-expand-icon.ant-table-row-expanded::before) {
-  content: '−';
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
-}
-
-/* 展开状态指示器 */
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #8c8c8c;
-  margin-left: 8px;
-}
-
-.status-indicator.expanded {
-  color: #52c41a;
-}
-
-.status-indicator.partial {
-  color: #1890ff;
-}
-
-.status-indicator.collapsed {
-  color: #faad14;
+  height: 100%;
 }
 
 .operation-card {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.expand-toggle-btn {
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%) !important;
+  border: none !important;
+  color: white !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.2);
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 20px;
+  padding: 6px 12px;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.status-indicator.expanded {
+  color: #059669;
+  background-color: #ecfdf5;
+  border-color: #10b981;
+}
+
+.status-indicator.collapsed {
+  color: #d97706;
+  background-color: #fffbeb;
+  border-color: #f59e0b;
+}
+
+:deep(.ant-table-row-expand-icon) {
+  background: #1e40af;
+  border: 2px solid white;
+  width: 22px;
+  height: 22px;
+  box-shadow: 0 2px 6px rgba(30, 64, 175, 0.25);
+}
+
+:deep(.ant-table-row-expand-icon:hover) {
+  background: #3b82f6;
+  transform: scale(1.1);
 }
 
 :deep(.ant-card) {
-  border-radius: 8px;
-}
-
-:deep(.ant-card-body) {
-  padding: 24px;
-}
-
-:deep(.ant-table) {
-  border-radius: 8px;
+  border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  margin-bottom: 20px;
 }
 
 :deep(.ant-table-thead > tr > th) {
-  background-color: #fafafa;
+  background-color: #f8fafc !important;
   font-weight: 600;
+  color: #475569;
+  font-size: 13px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 :deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
   border: none;
+  border-radius: 8px;
 }
 
-:deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
 </style>

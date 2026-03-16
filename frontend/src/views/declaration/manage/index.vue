@@ -410,67 +410,70 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 列表页面样式 - 与系统管理页面统一 */
+/* 列表页面样式 */
 :deep(.ant-card) {
-  border-radius: 8px;
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(79, 70, 229, 0.04);
+  border: 1px solid rgba(226, 232, 240, 0.6);
 }
 
 :deep(.ant-card-body) {
-  padding: 24px;
+  padding: 20px;
 }
 
 :deep(.ant-card-head) {
-  border-bottom: 1px solid #e8e8e8;
-  border-radius: 8px 8px 0 0;
+  border-bottom: 1px solid #f1f5f9;
+  border-radius: 16px 16px 0 0;
+  background: #f8fafc;
 }
 
 :deep(.ant-card-head-title) {
   font-weight: 600;
-  font-size: 16px;
+  font-size: 15px;
+  color: #1e293b;
 }
 
-/* 表格样式 - 与系统管理完全一致 */
+/* 表格样式 */
 :deep(.ant-table) {
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
 }
 
 :deep(.ant-table-thead > tr > th) {
-  background-color: #fafafa;
+  background-color: #f8fafc !important;
   font-weight: 600;
-  color: #333;
+  color: #475569;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
-:deep(.ant-table-cell) {
-  border-bottom: 1px solid #f0f0f0;
+:deep(.ant-table-row:hover > td) {
+  background-color: #f8faff !important;
 }
 
-/* 主按钮样式 - 与系统管理完全一致 */
+/* 主按钮样式 */
 :deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
   border: none;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+  border-radius: 10px;
 }
 
 :deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+  transform: translateY(-1px);
 }
 
-/* 搜索卡片样式 */
-:deep(.ant-card.search-card) {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
-  border: none;
-}
-
-/* 操作按钮卡片样式 */
+/* 搜索卡片 & 操作按钮卡片样式 */
+:deep(.ant-card.search-card),
 :deep(.ant-card.operation-card) {
   margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
-  border: none;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .declaration-manage {

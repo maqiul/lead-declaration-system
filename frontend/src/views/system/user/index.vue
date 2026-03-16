@@ -55,8 +55,8 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record)">编辑</a-button>
-              <a-button type="link" size="small" @click="handleResetPwd(record)">重置密码</a-button>
+              <a-button type="link" size="small" @click="handleEdit(record as any)">编辑</a-button>
+              <a-button type="link" size="small" @click="handleResetPwd(record as any)">重置密码</a-button>
               <a-popconfirm
                 title="确定要删除这个用户吗？"
                 @confirm="handleDelete(record.id)"
@@ -166,11 +166,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, DeleteOutlined, UserOutlined, PhoneOutlined, MailOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { TableProps } from 'ant-design-vue'
-import { getUserList, addUser, updateUser, deleteUser, resetUserPwd, getOrgTree, getRoleList } from '@/api/system'
+import type { Rule } from 'ant-design-vue/es/form'
+import { getUserList, addUser, updateUser, deleteUser, resetUserPwd } from '@/api/system'
 
 // 类型定义
 interface User {
@@ -254,8 +255,8 @@ const columns = [
 
 // 表格行选择配置
 const rowSelection: TableProps['rowSelection'] = {
-  onChange: (selectedKeys: number[]) => {
-    selectedRowKeys.value = selectedKeys
+  onChange: (selectedKeys: any[]) => {
+    selectedRowKeys.value = selectedKeys as number[]
   }
 }
 
@@ -278,7 +279,7 @@ const formData = reactive({
 })
 
 // 表单验证规则
-const formRules = {
+const formRules: Record<string, Rule[]> = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 3, max: 20, message: '用户名长度为3-20个字符', trigger: 'blur' }
@@ -329,7 +330,8 @@ const resetPwdForm = reactive({
   confirmPassword: ''
 })
 
-const resetPwdRules = {
+// 重置密码验证规则
+const resetPwdRules: Record<string, Rule[]> = {
   password: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
     { min: 6, message: '密码长度至少6位', trigger: 'blur' }
@@ -449,7 +451,7 @@ const handleBatchDelete = async () => {
   }
   
   try {
-    const response = await deleteUser(selectedRowKeys.value)
+    const response = await deleteUser(selectedRowKeys.value as any)
     if (response.data?.code === 200) {
       message.success('批量删除成功')
       selectedRowKeys.value = []
@@ -543,25 +545,23 @@ onMounted(() => {
 
 <style scoped>
 .user-management {
+  padding: 0;
   height: 100%;
-  overflow-x: hidden;
 }
 
-.search-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
-}
-
-.operation-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+.search-card, .operation-card {
+  margin-bottom: 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 :deep(.ant-card) {
-  border-radius: 8px;
+  border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  margin-bottom: 20px;
 }
 
 :deep(.ant-card-body) {
@@ -569,47 +569,46 @@ onMounted(() => {
 }
 
 :deep(.ant-table) {
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
 }
 
 :deep(.ant-table-thead > tr > th) {
-  background-color: #fafafa;
+  background-color: #f8fafc !important;
   font-weight: 600;
+  color: #475569;
+  font-size: 13px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 :deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
   border: none;
+  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.2);
+  border-radius: 8px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 :deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
+  transform: translateY(-1px);
 }
 
 :deep(.ant-input-affix-wrapper:focus),
 :deep(.ant-input:focus) {
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
-  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(30, 64, 175, 0.1);
+  border-color: #3b82f6;
 }
 
-:deep(.ant-select-focused:not(.ant-select-disabled).ant-select:not(.ant-select-customize-input) .ant-select-selector) {
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
-  border-color: #667eea;
-}
-
-/* 响应式表单布局 */
+/* 响应式调整 */
 @media (max-width: 768px) {
-  .user-management {
-    padding: 16px;
-  }
-  
   :deep(.ant-card-body) {
     padding: 16px;
   }
-  
-  :deep(.ant-form-item) {
-    margin-bottom: 12px;
-  }
 }
+
 </style>

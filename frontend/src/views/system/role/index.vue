@@ -166,8 +166,9 @@
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
-import type { TableProps } from 'ant-design-vue'
-import { getRoleList, addRole, updateRole, deleteRole, getRoleMenus, updateRoleMenus, assignAllPermissionsToAdmin } from '@/api/system'
+import type { TableProps, TreeProps } from 'ant-design-vue'
+import type { Rule } from 'ant-design-vue/es/form'
+import { getRoleList, addRole, updateRole, deleteRole, updateRoleMenus, assignAllPermissionsToAdmin } from '@/api/system'
 
 // 类型定义
 interface Role {
@@ -250,8 +251,8 @@ const columns = [
 
 // 表格行选择配置
 const rowSelection: TableProps['rowSelection'] = {
-  onChange: (selectedKeys: number[]) => {
-    selectedRowKeys.value = selectedKeys
+  onChange: (selectedKeys: any[]) => {
+    selectedRowKeys.value = selectedKeys as number[]
   }
 }
 
@@ -272,7 +273,7 @@ const formData = reactive({
 })
 
 // 表单验证规则
-const formRules = {
+const formRules: Record<string, Rule[]> = {
   roleName: [
     { required: true, message: '请输入角色名称', trigger: 'blur' }
   ],
@@ -289,49 +290,54 @@ const checkedKeys = ref<number[]>([])
 const currentRoleId = ref<number>()
 
 // 菜单树数据（模拟）
-const menuTreeData = ref([
+const menuTreeData = ref<TreeProps['treeData']>([
   {
     id: 1,
+    key: 1,
     menuName: '系统管理',
     children: [
       {
         id: 2,
+        key: 2,
         menuName: '用户管理',
         children: [
-          { id: 3, menuName: '用户查询' },
-          { id: 4, menuName: '用户新增' },
-          { id: 5, menuName: '用户修改' },
-          { id: 6, menuName: '用户删除' }
+          { id: 3, key:3, menuName: '用户查询' },
+          { id: 4, key:4, menuName: '用户新增' },
+          { id: 5, key:5, menuName: '用户修改' },
+          { id: 6, key:6, menuName: '用户删除' }
         ]
       },
       {
         id: 7,
+        key: 7,
         menuName: '角色管理',
         children: [
-          { id: 8, menuName: '角色查询' },
-          { id: 9, menuName: '角色新增' },
-          { id: 10, menuName: '角色修改' },
-          { id: 11, menuName: '角色删除' }
+          { id: 8, key:8, menuName: '角色查询' },
+          { id: 9, key:9, menuName: '角色新增' },
+          { id: 10, key:10, menuName: '角色修改' },
+          { id: 11, key:11, menuName: '角色删除' }
         ]
       },
       {
         id: 12,
+        key: 12,
         menuName: '组织管理',
         children: [
-          { id: 13, menuName: '组织查询' },
-          { id: 14, menuName: '组织新增' },
-          { id: 15, menuName: '组织修改' },
-          { id: 16, menuName: '组织删除' }
+          { id: 13, key:13, menuName: '组织查询' },
+          { id: 14, key:14, menuName: '组织新增' },
+          { id: 15, key:15, menuName: '组织修改' },
+          { id: 16, key:16, menuName: '组织删除' }
         ]
       },
       {
         id: 17,
+        key: 17,
         menuName: '菜单管理',
         children: [
-          { id: 18, menuName: '菜单查询' },
-          { id: 19, menuName: '菜单新增' },
-          { id: 20, menuName: '菜单修改' },
-          { id: 21, menuName: '菜单删除' }
+          { id: 18, key:18, menuName: '菜单查询' },
+          { id: 19, key:19, menuName: '菜单新增' },
+          { id: 20, key:20, menuName: '菜单修改' },
+          { id: 21, key:21, menuName: '菜单删除' }
         ]
       }
     ]
@@ -423,7 +429,7 @@ const handleBatchDelete = async () => {
   }
   
   try {
-    const response = await deleteRole(selectedRowKeys.value)
+    const response = await deleteRole(selectedRowKeys.value as any)
     if (response.data?.code === 200) {
       message.success('批量删除成功')
       selectedRowKeys.value = []
@@ -537,35 +543,31 @@ onMounted(() => {
 <style scoped>
 .role-management {
   padding: 0;
-  background: transparent;
-  min-height: 100%;
-  box-sizing: border-box;
-  overflow-x: hidden;
+  height: 100%;
 }
 
-.search-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
-}
-
-.operation-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+.search-card, .operation-card {
+  margin-bottom: 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .permission-tree {
-  max-height: 400px;
+  max-height: 480px;
   overflow-y: auto;
-  padding: 16px;
-  border: 1px solid #f0f0f0;
-  border-radius: 6px;
-  background-color: #fafafa;
+  padding: 20px;
+  border: 1px solid #f1f5f9;
+  border-radius: 12px;
+  background-color: #f8fafc;
 }
 
 :deep(.ant-card) {
-  border-radius: 8px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  margin-bottom: 20px;
 }
 
 :deep(.ant-card-body) {
@@ -573,35 +575,39 @@ onMounted(() => {
 }
 
 :deep(.ant-table) {
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
 }
 
 :deep(.ant-table-thead > tr > th) {
-  background-color: #fafafa;
+  background-color: #f8fafc !important;
   font-weight: 600;
+  color: #475569;
+  font-size: 13px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 :deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
   border: none;
+  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.2);
+  border-radius: 8px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 :deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
-
-:deep(.ant-tree) {
-  background: transparent;
-}
-
-:deep(.ant-tree-treenode) {
-  padding: 4px 0;
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
+  transform: translateY(-1px);
 }
 
 :deep(.ant-alert-info) {
-  border-radius: 6px;
-  border: none;
-  background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+  border-radius: 10px;
+  border: 1px solid #bae0ff;
+  background-color: #e6f4ff;
 }
+
 </style>
