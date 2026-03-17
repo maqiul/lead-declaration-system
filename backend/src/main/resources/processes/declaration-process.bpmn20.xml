@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" 
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+             xmlns:flowable="http://flowable.org/bpmn" 
+             targetNamespace="http://www.flowable.org/processdef">
+  <process id="declarationProcess" name="申报审批全生命周期流程" isExecutable="true">
+    
+    <!-- 1. 提交与初审 -->
+    <startEvent id="startEvent1" name="启动申报" flowable:initiator="starterId"></startEvent>
+    
+    <userTask id="deptAudit" name="部门初审" flowable:candidateGroups="DEPT_MANAGER">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}"></flowable:taskListener>
+      </extensionElements>
+    </userTask>
+    
+    <exclusiveGateway id="gw1" name="初审结果"></exclusiveGateway>
+    
+    <!-- 2. 合同生成与定金阶段 -->
+    <serviceTask id="genContractTask" name="自动生成全套单证" flowable:delegateExpression="${declarationServiceTask}"></serviceTask>
+    
+    <userTask id="depositPayment" name="上传定金凭证" flowable:assignee="${starterId}">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}"></flowable:taskListener>
+      </extensionElements>
+    </userTask>
+
+    <userTask id="depositAudit" name="财务确认定金" flowable:candidateGroups="FINANCE_MANAGER">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}"></flowable:taskListener>
+      </extensionElements>
+    </userTask>
+    
+    <exclusiveGateway id="gw2" name="定金审核结果"></exclusiveGateway>
+    
+    <!-- 3. 尾款与结束阶段 -->
+    <userTask id="balancePayment" name="上传尾款凭证" flowable:assignee="${starterId}">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}"></flowable:taskListener>
+      </extensionElements>
+    </userTask>
+
+    <userTask id="balanceAudit" name="财务确认尾款" flowable:candidateGroups="FINANCE_MANAGER">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}"></flowable:taskListener>
+      </extensionElements>
+    </userTask>
+    
+    <exclusiveGateway id="gw3" name="尾款审核结果"></exclusiveGateway>
+    
+    <endEvent id="endEvent1" name="流程完成">
+      <extensionElements>
+        <flowable:executionListener event="end" delegateExpression="${declarationTaskListener}"></flowable:executionListener>
+      </extensionElements>
+    </endEvent>
+    
+    <!-- 驳回处理 -->
+    <userTask id="rejectHandler" name="驳回修改" flowable:assignee="${starterId}">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}"></flowable:taskListener>
+      </extensionElements>
+    </userTask>
+
+    <!-- 连接线 -->
+    <sequenceFlow id="f1" sourceRef="startEvent1" targetRef="deptAudit"></sequenceFlow>
+    <sequenceFlow id="f2" sourceRef="deptAudit" targetRef="gw1"></sequenceFlow>
+    <sequenceFlow id="f3" name="通过" sourceRef="gw1" targetRef="genContractTask">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f4" name="驳回" sourceRef="gw1" targetRef="rejectHandler">
+      <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+    
+    <sequenceFlow id="f5" sourceRef="genContractTask" targetRef="depositPayment"></sequenceFlow>
+    <sequenceFlow id="f5_1" sourceRef="depositPayment" targetRef="depositAudit"></sequenceFlow>
+    <sequenceFlow id="f6" sourceRef="depositAudit" targetRef="gw2"></sequenceFlow>
+    
+    <sequenceFlow id="f7" name="通过" sourceRef="gw2" targetRef="balancePayment">
+       <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f8" name="驳回" sourceRef="gw2" targetRef="depositPayment">
+       <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+    
+    <sequenceFlow id="f8_1" sourceRef="balancePayment" targetRef="balanceAudit"></sequenceFlow>
+    <sequenceFlow id="f9" sourceRef="balanceAudit" targetRef="gw3"></sequenceFlow>
+    
+    <sequenceFlow id="f10" name="通过" sourceRef="gw3" targetRef="endEvent1">
+       <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f11" name="驳回" sourceRef="gw3" targetRef="balancePayment">
+       <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+    
+    <sequenceFlow id="f12" sourceRef="rejectHandler" targetRef="deptAudit"></sequenceFlow>
+    
+  </process>
+</definitions>

@@ -1,6 +1,8 @@
 package com.declaration.interceptor;
 
 import cn.dev33.satoken.stp.StpUtil;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.declaration.annotation.RequiresPermissions;
 import com.declaration.annotation.RequiresRoles;
 import com.declaration.service.PermissionService;
@@ -43,6 +45,27 @@ public class PermissionInterceptor implements HandlerInterceptor {
         }
 
         Long userId = StpUtil.getLoginIdAsLong();
+
+        // 检查Sa-Token权限注解
+        SaCheckPermission saPermission = method.getAnnotation(SaCheckPermission.class);
+        if (saPermission == null) {
+            saPermission = handlerMethod.getBeanType().getAnnotation(SaCheckPermission.class);
+        }
+        if (saPermission != null) {
+            // Sa-Token会自动处理权限验证，这里只需要让请求通过
+            // 但如果需要额外的日志记录，可以在这里添加
+            log.debug("检测到Sa-Token权限注解: {}", String.join(",", saPermission.value()));
+        }
+        
+        // 检查Sa-Token角色注解
+        SaCheckRole saRole = method.getAnnotation(SaCheckRole.class);
+        if (saRole == null) {
+            saRole = handlerMethod.getBeanType().getAnnotation(SaCheckRole.class);
+        }
+        if (saRole != null) {
+            // Sa-Token会自动处理角色验证，这里只需要让请求通过
+            log.debug("检测到Sa-Token角色注解: {}", String.join(",", saRole.value()));
+        }
 
         // 检查角色注解
         RequiresRoles requiresRoles = method.getAnnotation(RequiresRoles.class);

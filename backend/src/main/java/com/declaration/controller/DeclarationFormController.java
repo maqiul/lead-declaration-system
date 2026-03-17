@@ -31,7 +31,7 @@ import java.util.List;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/v1/declarations")
+@RequestMapping("/v1/declarations")
 @RequiredArgsConstructor
 @Tag(name = "申报单管理", description = "出口申报单相关接口")
 public class DeclarationFormController {
@@ -43,6 +43,9 @@ public class DeclarationFormController {
     private final com.declaration.service.ExcelExportService excelExportService;
     private final com.declaration.service.DeclarationAttachmentService attachmentService;
     private final com.declaration.service.DeclarationRemittanceService remittanceService;
+    private final com.declaration.service.ProcessInstanceService processInstanceService;
+    private final com.declaration.service.DeclarationDraftService declarationDraftService;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     /**
      * 保存水单信息
@@ -173,9 +176,6 @@ public class DeclarationFormController {
         return Result.success();
     }
 
-    /**
-     * 分页查询申报单列表
-     */
     @GetMapping
     @Operation(summary = "分页查询申报单")
     @RequiresPermissions("business:declaration:list")
@@ -185,18 +185,138 @@ public class DeclarationFormController {
             @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
         
         Page<DeclarationForm> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
-        IPage<DeclarationForm> result = declarationFormService.page(page);
-        return Result.success(result);
+        
+        if (cn.dev33.satoken.stp.StpUtil.isLogin()) {
+            Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+            Object userOrgIdObj = cn.dev33.satoken.stp.StpUtil.getSession().get("orgId");
+            Long userOrgId = userOrgIdObj != null ? Long.valueOf(userOrgIdObj.toString()) : null;
+
+            // 如果明确查草稿 (status == 0)
+            if (status != null && status == 0) {
+                com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.declaration.entity.DeclarationDraft> draftWrapper = new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+                draftWrapper.eq(com.declaration.entity.DeclarationDraft::getUserId, userId);
+                if (formNo != null && !formNo.isEmpty()) {
+                    draftWrapper.like(com.declaration.entity.DeclarationDraft::getFormNo, formNo);
+                }
+                draftWrapper.orderByDesc(com.declaration.entity.DeclarationDraft::getUpdateTime);
+                
+                Page<com.declaration.entity.DeclarationDraft> draftPage = new Page<>(pageParam.getCurrent(), pageParam.getSize());
+                IPage<com.declaration.entity.DeclarationDraft> draftResult = declarationDraftService.page(draftPage, draftWrapper);
+                
+                // 转换为 DeclarationForm 以适配前端
+                IPage<DeclarationForm> convertedResult = draftResult.convert(draft -> {
+                    DeclarationForm f = new DeclarationForm();
+                    f.setId(draft.getId());
+                    f.setFormNo(draft.getFormNo());
+                    f.setShipperCompany(draft.getShipperCompany());
+                    f.setConsigneeCompany(draft.getConsigneeCompany());
+                    f.setTotalAmount(draft.getTotalAmount());
+                    f.setStatus(0);
+                    f.setCreateTime(draft.getCreateTime());
+                    f.setUpdateTime(draft.getUpdateTime());
+                    f.setCreateBy(draft.getUserId());
+                    return f;
+                });
+                return Result.success(convertedResult);
+            }
+
+            // 查询正式表
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<DeclarationForm> queryWrapper = new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+            if (formNo != null && !formNo.isEmpty()) {
+                queryWrapper.like(DeclarationForm::getFormNo, formNo);
+            }
+            if (status != null) {
+                queryWrapper.eq(DeclarationForm::getStatus, status);
+            }
+            
+            boolean isApprover = cn.dev33.satoken.stp.StpUtil.hasPermission("business:declaration:audit");
+            queryWrapper.and(wrapper -> {
+                wrapper.eq(DeclarationForm::getCreateBy, userId); 
+                if (isApprover) {
+                    wrapper.or(w -> w.ne(DeclarationForm::getStatus, 0));
+                } else {
+                    wrapper.or(w -> w.isNotNull(DeclarationForm::getOrgId)
+                        .eq(userOrgId != null, DeclarationForm::getOrgId, userOrgId)
+                        .ne(DeclarationForm::getStatus, 0));
+                }
+            });
+            
+            IPage<DeclarationForm> result = declarationFormService.page(page, queryWrapper);
+            return Result.success(result);
+        }
+
+        return Result.success(declarationFormService.page(page));
     }
 
-    /**
-     * 获取申报单详情（包含产品和箱子信息）
-     */
+    @PostMapping("/draft")
+    @Operation(summary = "保存草稿")
+    @RequiresPermissions("business:declaration:add")
+    public Result<Long> saveDraft(@RequestBody DeclarationForm form) {
+        try {
+            Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+            Object orgIdObj = cn.dev33.satoken.stp.StpUtil.getSession().get("orgId");
+            Long orgId = orgIdObj != null ? Long.valueOf(orgIdObj.toString()) : null;
+
+            com.declaration.entity.DeclarationDraft draft = new com.declaration.entity.DeclarationDraft();
+            // 如果已存在草稿ID (编辑现有草稿)
+            if (form.getId() != null && form.getStatus() != null && form.getStatus() == 0) {
+                draft.setId(form.getId());
+            }
+            
+            draft.setUserId(userId);
+            draft.setOrgId(orgId);
+            draft.setFormNo(form.getFormNo());
+            draft.setShipperCompany(form.getShipperCompany());
+            draft.setConsigneeCompany(form.getConsigneeCompany());
+            draft.setTotalAmount(form.getTotalAmount());
+            draft.setFormData(objectMapper.writeValueAsString(form));
+            
+            declarationDraftService.saveOrUpdate(draft);
+            return Result.success(draft.getId());
+        } catch (Exception e) {
+            log.error("保存草稿失败", e);
+            return Result.fail("保存草稿失败: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "获取申报单详情")
     @RequiresPermissions("business:declaration:query")
-    public Result<DeclarationForm> getDeclaration(@Parameter(description = "申报单ID") @PathVariable Long id) {
+    public Result<DeclarationForm> getDeclaration(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
+        
+        // 如果明确是查草稿，或者在正式表查不到且已知是草稿
+        if (status != null && status == 0) {
+            com.declaration.entity.DeclarationDraft draft = declarationDraftService.getById(id);
+            if (draft != null) {
+                try {
+                    DeclarationForm form = objectMapper.readValue(draft.getFormData(), DeclarationForm.class);
+                    form.setId(draft.getId());
+                    form.setStatus(0);
+                    return Result.success(form);
+                } catch (Exception e) {
+                    log.error("解析草稿JSON失败", e);
+                }
+            }
+        }
+
         DeclarationForm form = declarationFormService.getFullDeclarationForm(id);
+        // 如果正式表查不到，尝试查下草稿表 (容错处理)
+        if (form == null) {
+            com.declaration.entity.DeclarationDraft draft = declarationDraftService.getById(id);
+            if (draft != null) {
+                try {
+                    form = objectMapper.readValue(draft.getFormData(), DeclarationForm.class);
+                    form.setId(draft.getId());
+                    form.setStatus(0);
+                    return Result.success(form);
+                } catch (Exception e) {
+                    log.error("解析草稿JSON失败", e);
+                }
+            }
+        }
+        
         return Result.success(form);
     }
 
@@ -233,7 +353,7 @@ public class DeclarationFormController {
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Valid @RequestBody DeclarationForm form) {
         form.setId(id);
-        declarationFormService.updateById(form);
+        declarationFormService.updateDeclarationForm(form);
         return Result.success();
     }
 
@@ -243,7 +363,28 @@ public class DeclarationFormController {
     @DeleteMapping("/{id}")
     @Operation(summary = "删除申报单")
     @RequiresPermissions("business:declaration:delete")
-    public Result<Void> deleteDeclaration(@Parameter(description = "申报单ID") @PathVariable Long id) {
+    public Result<Void> deleteDeclaration(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
+        
+        // 如果是删除草稿
+        if (status != null && status == 0) {
+            declarationDraftService.removeById(id);
+            return Result.success();
+        }
+
+        DeclarationForm form = declarationFormService.getById(id);
+        if (form == null) {
+            // 尝试从草稿表删除 (容错)
+            declarationDraftService.removeById(id);
+            return Result.success();
+        }
+        
+        // 只有草稿状态才能被删除 (正式表中的草稿)
+        if (form.getStatus() != 0) {
+            return Result.fail("只有草稿状态的申报单才允许删除");
+        }
+        
         declarationFormService.removeById(id);
         return Result.success();
     }
@@ -257,8 +398,41 @@ public class DeclarationFormController {
     public Result<Void> submitDeclaration(@Parameter(description = "申报单ID") @PathVariable Long id) {
         DeclarationForm form = declarationFormService.getById(id);
         if (form != null) {
+            if (form.getStatus() != 0) {
+                return Result.fail("当前状态不支持提交操作");
+            }
+            
             form.setStatus(1); // 已提交状态
             declarationFormService.updateById(form);
+            
+            // 在提交时生成Excel文件
+            try {
+                DeclarationForm fullForm = declarationFormService.getFullDeclarationForm(id);
+                if (fullForm != null) {
+                    com.declaration.entity.DeclarationAttachment attachment = excelExportService.generateAndSaveExportDocuments(fullForm);
+                    if (attachment != null) {
+                        attachmentService.save(attachment);
+                        log.info("申报单 {} 提交时自动生成全套单证成功", fullForm.getFormNo());
+                    }
+                }
+            } catch (Exception e) {
+                log.error("申报单 {} 提交时自动生成导出文件失败", form.getFormNo(), e);
+                // 即使生成失败也不影响提交流程
+            }
+            
+            // 启动 Flowable 流程
+            try {
+                java.util.Map<String, Object> variables = new java.util.HashMap<>();
+                variables.put("starterId", form.getCreateBy());
+                variables.put("orgId", form.getOrgId());
+                variables.put("formNo", form.getFormNo());
+                
+                processInstanceService.startProcessInstance("declarationProcess", String.valueOf(id), variables);
+                log.info("申报单 {} 流程启动成功", form.getFormNo());
+            } catch (Exception e) {
+                log.error("申报单 {} 流程启动失败", form.getFormNo(), e);
+                // 流程启动失败可以考虑回滚状态或者记录告警
+            }
         }
         return Result.success();
     }
@@ -296,6 +470,10 @@ public class DeclarationFormController {
         if (products != null && !products.isEmpty()) {
             for (int i = 0; i < products.size(); i++) {
                 DeclarationProduct product = products.get(i);
+                // 如果是新填产品，清除临时ID由数据库生成真实ID
+                if (product.getId() != null && product.getId() < 100000) {
+                    product.setId(null);
+                }
                 product.setFormId(formId);
                 product.setSortOrder(i);
                 declarationProductService.save(product);
@@ -338,6 +516,10 @@ public class DeclarationFormController {
         if (cartons != null && !cartons.isEmpty()) {
             for (int i = 0; i < cartons.size(); i++) {
                 DeclarationCarton carton = cartons.get(i);
+                // 如果是新加箱子，清除临时ID
+                if (carton.getId() != null && carton.getId() < 100000) {
+                    carton.setId(null);
+                }
                 carton.setFormId(formId);
                 carton.setSortOrder(i);
                 declarationCartonService.save(carton);
@@ -380,6 +562,10 @@ public class DeclarationFormController {
         // 保存新关联
         if (cartonProducts != null && !cartonProducts.isEmpty()) {
             for (DeclarationCartonProduct cartonProduct : cartonProducts) {
+                // 清除关联记录自身的临时ID
+                if (cartonProduct.getId() != null && cartonProduct.getId() < 100000) {
+                    cartonProduct.setId(null);
+                }
                 declarationCartonProductService.save(cartonProduct);
             }
         }

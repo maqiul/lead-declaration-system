@@ -168,7 +168,7 @@ import { message } from 'ant-design-vue'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { TableProps, TreeProps } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
-import { getRoleList, addRole, updateRole, deleteRole, updateRoleMenus, assignAllPermissionsToAdmin } from '@/api/system'
+import { getRoleList, addRole, updateRole, deleteRole, updateRoleMenus, assignAllPermissionsToAdmin, getRoleMenus, getMenuTree } from '@/api/system'
 
 // 类型定义
 interface Role {
@@ -289,60 +289,22 @@ const permissionLoading = ref(false)
 const checkedKeys = ref<number[]>([])
 const currentRoleId = ref<number>()
 
-// 菜单树数据（模拟）
-const menuTreeData = ref<TreeProps['treeData']>([
-  {
-    id: 1,
-    key: 1,
-    menuName: '系统管理',
-    children: [
-      {
-        id: 2,
-        key: 2,
-        menuName: '用户管理',
-        children: [
-          { id: 3, key:3, menuName: '用户查询' },
-          { id: 4, key:4, menuName: '用户新增' },
-          { id: 5, key:5, menuName: '用户修改' },
-          { id: 6, key:6, menuName: '用户删除' }
-        ]
-      },
-      {
-        id: 7,
-        key: 7,
-        menuName: '角色管理',
-        children: [
-          { id: 8, key:8, menuName: '角色查询' },
-          { id: 9, key:9, menuName: '角色新增' },
-          { id: 10, key:10, menuName: '角色修改' },
-          { id: 11, key:11, menuName: '角色删除' }
-        ]
-      },
-      {
-        id: 12,
-        key: 12,
-        menuName: '组织管理',
-        children: [
-          { id: 13, key:13, menuName: '组织查询' },
-          { id: 14, key:14, menuName: '组织新增' },
-          { id: 15, key:15, menuName: '组织修改' },
-          { id: 16, key:16, menuName: '组织删除' }
-        ]
-      },
-      {
-        id: 17,
-        key: 17,
-        menuName: '菜单管理',
-        children: [
-          { id: 18, key:18, menuName: '菜单查询' },
-          { id: 19, key:19, menuName: '菜单新增' },
-          { id: 20, key:20, menuName: '菜单修改' },
-          { id: 21, key:21, menuName: '菜单删除' }
-        ]
-      }
-    ]
+// 菜单树数据
+const menuTreeData = ref<TreeProps['treeData']>([])
+
+// 加载菜单树数据
+const loadMenuTree = async () => {
+  try {
+    const response = await getMenuTree()
+    if (response.data?.code === 200) {
+      menuTreeData.value = response.data.data || []
+    } else {
+      console.error('加载菜单树失败:', response.data?.message)
+    }
+  } catch (error) {
+    console.error('加载菜单树失败:', error)
   }
-])
+}
 
 // 方法
 const loadData = async () => {
@@ -442,11 +404,53 @@ const handleBatchDelete = async () => {
   }
 }
 
-const handlePermission = (record: Role) => {
+const handlePermission = async (record: Role) => {
   currentRoleId.value = record.id
-  // 模拟获取当前角色已有的权限
-  checkedKeys.value = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] // 模拟数据
+  
+  // 显示加载状态
+  permissionLoading.value = true
   permissionVisible.value = true
+  
+  try {
+    // 并行加载菜单树和角色权限
+    const [menuResponse, roleMenuResponse] = await Promise.all([
+      getMenuTree(),
+      getRoleMenus(record.id)
+    ])
+    
+    // 处理菜单树数据
+    if (menuResponse.data?.code === 200) {
+      menuTreeData.value = menuResponse.data.data || []
+    } else {
+      throw new Error(menuResponse.data?.message || '加载菜单树失败')
+    }
+    
+    // 处理角色已有权限
+    if (roleMenuResponse.data?.code === 200) {
+      checkedKeys.value = roleMenuResponse.data.data || []
+    } else {
+      checkedKeys.value = []
+    }
+    
+  } catch (error) {
+    console.error('加载权限数据失败:', error)
+    message.error('加载权限数据失败')
+    // 使用模拟数据作为备选
+    menuTreeData.value = [
+      {
+        id: 1,
+        key: 1,
+        menuName: '系统管理',
+        children: [
+          { id: 2, key: 2, menuName: '用户管理' },
+          { id: 3, key: 3, menuName: '角色管理' }
+        ]
+      }
+    ]
+    checkedKeys.value = []
+  } finally {
+    permissionLoading.value = false
+  }
 }
 
 const handleTableChange = (pag: any) => {
@@ -511,7 +515,10 @@ const handlePermissionOk = async () => {
 
 const handlePermissionCancel = () => {
   permissionVisible.value = false
+  permissionLoading.value = false
   checkedKeys.value = []
+  menuTreeData.value = []
+  currentRoleId.value = undefined
 }
 
 const handleAssignAllPermissions = async (record: Role) => {
@@ -537,6 +544,8 @@ const handleAssignAllPermissions = async (record: Role) => {
 // 生命周期
 onMounted(() => {
   loadData()
+  // 预加载菜单树数据
+  loadMenuTree()
 })
 </script>
 

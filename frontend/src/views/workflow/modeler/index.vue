@@ -47,22 +47,30 @@
             </div>
           </a-collapse-panel>
           
-          <a-collapse-panel key="2" header="活动">
+          <a-collapse-panel key="2" header="活动 (Tasks)">
             <div class="palette-item" draggable="true" @dragstart="handleDragStart($event, 'user-task')">
               <div class="item-icon">👤</div>
-              <div class="item-label">用户任务</div>
+              <div class="item-label">用户任务 (User Task)</div>
             </div>
             <div class="palette-item" draggable="true" @dragstart="handleDragStart($event, 'service-task')">
               <div class="item-icon">⚙️</div>
-              <div class="item-label">服务任务</div>
+              <div class="item-label">服务任务 (Service Task)</div>
             </div>
             <div class="palette-item" draggable="true" @dragstart="handleDragStart($event, 'script-task')">
               <div class="item-icon">📝</div>
-              <div class="item-label">脚本任务</div>
+              <div class="item-label">脚本任务 (Script Task)</div>
+            </div>
+            <div class="palette-item" draggable="true" @dragstart="handleDragStart($event, 'business-rule-task')">
+              <div class="item-icon">⚖️</div>
+              <div class="item-label">业务规则任务</div>
+            </div>
+            <div class="palette-item" draggable="true" @dragstart="handleDragStart($event, 'receive-task')">
+              <div class="item-icon">📥</div>
+              <div class="item-label">接收任务</div>
             </div>
           </a-collapse-panel>
           
-          <a-collapse-panel key="3" header="网关">
+          <a-collapse-panel key="3" header="网关 & 容器">
             <div class="palette-item" draggable="true" @dragstart="handleDragStart($event, 'exclusive-gateway')">
               <div class="item-icon">🔀</div>
               <div class="item-label">排他网关</div>
@@ -70,6 +78,10 @@
             <div class="palette-item" draggable="true" @dragstart="handleDragStart($event, 'parallel-gateway')">
               <div class="item-icon">🔗</div>
               <div class="item-label">并行网关</div>
+            </div>
+            <div class="palette-item" draggable="true" @dragstart="handleDragStart($event, 'call-activity')">
+              <div class="item-icon">📞</div>
+              <div class="item-label">外部子流程 (Call Activity)</div>
             </div>
           </a-collapse-panel>
         </a-collapse>
@@ -161,73 +173,65 @@
               </a-form-item>
             </a-form>
           </a-tab-pane>
-          
-          <a-tab-pane key="properties" tab="属性" v-if="selectedElement.type === 'user-task'">
+
+          <a-tab-pane key="properties" tab="配置">
             <a-form layout="vertical">
-              <div class="element-properties-section">
-                <a-form-item label="任务类型" class="assignment-type-selector">
+              <!-- 用户任务配置 -->
+              <template v-if="selectedElement && selectedElement.type === 'user-task'">
+                <a-divider orientation="left">办理人配置</a-divider>
+                <a-form-item label="任务类型">
                   <a-radio-group v-model:value="assignmentType" @change="handleAssignmentTypeChange">
                     <a-radio value="assignee">指定用户</a-radio>
                     <a-radio value="candidateUsers">候选用户</a-radio>
                     <a-radio value="candidateGroups">候选组/部门</a-radio>
                   </a-radio-group>
                 </a-form-item>
-              
-              <a-form-item label="指派给" v-if="assignmentType === 'assignee'">
-                <a-select 
-                  v-model:value="selectedElement.assignee" 
-                  placeholder="选择指派人"
-                  show-search
-                  :filter-option="filterOption"
-                  @focus="loadUsers"
-                >
-                  <a-select-option value="${initiator}">流程发起人</a-select-option>
-                  <a-select-option 
-                    v-for="user in userList" 
-                    :key="user.id" 
-                    :value="user.username"
-                  >
-                    {{ user.nickname }} ({{ user.username }})
-                  </a-select-option>
-                </a-select>
+                
+                <a-form-item label="指派给" v-if="assignmentType === 'assignee'">
+                  <a-input v-model:value="selectedElement.assignee" placeholder="e.g. ${starterId}" />
+                </a-form-item>
+                
+                <a-form-item label="候选用户" v-if="assignmentType === 'candidateUsers'">
+                  <a-select v-model:value="selectedElement.candidateUsers" mode="tags" placeholder="输入用户ID" />
+                </a-form-item>
+                
+                <a-form-item label="候选组" v-if="assignmentType === 'candidateGroups'">
+                  <a-select v-model:value="selectedElement.candidateGroups" mode="tags" placeholder="输入组ID" />
+                </a-form-item>
+
+                <a-divider orientation="left">其他配置</a-divider>
+                <a-form-item label="支付日期" name="paymentDate" required>
+                  <a-date-picker 
+                    v-model:value="selectedElement.paymentDate"
+                    style="width: 100%" 
+                    placeholder="选择支付日期"
+                  />
+                </a-form-item>
+              </template>
+
+              <!-- 服务任务配置 -->
+              <template v-else-if="selectedElement.type === 'service-task'">
+                <a-divider orientation="left">服务配置</a-divider>
+                <a-form-item label="代理表达式">
+                  <a-input v-model:value="selectedElement.delegateExpression" placeholder="${declarationServiceTask}" />
+                </a-form-item>
+              </template>
+
+              <!-- 监听器配置 -->
+              <a-divider orientation="left">监听器</a-divider>
+              <a-form-item label="任务监听器" v-if="selectedElement.type === 'user-task'">
+                <a-input v-model:value="selectedElement.taskListener" placeholder="${declarationTaskListener}" />
               </a-form-item>
-              
-              <a-form-item label="候选用户" v-if="assignmentType === 'candidateUsers'">
-                <a-select
-                  v-model:value="selectedElement.candidateUsers"
-                  mode="multiple"
-                  placeholder="选择候选用户"
-                  show-search
-                  :filter-option="filterOption"
-                  @focus="loadUsers"
-                >
-                  <a-select-option 
-                    v-for="user in userList" 
-                    :key="user.id" 
-                    :value="user.username"
-                  >
-                    {{ user.nickname }} ({{ user.username }})
-                  </a-select-option>
-                </a-select>
+              <a-form-item label="执行监听器">
+                <a-input v-model:value="selectedElement.executionListener" placeholder="${declarationTaskListener}" />
               </a-form-item>
-              
-              <a-form-item label="候选组/部门" v-if="assignmentType === 'candidateGroups'">
-                <a-tree-select
-                  v-model:value="selectedElement.candidateGroups"
-                  :tree-data="orgTreeData"
-                  placeholder="选择部门"
-                  tree-default-expand-all
-                  multiple
-                  :field-names="{ children: 'children', label: 'orgName', value: 'id' }"
-                  @focus="loadOrgs"
-                />
-              </a-form-item>
-              </div>
             </a-form>
           </a-tab-pane>
           
-          <a-tab-pane key="listeners" tab="监听器">
-            <a-empty description="暂无监听器配置" />
+          <a-tab-pane key="xml" tab="XML 源码">
+            <div class="xml-preview">
+              <pre><code>{{ generateBpmnXml() }}</code></pre>
+            </div>
           </a-tab-pane>
         </a-tabs>
       </div>
@@ -285,7 +289,11 @@ interface ProcessElement {
   height: number
   assignee?: string
   candidateUsers?: string[] | string
-  candidateGroups?: number[] | number | string
+  candidateGroups?: string[] | string
+  delegateExpression?: string
+  taskListener?: string
+  executionListener?: string
+  paymentDate?: string // Added paymentDate property
   ports: ConnectionPort[]
 }
 
@@ -313,10 +321,6 @@ const activePaletteKeys = ref(['1', '2', '3'])
 const propertiesTab = ref('general')
 const modelInfoVisible = ref(false)
 const assignmentType = ref('assignee')
-const userList = ref<any[]>([])
-const orgTreeData = ref<any[]>([])
-const loadingUsers = ref(false)
-const loadingOrgs = ref(false)
 
 // 模型信息
 const modelInfo = reactive({
@@ -341,6 +345,57 @@ const selectedElement = computed(() => {
 
 // 导入API
 import { getUserList, getOrgTree } from '@/api/system'
+import { deployProcessDefinition } from '@/api/workflow'
+
+// BPMN XML 生成逻辑
+const generateBpmnXml = () => {
+  const processId = modelInfo.key || 'process_' + Date.now()
+  const processName = modelInfo.name || '未命名流程'
+  
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" 
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+             xmlns:flowable="http://flowable.org/bpmn" 
+             targetNamespace="http://www.flowable.org/processdef">
+  <process id="${processId}" name="${processName}" isExecutable="true">
+`
+
+  // 生成节点
+  elements.value.forEach(el => {
+    if (el.type === 'start-event') {
+      xml += `    <startEvent id="${el.id}" name="${el.name || ''}" flowable:initiator="starterId"></startEvent>\n`
+    } else if (el.type === 'end-event') {
+      let listeners = ''
+      if (el.executionListener) listeners = `      <extensionElements><flowable:executionListener event="end" delegateExpression="${el.executionListener}"></flowable:executionListener></extensionElements>`
+      xml += `    <endEvent id="${el.id}" name="${el.name || ''}">${listeners}</endEvent>\n`
+    } else if (el.type === 'user-task') {
+      let assignment = ''
+      if (el.assignee) assignment = ` flowable:assignee="${el.assignee}"`
+      if (el.candidateUsers) assignment = ` flowable:candidateUsers="${Array.isArray(el.candidateUsers) ? el.candidateUsers.join(',') : el.candidateUsers}"`
+      if (el.candidateGroups) assignment = ` flowable:candidateGroups="${Array.isArray(el.candidateGroups) ? el.candidateGroups.join(',') : el.candidateGroups}"`
+      
+      let listener = ''
+      if (el.taskListener) listener = `      <extensionElements><flowable:taskListener event="create" delegateExpression="${el.taskListener}"></flowable:taskListener></extensionElements>`
+      
+      xml += `    <userTask id="${el.id}" name="${el.name || ''}"${assignment}>\n${listener}    </userTask>\n`
+    } else if (el.type === 'service-task') {
+      xml += `    <serviceTask id="${el.id}" name="${el.name || ''}" flowable:delegateExpression="${el.delegateExpression || ''}"></serviceTask>\n`
+    } else if (el.type === 'exclusive-gateway') {
+      xml += `    <exclusiveGateway id="${el.id}" name="${el.name || ''}"></exclusiveGateway>\n`
+    } else if (el.type === 'parallel-gateway') {
+      xml += `    <parallelGateway id="${el.id}" name="${el.name || ''}"></parallelGateway>\n`
+    }
+  })
+
+  // 生成连接线
+  connections.value.forEach(conn => {
+    xml += `    <sequenceFlow id="${conn.id}" sourceRef="${conn.sourceId}" targetRef="${conn.targetId}"></sequenceFlow>\n`
+  })
+
+  xml += `  </process>\n</definitions>`
+  return xml
+}
 
 // 方法
 const handleDragStart = (event: DragEvent, elementType: string) => {
@@ -354,46 +409,11 @@ const handleAssignmentTypeChange = (e: any) => {
   if (selectedElement.value) {
     selectedElement.value.assignee = ''
     selectedElement.value.candidateUsers = [] as string[]
-    selectedElement.value.candidateGroups = [] as number[]
+    selectedElement.value.candidateGroups = [] as string[]
   }
 }
 
-const filterOption = (input: string, option: any) => {
-  return option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-}
-
-const loadUsers = async () => {
-  if (loadingUsers.value || userList.value.length > 0) return
-  
-  loadingUsers.value = true
-  try {
-    const response = await getUserList({ pageNum: 1, pageSize: 1000 })
-    if (response.data?.code === 200) {
-      userList.value = response.data.data.records || response.data.data
-    }
-  } catch (error) {
-    console.error('加载用户列表失败:', error)
-  } finally {
-    loadingUsers.value = false
-  }
-}
-
-const loadOrgs = async () => {
-  if (loadingOrgs.value || orgTreeData.value.length > 0) return
-  
-  loadingOrgs.value = true
-  try {
-    const response = await getOrgTree()
-    if (response.data?.code === 200) {
-      orgTreeData.value = response.data.data
-    }
-  } catch (error) {
-    console.error('加载组织树失败:', error)
-  } finally {
-    loadingOrgs.value = false
-  }
-}
-
+// 拖拽处理
 const handleDragOver = (event: DragEvent) => {
   event.preventDefault()
 }
@@ -408,20 +428,27 @@ const handleDrop = (event: DragEvent) => {
   createElement(elementType, x, y)
 }
 
+// ID 计数器，防止冲突
+let idCounter = 0
+
 const createElement = (type: string, x: number, y: number) => {
+  const timestamp = Date.now()
+  const uniqueId = `${timestamp}_${++idCounter}`
+  
   const element: ProcessElement = {
-    id: `element_${Date.now()}`,
+    id: `element_${uniqueId}`,
     type,
     name: getElementDefaultName(type),
     x,
     y,
     width: 100,
     height: 80,
-    candidateUsers: [],
-    candidateGroups: [],
+    assignee: '',
+    candidateUsers: [] as string[],
+    candidateGroups: [] as string[],
     ports: [
-      { id: `${Date.now()}_input`, type: 'input', x: 50, y: 0 },
-      { id: `${Date.now()}_output`, type: 'output', x: 50, y: 80 }
+      { id: `${uniqueId}_input`, type: 'input' as const, x: 50, y: 0 },
+      { id: `${uniqueId}_output`, type: 'output' as const, x: 50, y: 80 }
     ]
   }
   
@@ -448,6 +475,9 @@ const getElementIcon = (type: string) => {
     'user-task': '👤',
     'service-task': '⚙️',
     'script-task': '📝',
+    'business-rule-task': '⚖️',
+    'receive-task': '📥',
+    'call-activity': '📞',
     'exclusive-gateway': '🔀',
     'parallel-gateway': '🔗'
   }
@@ -537,8 +567,28 @@ const saveModel = () => {
   modelInfoVisible.value = true
 }
 
-const deployModel = () => {
-  message.info('部署流程功能')
+const deployModel = async () => {
+  if (!modelInfo.key || !modelInfo.name) {
+    saveModel() // 如果没有信息先弹窗
+    return
+  }
+  
+  const xml = generateBpmnXml()
+  const blob = new Blob([xml], { type: 'text/xml' })
+  const file = new File([blob], `${modelInfo.key}.bpmn20.xml`, { type: 'text/xml' })
+  
+  try {
+    message.loading({ content: '部署中...', key: 'deploy' })
+    await deployProcessDefinition(file, {
+      name: modelInfo.name,
+      processKey: modelInfo.key,
+      category: modelInfo.category,
+      description: modelInfo.description
+    })
+    message.success({ content: '流程部署成功', key: 'deploy' })
+  } catch (error) {
+    message.error({ content: '流程部署失败', key: 'deploy' })
+  }
 }
 
 const validateModel = () => {
@@ -570,10 +620,53 @@ const updateElementProperty = (property: string, value: any) => {
 
 // 生命周期
 onMounted(() => {
-  // 初始化示例流程
-  createElement('start-event', 200, 100)
-  createElement('user-task', 200, 250)
-  createElement('end-event', 200, 400)
+  // 初始化一个完整的申报生命周期流程 (示例)
+  createElement('start-event', 200, 30)       // 0: Start
+  createElement('user-task', 200, 120)        // 1: 部门初审 (deptAudit)
+  createElement('exclusive-gateway', 200, 220)// 2: 网关
+  createElement('service-task', 50, 210)      // 3: 自动生成单证 (genContractTask)
+  createElement('user-task', 50, 300)        // 4: 定金审核 (depositAudit)
+  createElement('user-task', 50, 400)        // 5: 尾款审核 (balanceAudit)
+  createElement('end-event', 200, 520)        // 6: End
+  
+  setTimeout(() => {
+    if (elements.value.length >= 7) {
+      elements.value[1].name = '部门经理初审'
+      elements.value[1].candidateGroups = ['DEPT_MANAGER']
+      elements.value[1].taskListener = '${declarationTaskListener}'
+      
+      elements.value[2].name = '初审通过?'
+      
+      elements.value[3].name = '自动生成单证'
+      elements.value[3].delegateExpression = '${declarationServiceTask}'
+      
+      elements.value[4].name = '财务经理定金审核'
+      elements.value[4].candidateGroups = ['FINANCE_MANAGER']
+      elements.value[4].taskListener = '${declarationTaskListener}'
+      
+      elements.value[5].name = '尾款支付审核'
+      elements.value[5].candidateGroups = ['FINANCE_MANAGER']
+      elements.value[5].taskListener = '${declarationTaskListener}'
+      
+      // 连接
+      const addConn = (sIdx: number, tIdx: number, label?: string) => {
+        connections.value.push({
+          id: `flow_${sIdx}_${tIdx}`,
+          sourceId: elements.value[sIdx].id,
+          targetId: elements.value[tIdx].id,
+          sourcePortId: elements.value[sIdx].ports[1].id,
+          targetPortId: elements.value[tIdx].ports[0].id
+        })
+      }
+      
+      addConn(0, 1)
+      addConn(1, 2)
+      addConn(2, 3) // 通过
+      addConn(3, 4)
+      addConn(4, 5)
+      addConn(5, 6)
+    }
+  }, 200)
 })
 </script>
 

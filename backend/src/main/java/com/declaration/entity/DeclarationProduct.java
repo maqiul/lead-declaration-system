@@ -83,6 +83,11 @@ public class DeclarationProduct {
     private Integer sortOrder;
 
     /**
+     * 产品图片ID
+     */
+    private Long imageId;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

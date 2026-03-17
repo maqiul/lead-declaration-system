@@ -110,6 +110,8 @@ interface Task {
   createTime: string
   dueTime: string | null
   claimTime: string | null
+  activityId: string
+  businessKey: string
 }
 
 interface SearchForm {

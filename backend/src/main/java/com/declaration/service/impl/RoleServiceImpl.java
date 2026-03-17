@@ -185,7 +185,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
     public boolean assignAllPermissionsToAdmin(Long roleId) {
         // 检查是否为管理员角色
         Role role = this.getById(roleId);
-        if (role == null || !"admin".equals(role.getRoleCode())) {
+        if (role == null || !("admin".equals(role.getRoleCode()) || "ADMIN".equals(role.getRoleCode()))) {
             throw new RuntimeException("只能为管理员角色分配全部权限");
         }
         

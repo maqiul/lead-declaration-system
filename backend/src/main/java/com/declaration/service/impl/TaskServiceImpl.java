@@ -28,6 +28,9 @@ import java.util.stream.Collectors;
 public class TaskServiceImpl implements com.declaration.service.TaskService {
 
     private final org.flowable.engine.TaskService flowableTaskService;
+    private final org.flowable.engine.RuntimeService runtimeService;
+    private final org.flowable.engine.RepositoryService repositoryService;
+    private final org.flowable.engine.HistoryService historyService;
     private final TaskInstanceDao taskInstanceDao;
 
     @Override
@@ -62,11 +65,14 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         flowableTaskService.claim(taskId, userId.toString());
         
         // 更新本地任务状态
-        TaskInstance taskInstance = taskInstanceDao.selectById(1L); // 临时处理
+        TaskInstance taskInstance = taskInstanceDao.selectOne(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskInstance>()
+                .eq(TaskInstance::getTaskId, taskId)
+        );
         if (taskInstance != null) {
             taskInstance.setAssigneeId(userId);
             taskInstance.setClaimTime(LocalDateTime.now());
-            taskInstance.setStatus(0); // 已签收
+            taskInstance.setUpdateTime(LocalDateTime.now());
             taskInstanceDao.updateById(taskInstance);
         }
     }
@@ -77,11 +83,14 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         flowableTaskService.unclaim(taskId);
         
         // 更新本地任务状态
-        TaskInstance taskInstance = taskInstanceDao.selectById(1L); // 临时处理
+        TaskInstance taskInstance = taskInstanceDao.selectOne(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskInstance>()
+                .eq(TaskInstance::getTaskId, taskId)
+        );
         if (taskInstance != null) {
             taskInstance.setAssigneeId(null);
             taskInstance.setClaimTime(null);
-            taskInstance.setStatus(1); // 待签收
+            taskInstance.setUpdateTime(LocalDateTime.now());
             taskInstanceDao.updateById(taskInstance);
         }
     }
@@ -92,9 +101,12 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         flowableTaskService.complete(taskId, variables);
         
         // 更新本地任务状态
-        TaskInstance taskInstance = taskInstanceDao.selectById(1L); // 临时处理
+        TaskInstance taskInstance = taskInstanceDao.selectOne(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskInstance>()
+                .eq(TaskInstance::getTaskId, taskId)
+        );
         if (taskInstance != null) {
-            taskInstance.setStatus(2); // 已完成
+            taskInstance.setStatus(1); // 已办/已完成
             taskInstance.setEndTime(LocalDateTime.now());
             taskInstance.setUpdateTime(LocalDateTime.now());
             taskInstanceDao.updateById(taskInstance);
@@ -177,15 +189,38 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         TaskInstance instance = new TaskInstance();
         instance.setTaskId(task.getId());
         instance.setTaskName(task.getName());
-        // instance.setDescription(task.getDescription()); // 字段不存在
         instance.setInstanceId(task.getProcessInstanceId());
         instance.setDefinitionId(task.getProcessDefinitionId());
+        instance.setActivityId(task.getTaskDefinitionKey());
         instance.setAssigneeId(task.getAssignee() != null ? Long.valueOf(task.getAssignee()) : null);
         instance.setCreateTime(task.getCreateTime().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
-        // instance.setClaimTime(task.getClaimTime()); // 字段不存在
-        // instance.setDueDate(task.getDueDate()); // 字段不存在
         instance.setPriority(task.getPriority());
-        instance.setStatus(task.getAssignee() != null ? 0 : 1); // 已分配/待签收
+        instance.setStatus(task.getAssignee() != null ? 0 : 1);
+        
+        // 获取流程定义名称
+        org.flowable.engine.repository.ProcessDefinition definition = repositoryService.createProcessDefinitionQuery()
+                .processDefinitionId(task.getProcessDefinitionId())
+                .singleResult();
+        if (definition != null) {
+            instance.setProcessDefinitionName(definition.getName());
+        }
+
+        // 获取业务KEY
+        org.flowable.engine.runtime.ProcessInstance pi = runtimeService.createProcessInstanceQuery()
+                .processInstanceId(task.getProcessInstanceId())
+                .singleResult();
+        if (pi != null) {
+            instance.setBusinessKey(pi.getBusinessKey());
+        } else {
+            // 如果运行中查不到，查历史
+            org.flowable.engine.history.HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
+                    .processInstanceId(task.getProcessInstanceId())
+                    .singleResult();
+            if (hpi != null) {
+                instance.setBusinessKey(hpi.getBusinessKey());
+            }
+        }
+        
         return instance;
     }
 }

@@ -7,19 +7,21 @@ export const constantRoutes: RouteRecordRaw[] = [
     path: '/login',
     name: 'Login',
     component: () => import('@/views/login/index.vue'),
-    hidden: true
+    meta: { hidden: true }
   },
   {
     path: '/404',
     component: () => import('@/views/error/404.vue'),
-    hidden: true
+    meta: { hidden: true }
   }
 ]
 
 // 预加载关键组件
 const preloadComponents = [
   () => import('@/views/system/user/index.vue'),
-  () => import('@/views/system/role/index.vue')
+  () => import('@/views/system/role/index.vue'),
+  () => import('@/views/system/bank-account/index.vue'),
+  () => import('@/views/system/country/index.vue')
 ]
 
 export const asyncRoutes: RouteRecordRaw[] = [
@@ -83,6 +85,18 @@ export const asyncRoutes: RouteRecordRaw[] = [
         name: 'ProductMaintenance',
         component: () => import('@/views/system/product/index.vue'),
         meta: { title: 'HS商品维护', icon: 'DatabaseOutlined' }
+      },
+      {
+        path: 'bank-account',
+        name: 'BankAccount',
+        component: () => import('@/views/system/bank-account/index.vue'),
+        meta: { title: '银行账户', icon: 'BankOutlined' }
+      },
+      {
+        path: 'country',
+        name: 'Country',
+        component: () => import('@/views/system/country/index.vue'),
+        meta: { title: '国家信息', icon: 'GlobalOutlined' }
       }
     ]
   },
@@ -183,6 +197,12 @@ export const asyncRoutes: RouteRecordRaw[] = [
         meta: { title: '申报表单', icon: 'FileTextOutlined' }
       },
       {
+        path: 'payment',
+        name: 'DeclarationPayment',
+        component: () => import('@/views/declaration/payment/index.vue'),
+        meta: { title: '支付凭证', icon: 'AccountBookOutlined', hidden: true }
+      },
+      {
         path: 'statistics',
         name: 'DeclarationStatistics',
         component: () => import('@/views/declaration/statistics/index.vue'),
@@ -203,7 +223,7 @@ preloadComponents.forEach(loader => {
 })
 
 // 路由守卫
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to, _from, next) => {
   console.log('路由守卫触发:', to.path)
   const userStore = useUserStore()
   

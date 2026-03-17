@@ -69,9 +69,10 @@ public class DeclarationForm {
     private String departureCity;
 
     /**
-     * 目的地区域
+     * 目的国
      */
-    private String destinationRegion;
+    private String destinationCountry;
+
 
     /**
      * 币种
@@ -136,6 +137,12 @@ public class DeclarationForm {
      */
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private Long updateBy;
+
+    /**
+     * 所属组织ID
+     */
+    @TableField(fill = FieldFill.INSERT)
+    private Long orgId;
 
     /**
      * 删除标志 0-正常 1-删除

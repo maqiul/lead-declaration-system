@@ -32,6 +32,12 @@ public class TaskInstance extends BaseEntity {
     @Schema(description = "流程定义ID")
     private String definitionId;
 
+    @Schema(description = "流程定义名称")
+    private String processDefinitionName;
+
+    @Schema(description = "业务KEY (申报单ID)")
+    private String businessKey;
+
     @Schema(description = "节点ID")
     private String activityId;
 

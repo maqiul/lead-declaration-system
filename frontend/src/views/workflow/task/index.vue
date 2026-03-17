@@ -88,9 +88,12 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import TaskList from './components/TaskList.vue'
 import { getMyAssignedTasks, getMyCandidateTasks, claimTask, completeTask } from '@/api/workflow'
+
+const router = useRouter()
 
 // 类型定义
 interface Task {
@@ -103,6 +106,8 @@ interface Task {
   createTime: string
   dueTime: string | null
   claimTime: string | null
+  activityId: string
+  businessKey: string
 }
 
 // 响应式数据
@@ -139,10 +144,12 @@ const loadAssignedTasks = async () => {
         processName: item.processDefinitionName,
         processInstanceId: item.processInstanceId,
         starterName: item.starterName,
-        priority: 80,
+        priority: item.priority || 80,
         createTime: item.createTime,
         dueTime: item.dueTime,
-        claimTime: item.claimTime
+        claimTime: item.claimTime,
+        activityId: item.activityId,
+        businessKey: item.businessKey
       }))
     } else {
       message.error(response.data?.message || '加载待办任务失败')
@@ -168,7 +175,9 @@ const loadCompletedTasks = async () => {
         priority: 70,
         createTime: '2026-03-12 14:00:00',
         dueTime: '2026-03-13 17:00:00',
-        claimTime: '2026-03-12 14:05:00'
+        claimTime: '2026-03-12 14:05:00',
+        activityId: 'hrAudit',
+        businessKey: '3'
       }
     ]
   } catch (error) {
@@ -204,8 +213,9 @@ const loadCandidateTasks = async () => {
   }
 }
 
-const handleTabChange = (key: string) => {
-  switch (key) {
+const handleTabChange = (key: any) => {
+  const activeKey = String(key)
+  switch (activeKey) {
     case 'assigned':
       loadAssignedTasks()
       break
@@ -227,6 +237,22 @@ const handleClaim = (task: Task) => {
 }
 
 const handleComplete = (task: Task) => {
+  // 如果是支付类任务，跳转到专门的支付页面
+  if (task.activityId === 'depositPayment') {
+    router.push({
+      path: '/declaration/payment',
+      query: { id: task.businessKey, taskId: task.taskId, type: 'deposit' }
+    })
+    return
+  }
+  if (task.activityId === 'balancePayment') {
+    router.push({
+      path: '/declaration/payment',
+      query: { id: task.businessKey, taskId: task.taskId, type: 'balance' }
+    })
+    return
+  }
+
   currentTask.value = task
   modalTitle.value = `处理任务 - ${task.taskName}`
   modalType.value = 'complete'

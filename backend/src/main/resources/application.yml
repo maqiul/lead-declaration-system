@@ -1,7 +1,7 @@
 server:
   port: 8080
   servlet:
-    context-path: /
+    context-path: /api
     
 spring:
   application:
@@ -50,6 +50,10 @@ mybatis-plus:
     map-underscore-to-camel-case: true
     cache-enabled: false
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# 文件上传配置
+file:
+  upload-path: f:/uploads/
 
 # Sa-Token配置
 sa-token:

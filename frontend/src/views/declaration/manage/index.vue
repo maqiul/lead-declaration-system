@@ -14,14 +14,17 @@
           <a-select 
             v-model:value="searchForm.status" 
             placeholder="状态筛选" 
-            style="width: 120px"
+            style="width: 140px"
+            allowClear
             @change="loadData"
           >
-            <a-select-option value="">全部状态</a-select-option>
             <a-select-option :value="0">草稿</a-select-option>
-            <a-select-option :value="1">已提交</a-select-option>
-            <a-select-option :value="2">已审核</a-select-option>
-            <a-select-option :value="3">已完成</a-select-option>
+            <a-select-option :value="1">待初审</a-select-option>
+            <a-select-option :value="2">待付定金</a-select-option>
+            <a-select-option :value="3">定金待审</a-select-option>
+            <a-select-option :value="4">待付尾款</a-select-option>
+            <a-select-option :value="5">尾款待审</a-select-option>
+            <a-select-option :value="6">已完成</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="日期">
@@ -86,6 +89,15 @@
                 <template #icon><CheckCircleOutlined /></template>
                 {{ getAuditBtnText(record.status) }}
               </a-button>
+              <!-- 状态 2(待付定金) 或状态 4(待付尾款) 显示付款按钮 -->
+              <a-button v-if="record.status === 2" type="link" size="small" style="color: #52c41a;" @click="handlePayment(record as any)">
+                <template #icon><DollarOutlined /></template>
+                付定金
+              </a-button>
+              <a-button v-if="record.status === 4" type="link" size="small" style="color: #52c41a;" @click="handlePayment(record as any)">
+                <template #icon><DollarOutlined /></template>
+                付尾款
+              </a-button>
               <a-button v-if="record.status >= 2" type="link" size="small" @click="handleDownload(record as any)">
                 <template #icon><DownloadOutlined /></template>
                 单证
@@ -138,7 +150,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
-import { PlusOutlined, DownloadOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DownloadOutlined, EyeOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, DollarOutlined } from '@ant-design/icons-vue'
 import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList,
@@ -202,55 +214,8 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 200,
-    fixed: 'right' as const,
-    customRender: ({ record }: { record: any }) => {
-      const actions = [
-        h('a-button', {
-          type: 'link',
-          size: 'small',
-          onClick: () => handleView(record as any)
-        }, '查看')
-      ]
-      
-      if (record.status === 0) {
-        actions.push(h('a-button', {
-          type: 'link',
-          size: 'small',
-          onClick: () => handleEdit(record as any)
-        }, '编辑'))
-      }
-      
-      if ([1, 3, 5].includes(record.status)) {
-        actions.push(h('a-button', {
-          type: 'link',
-          size: 'small',
-          style: { color: '#faad14' },
-          onClick: () => handleAudit(record as any)
-        }, getAuditBtnText(record.status)))
-      }
-      
-      if (record.status >= 2) {
-        actions.push(h('a-button', {
-          type: 'link',
-          size: 'small',
-          onClick: () => handleDownload(record as any)
-        }, '单证'))
-      }
-      
-      actions.push(h('a-popconfirm', {
-        title: '确定要删除这条申报单吗？',
-        onConfirm: () => handleDelete(record as any)
-      }, {
-        default: () => h('a-button', {
-          type: 'link',
-          size: 'small',
-          danger: true
-        }, '删除')
-      }))
-      
-      return h('a-space', {}, actions)
-    }
+    width: 280,
+    fixed: 'right' as const
   }
 ]
 
@@ -315,7 +280,7 @@ const handleAdd = () => {
 
 // 查看详情
 const handleView = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&readonly=true`)
+  router.push(`/declaration/form?id=${record.id}&readonly=true&status=${record.status}`)
 }
 
 // 编辑申报单
@@ -325,7 +290,12 @@ const handleEdit = (record: DeclarationRecord) => {
     message.warning('只有草稿状态的申报单可以编辑')
     return
   }
-  router.push(`/declaration/form?id=${record.id}`)
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}`)
+}
+
+// 付款操作（定金/尾款）- 跳转到水单提交模式
+const handlePayment = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=payment`)
 }
 
 // 审核申报单
@@ -337,7 +307,7 @@ const handleAudit = (record: DeclarationRecord) => {
 const handleDownload = async (record: DeclarationRecord) => {
   try {
     loading.value = true
-    const response = await getDeclarationDetail(record.id)
+    const response = await getDeclarationDetail(record.id, record.status)
     if (response.data && response.data.code === 200) {
       currentAttachments.value = response.data.data.attachments || []
       attachmentModalVisible.value = true
@@ -359,7 +329,7 @@ const handleExport = () => {
 // 删除申报单
 const handleDelete = async (record: DeclarationRecord) => {
   try {
-    await deleteDeclarationApi(record.id)
+    await deleteDeclarationApi(record.id, record.status)
     message.success('删除成功')
     loadData()
   } catch (error) {

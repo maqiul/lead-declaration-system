@@ -24,4 +24,11 @@ public interface DeclarationFormService extends IService<DeclarationForm> {
      * @return 完整的申报单信息
      */
     DeclarationForm getFullDeclarationForm(Long id);
+
+    /**
+     * 更新申报单及其关联数据
+     * @param form 申报单数据
+     * @return 是否更新成功
+     */
+    boolean updateDeclarationForm(DeclarationForm form);
 }

@@ -33,6 +33,14 @@ public class MyMetaObjectHandler implements MetaObjectHandler {
                 Long userId = StpUtil.getLoginIdAsLong();
                 this.strictInsertFill(metaObject, "createBy", Long.class, userId);
                 this.strictInsertFill(metaObject, "updateBy", Long.class, userId);
+                
+                // 填充所属组织ID
+                // 注意：这里需要从缓存或数据库获取用户的 orgId
+                // 简化起见，假设 StpUtil 扩展了获取 orgId 的方法或者从 session 获取
+                Object orgId = StpUtil.getSession().get("orgId");
+                if (orgId != null) {
+                    this.strictInsertFill(metaObject, "orgId", Long.class, Long.valueOf(orgId.toString()));
+                }
             }
         } catch (Exception e) {
             log.debug("获取登录用户信息失败: {}", e.getMessage());

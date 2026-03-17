@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.validation.Valid;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -74,8 +73,10 @@ public class WorkflowController {
     @GetMapping("/instances/my")
     @Operation(summary = "获取我的流程实例")
     public Result<List<ProcessInstance>> getMyProcessInstances() {
-        // TODO: 获取当前用户ID
-        Long userId = 1L;
+        if (!cn.dev33.satoken.stp.StpUtil.isLogin()) {
+             return Result.fail("未登录");
+        }
+        Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
         List<ProcessInstance> instances = processInstanceService.getProcessInstancesByStarter(userId);
         return Result.success(instances);
     }
@@ -117,8 +118,10 @@ public class WorkflowController {
     @GetMapping("/tasks/assigned")
     @Operation(summary = "获取我的待办任务")
     public Result<List<TaskInstance>> getMyAssignedTasks() {
-        // TODO: 获取当前用户ID
-        Long userId = 1L;
+        if (!cn.dev33.satoken.stp.StpUtil.isLogin()) {
+            return Result.fail("未登录");
+        }
+        Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
         List<TaskInstance> tasks = taskService.getAssignedTasks(userId);
         return Result.success(tasks);
     }
@@ -126,18 +129,25 @@ public class WorkflowController {
     @GetMapping("/tasks/candidate")
     @Operation(summary = "获取我的候选任务")
     public Result<List<TaskInstance>> getMyCandidateTasks() {
-        // TODO: 获取当前用户ID和组信息
-        Long userId = 1L;
-        List<String> groupIds = Arrays.asList("GROUP1", "GROUP2");
-        List<TaskInstance> tasks = taskService.getCandidateTasks(userId, groupIds);
+        if (!cn.dev33.satoken.stp.StpUtil.isLogin()) {
+            return Result.fail("未登录");
+        }
+        Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+        
+        // 获取用户的角色列表作为候选组
+        List<String> roleKeys = cn.dev33.satoken.stp.StpUtil.getRoleList();
+        
+        List<TaskInstance> tasks = taskService.getCandidateTasks(userId, roleKeys);
         return Result.success(tasks);
     }
 
     @PostMapping("/task/claim/{taskId}")
     @Operation(summary = "签收任务")
     public Result<Boolean> claimTask(@Parameter(description = "任务ID") @PathVariable String taskId) {
-        // TODO: 获取当前用户ID
-        Long userId = 1L;
+        if (!cn.dev33.satoken.stp.StpUtil.isLogin()) {
+            return Result.fail("未登录");
+        }
+        Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
         taskService.claimTask(taskId, userId);
         return Result.success(true);
     }
