@@ -41,6 +41,8 @@ export interface DeclarationProduct {
   amount: number
   grossWeight: number
   netWeight: number
+  cartons?: number
+  volume?: number
   sortOrder?: number
 }
 
@@ -58,6 +60,30 @@ export interface CartonProduct {
   cartonId: number
   productId: number
   quantity: number
+}
+
+// 统计数据类型定义
+export interface StatisticsData {
+  totalForms: number
+  monthForms: number
+  totalAmount: number
+  avgAmount: number
+  statusStats: Array<{
+    status: string
+    count: number
+    amount: number
+  }>
+  productStats: Array<{
+    productName: string
+    hsCode: string
+    count: number
+    totalAmount: number
+  }>
+  destinationStats: Array<{
+    destination: string
+    count: number
+    totalAmount: number
+  }>
 }
 
 // 获取申报单列表
@@ -122,8 +148,8 @@ export function submitDeclaration(id: number) {
   })
 }
 
-// 提交审核（定金/尾款）
-export function submitForAudit(id: number, type: 'deposit' | 'balance') {
+// 提交审核（定金/尾款/提货单）
+export function submitForAudit(id: number, type: 'deposit' | 'balance' | 'pickup') {
   return request({
     url: `/v1/declarations/${id}/submit-audit`,
     method: 'post',
@@ -145,6 +171,23 @@ export function saveRemittance(id: number, data: any) {
   return request({
     url: `/v1/declarations/${id}/remittance`,
     method: 'post',
+    data
+  })
+}
+
+// 获取水单信息
+export function getRemittance(remittanceId: number) {
+  return request({
+    url: `/v1/declarations/remittance/${remittanceId}`,
+    method: 'get'
+  })
+}
+
+// 更新水单信息
+export function updateRemittance(remittanceId: number, data: any) {
+  return request({
+    url: `/v1/declarations/remittance/${remittanceId}`,
+    method: 'put',
     data
   })
 }
@@ -227,6 +270,31 @@ export function batchExportDeclaration(ids: number[]) {
   })
 }
 
+// 获取提货单附件列表
+export function getPickupAttachments(id: number) {
+  return request({
+    url: `/v1/declarations/${id}/attachments/pickup`,
+    method: 'get'
+  })
+}
+
+// 保存提货单附件
+export function savePickupAttachment(id: number, data: any) {
+  return request({
+    url: `/v1/declarations/${id}/attachments/pickup`,
+    method: 'post',
+    data
+  })
+}
+
+// 删除附件
+export function deleteAttachment(attachmentId: number) {
+  return request({
+    url: `/v1/declarations/attachments/${attachmentId}`,
+    method: 'delete'
+  })
+}
+
 // 上传文件
 export function uploadFile(file: File, type?: string) {
   const formData = new FormData()
@@ -241,5 +309,44 @@ export function uploadFile(file: File, type?: string) {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
+  })
+}
+
+// 获取申报单统计数据
+export function getDeclarationStatistics() {
+  return request({
+    url: '/v1/declarations/statistics',
+    method: 'get'
+  })
+}
+
+// 替换申报单附件
+export function replaceDeclarationAttachment(formId: number, attachmentId: number, file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  
+  return request({
+    url: `/v1/declarations/${formId}/attachments/${attachmentId}/replace`,
+    method: 'post',
+    data: formData,
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}
+
+// 获取申报单附件列表
+export function getDeclarationAttachments(formId: number) {
+  return request({
+    url: `/v1/declarations/${formId}/attachments`,
+    method: 'get'
+  })
+}
+
+// 重新生成单据
+export function regenerateDocuments(id: number) {
+  return request({
+    url: `/v1/declarations/${id}/regenerate-documents`,
+    method: 'post'
   })
 }

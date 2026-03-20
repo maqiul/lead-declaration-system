@@ -1,4 +1,5 @@
 import { App } from 'vue'
+import { useUserStore } from '@/store/user'
 
 /**
  * 权限检查方法
@@ -10,14 +11,19 @@ export function checkPermission(value: string[]): boolean {
     return false
   }
   
-  const userStore = useUserStore()
-  const { permissions } = userStore
-  
-  if (!permissions || permissions.length === 0) {
+  try {
+    const userStore = useUserStore()
+    const { permissions } = userStore
+    
+    if (!permissions || permissions.length === 0) {
+      return false
+    }
+    
+    return permissions.some(permission => value.includes(permission))
+  } catch (error) {
+    console.warn('权限检查失败:', error)
     return false
   }
-  
-  return permissions.some(permission => value.includes(permission))
 }
 
 /**
@@ -30,14 +36,19 @@ export function checkRole(value: string[]): boolean {
     return false
   }
   
-  const userStore = useUserStore()
-  const { roles } = userStore
-  
-  if (!roles || roles.length === 0) {
+  try {
+    const userStore = useUserStore()
+    const { roles } = userStore
+    
+    if (!roles || roles.length === 0) {
+      return false
+    }
+    
+    return roles.some(role => value.includes(role))
+  } catch (error) {
+    console.warn('角色检查失败:', error)
     return false
   }
-  
-  return roles.some(role => value.includes(role))
 }
 
 /**
@@ -83,6 +94,3 @@ export function setupPermissionDirective(app: App) {
   app.directive('permission', permission)
   app.directive('role', role)
 }
-
-// 导入store
-import { useUserStore } from '@/store/user'

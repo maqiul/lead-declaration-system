@@ -32,7 +32,7 @@ public class BankAccountConfigController {
      */
     @GetMapping
     @Operation(summary = "分页查询银行账户配置")
-    @RequiresPermissions("system:bank:list")
+    @RequiresPermissions("system:bank-account:query")
     public Result<Page<BankAccountConfig>> getBankAccounts(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer current,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
@@ -126,7 +126,7 @@ public class BankAccountConfigController {
      */
     @GetMapping("/{id}")
     @Operation(summary = "根据ID获取银行账户配置")
-    @RequiresPermissions("system:bank:view")
+    @RequiresPermissions("system:bank-account:view")
     public Result<BankAccountConfig> getBankAccountById(@Parameter(description = "账户ID") @PathVariable Long id) {
         BankAccountConfig account = bankAccountConfigService.getById(id);
         if (account == null) {
@@ -140,7 +140,7 @@ public class BankAccountConfigController {
      */
     @PostMapping
     @Operation(summary = "新增银行账户配置")
-    @RequiresPermissions("system:bank:add")
+    @RequiresPermissions("system:bank-account:add")
     public Result<Void> addBankAccount(@RequestBody BankAccountConfig account) {
         // 检查账户名称是否重复
         boolean exists = bankAccountConfigService.lambdaQuery()
@@ -180,7 +180,7 @@ public class BankAccountConfigController {
      */
     @PutMapping("/{id}")
     @Operation(summary = "修改银行账户配置")
-    @RequiresPermissions("system:bank:edit")
+    @RequiresPermissions("system:bank-account:update")
     public Result<Void> updateBankAccount(
             @Parameter(description = "账户ID") @PathVariable Long id,
             @RequestBody BankAccountConfig account) {
@@ -232,7 +232,7 @@ public class BankAccountConfigController {
      */
     @DeleteMapping("/{id}")
     @Operation(summary = "删除银行账户配置")
-    @RequiresPermissions("system:bank:delete")
+    @RequiresPermissions("system:bank-account:delete")
     public Result<Void> deleteBankAccount(@Parameter(description = "账户ID") @PathVariable Long id) {
         BankAccountConfig account = bankAccountConfigService.getById(id);
         if (account == null) {
@@ -252,7 +252,7 @@ public class BankAccountConfigController {
      */
     @PostMapping("/{id}/toggle-status")
     @Operation(summary = "启用/禁用银行账户配置")
-    @RequiresPermissions("system:bank:edit")
+    @RequiresPermissions("system:bank-account:update")
     public Result<Void> toggleStatus(
             @Parameter(description = "账户ID") @PathVariable Long id,
             @Parameter(description = "状态 0-禁用 1-启用") @RequestParam Integer status) {
@@ -276,7 +276,7 @@ public class BankAccountConfigController {
      */
     @PostMapping("/{id}/set-default")
     @Operation(summary = "设置默认银行账户")
-    @RequiresPermissions("system:bank:edit")
+    @RequiresPermissions("system:bank-account:update")
     public Result<Void> setDefault(@Parameter(description = "账户ID") @PathVariable Long id) {
         BankAccountConfig account = bankAccountConfigService.getById(id);
         if (account == null) {

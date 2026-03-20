@@ -72,7 +72,20 @@ export const useUserStore = defineStore('user', {
       
       accessedRoutes.forEach((route: any) => {
         console.log('添加路由:', route.path, route.name)
-        router.addRoute(route)
+        // 如果路由有 children，先添加父路由，再添加子路由
+        if (route.children && route.children.length > 0) {
+          // 添加父路由
+          router.addRoute(route)
+          // 添加子路由，使用父路由的 name 作为 parentName
+          if (route.name) {
+            route.children.forEach((child: any) => {
+              console.log('  添加子路由:', child.path, child.name)
+              router.addRoute(route.name!, child)
+            })
+          }
+        } else {
+          router.addRoute(route)
+        }
       })
       
       // 添加404路由

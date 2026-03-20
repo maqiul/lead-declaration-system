@@ -64,6 +64,10 @@
             </a-space>
           </template>
         </template>
+        <!-- 空状态 -->
+        <template #emptyText>
+          <a-empty description="暂无历史记录" />
+        </template>
       </a-table>
     </a-card>
 
@@ -112,15 +116,26 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
+import { 
+  getDeclarationList, 
+  getDeclarationDetail, 
+  exportDeclaration,
+  type DeclarationQueryParams 
+} from '@/api/business/declaration'
+
+import type { Dayjs } from 'dayjs'
+
+const router = useRouter()
 
 // 搜索表单
 const searchForm = reactive({
   formNo: '',
-  dateRange: [],
-  status: ''
+  dateRange: undefined as [Dayjs, Dayjs] | undefined,
+  status: '' as string | number
 })
 
 // 历史记录列表
@@ -134,7 +149,7 @@ const pagination = reactive({
   total: 0,
   showSizeChanger: true,
   showQuickJumper: true,
-  showTotal: (total) => `共 ${total} 条记录`
+  showTotal: (total: number) => `共 ${total} 条记录`
 })
 
 // 表格列配置
@@ -171,105 +186,105 @@ const cartonColumns = [
 
 // 详情弹窗
 const detailVisible = ref(false)
-const currentDetail = ref(null)
+const currentDetail = ref<any>(null)
 
 // 加载历史记录
 const loadHistory = async () => {
   try {
     loading.value = true
-    const params = {
-      pageNum: pagination.current,
-      pageSize: pagination.pageSize,
-      formNo: searchForm.formNo,
-      status: searchForm.status,
-      startDate: searchForm.dateRange && searchForm.dateRange[0] ? searchForm.dateRange[0].format('YYYY-MM-DD') : '',
-      endDate: searchForm.dateRange && searchForm.dateRange[1] ? searchForm.dateRange[1].format('YYYY-MM-DD') : ''
-    }
-
+    
     // 构建查询参数
-    const queryParams = new URLSearchParams()
-    Object.keys(params).forEach(key => {
-      if (params[key] !== '' && params[key] !== null && params[key] !== undefined) {
-        queryParams.append(key, params[key])
-      }
-    })
+    const params: DeclarationQueryParams = {
+      pageNum: pagination.current,
+      pageSize: pagination.pageSize
+    }
     
-    const response = await fetch(`/api/declaration/form/list?${queryParams.toString()}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
+    // 添加可选的筛选条件
+    if (searchForm.formNo) {
+      params.formNo = searchForm.formNo
+    }
+    if (searchForm.status !== '' && searchForm.status !== undefined) {
+      params.status = Number(searchForm.status)
+    }
+    if (searchForm.dateRange && searchForm.dateRange.length === 2) {
+      params.startTime = searchForm.dateRange[0]?.format?.('YYYY-MM-DD') || ''
+      params.endTime = searchForm.dateRange[1]?.format?.('YYYY-MM-DD') || ''
+    }
     
-    const result = await response.json()
+    const result = await getDeclarationList(params) as any
     console.log('查询结果:', result)
     
     if (result.code === 200) {
-      historyList.value = result.data.records || []
-      pagination.total = result.data.total || 0
+      historyList.value = result.data?.records || result.data?.list || []
+      pagination.total = result.data?.total || 0
     } else {
-      message.error('查询失败：' + result.msg)
+      message.error('查询失败：' + (result.msg || '未知错误'))
     }
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('加载历史记录失败:', error)
-    message.error('加载失败：' + error.message)
+    message.error('加载失败：' + (error.message || '网络错误'))
   } finally {
     loading.value = false
   }
 }
 
 // 表格分页变化
-const handleTableChange = (pag) => {
+const handleTableChange = (pag: any) => {
   pagination.current = pag.current
   pagination.pageSize = pag.pageSize
   loadHistory()
 }
 
 // 查看详情
-const viewDetail = async (id) => {
+const viewDetail = async (id: number) => {
   try {
-    const response = await fetch(`/api/declaration/form/${id}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-    
-    const result = await response.json()
+    const result = await getDeclarationDetail(id) as any
     console.log('详情查询结果:', result)
     
     if (result.code === 200) {
       currentDetail.value = result.data
+      detailVisible.value = true
     } else {
-      message.error('获取详情失败：' + result.msg)
-      return
+      message.error('获取详情失败：' + (result.msg || '未知错误'))
     }
-    
-    detailVisible.value = true
-  } catch (error) {
+  } catch (error: any) {
     console.error('获取详情失败:', error)
-    message.error('获取详情失败：' + error.message)
+    message.error('获取详情失败：' + (error.message || '网络错误'))
   }
 }
 
 // 编辑申报单
-const editForm = (id) => {
-  // TODO: 跳转到编辑页面
-  console.log('编辑申报单:', id)
-  message.info('编辑功能待实现')
+const editForm = (id: number) => {
+  router.push(`/declaration/edit/${id}`)
 }
 
 // 导出申报单
-const exportForm = (id) => {
-  // TODO: 调用导出功能
-  console.log('导出申报单:', id)
-  message.info('导出功能待实现')
+const exportForm = async (id: number) => {
+  try {
+    message.loading({ content: '正在导出...', key: 'export' })
+    const blob = await exportDeclaration(id) as any
+    
+    // 创建下载链接
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `申报单_${id}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    message.success({ content: '导出成功', key: 'export' })
+  } catch (error: any) {
+    console.error('导出失败:', error)
+    message.error({ content: '导出失败：' + (error.message || '网络错误'), key: 'export' })
+  }
 }
 
 // 获取状态文本
-const getStatusText = (status) => {
-  const statusMap = {
+const getStatusText = (status: number) => {
+  const statusMap: Record<number, string> = {
     0: '草稿',
     1: '已提交',
     2: '已审核',
@@ -279,8 +294,8 @@ const getStatusText = (status) => {
 }
 
 // 获取状态颜色
-const getStatusColor = (status) => {
-  const colorMap = {
+const getStatusColor = (status: number) => {
+  const colorMap: Record<number, string> = {
     0: 'default',
     1: 'processing',
     2: 'success',
@@ -290,7 +305,7 @@ const getStatusColor = (status) => {
 }
 
 // 格式化日期
-const formatDate = (date) => {
+const formatDate = (date: string | Date | null | undefined) => {
   if (!date) return ''
   return new Date(date).toLocaleDateString('zh-CN')
 }

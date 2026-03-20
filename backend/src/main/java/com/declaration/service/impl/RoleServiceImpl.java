@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -156,12 +157,22 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean assignMenuToRole(Long roleId, List<Long> menuIds) {
+        // 参数校验
+        if (roleId == null) {
+            throw new IllegalArgumentException("角色ID不能为空");
+        }
+        
         // 删除原有菜单关联
         roleMenuDao.delete(new LambdaQueryWrapper<RoleMenu>().eq(RoleMenu::getRoleId, roleId));
         
         // 添加新菜单关联
         if (CollUtil.isNotEmpty(menuIds)) {
             for (Long menuId : menuIds) {
+                if (menuId == null) {
+                    log.warn("跳过空的菜单ID");
+                    continue;
+                }
+                
                 RoleMenu roleMenu = new RoleMenu();
                 roleMenu.setRoleId(roleId);
                 roleMenu.setMenuId(menuId);
@@ -197,13 +208,20 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
         );
         
         if (CollUtil.isEmpty(allMenus)) {
+            log.warn("没有找到启用的菜单");
             return true;
         }
         
         // 提取所有菜单ID
         List<Long> allMenuIds = allMenus.stream()
             .map(Menu::getId)
+            .filter(Objects::nonNull)
             .collect(Collectors.toList());
+        
+        if (CollUtil.isEmpty(allMenuIds)) {
+            log.warn("没有有效的菜单ID");
+            return true;
+        }
         
         // 删除原有菜单关联
         roleMenuDao.delete(new LambdaQueryWrapper<RoleMenu>().eq(RoleMenu::getRoleId, roleId));

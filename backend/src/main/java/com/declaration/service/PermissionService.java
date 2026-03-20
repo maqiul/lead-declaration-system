@@ -30,6 +30,14 @@ public interface PermissionService {
      * @return 角色标识集合
      */
     Set<String> getUserRoles(Long userId);
+    
+    /**
+     * 获取用户角色ID列表
+     *
+     * @param userId 用户ID
+     * @return 角色ID列表
+     */
+    List<Long> getUserRoleIds(Long userId);
 
     /**
      * 获取用户菜单树

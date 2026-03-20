@@ -137,31 +137,6 @@
         </a-form-item>
       </a-form>
     </a-modal>
-
-    <!-- 重置密码弹窗 -->
-    <a-modal
-      v-model:open="resetPwdVisible"
-      title="重置密码"
-      :confirm-loading="resetPwdLoading"
-      @ok="handleResetPwdOk"
-      @cancel="handleResetPwdCancel"
-      :width="modalWidth"
-      :style="{ maxWidth: '90vw' }"
-    >
-      <a-form
-        ref="resetPwdFormRef"
-        :model="resetPwdForm"
-        :rules="resetPwdRules"
-        layout="vertical"
-      >
-        <a-form-item label="新密码" name="password">
-          <a-input-password v-model:value="resetPwdForm.password" placeholder="请输入新密码" />
-        </a-form-item>
-        <a-form-item label="确认密码" name="confirmPassword">
-          <a-input-password v-model:value="resetPwdForm.confirmPassword" placeholder="请再次输入密码" />
-        </a-form-item>
-      </a-form>
-    </a-modal>
   </div>
 </template>
 
@@ -171,7 +146,7 @@ import { message } from 'ant-design-vue'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { TableProps } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
-import { getUserList, addUser, updateUser, deleteUser, resetUserPwd } from '@/api/system'
+import { getUserList, getUser, addUser, updateUser, deleteUser, resetUserPwd, getOrgTree, getRoleList } from '@/api/system'
 
 // 类型定义
 interface User {
@@ -296,59 +271,10 @@ const formRules: Record<string, Rule[]> = {
 }
 
 // 组织树数据
-const orgTreeData = ref([
-  {
-    title: '总公司',
-    value: 1,
-    children: [
-      {
-        title: '技术部',
-        value: 2
-      },
-      {
-        title: '销售部',
-        value: 3
-      }
-    ]
-  }
-])
+const orgTreeData = ref<any[]>([])
 
 // 角色选项
-const roleOptions = ref([
-  { label: '超级管理员', value: 1 },
-  { label: '普通用户', value: 2 },
-  { label: '部门管理员', value: 3 }
-])
-
-// 重置密码相关
-const resetPwdVisible = ref(false)
-const resetPwdLoading = ref(false)
-const resetPwdFormRef = ref()
-const resetPwdForm = reactive({
-  userId: undefined as number | undefined,
-  password: '',
-  confirmPassword: ''
-})
-
-// 重置密码验证规则
-const resetPwdRules: Record<string, Rule[]> = {
-  password: [
-    { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, message: '密码长度至少6位', trigger: 'blur' }
-  ],
-  confirmPassword: [
-    { required: true, message: '请确认密码', trigger: 'blur' },
-    {
-      validator: (_: any, value: string) => {
-        if (value !== resetPwdForm.password) {
-          return Promise.reject('两次输入的密码不一致')
-        }
-        return Promise.resolve()
-      },
-      trigger: 'blur'
-    }
-  ]
-}
+const roleOptions = ref<any[]>([])
 
 // 响应式宽度计算
 const modalWidth = computed(() => {
@@ -415,18 +341,37 @@ const handleAdd = () => {
   modalVisible.value = true
 }
 
-const handleEdit = (record: User) => {
+const handleEdit = async (record: User) => {
   modalTitle.value = '编辑用户'
-  Object.assign(formData, {
-    id: record.id,
-    username: record.username,
-    nickname: record.nickname,
-    phone: record.phone,
-    email: record.email,
-    orgId: record.orgId,
-    roleIds: [1], // 模拟数据
-    status: record.status
-  })
+  try {
+    // 调用API获取用户详情（包含roleIds）
+    const response = await getUser(record.id)
+    const userDetail = response.data?.data || response.data
+    
+    Object.assign(formData, {
+      id: userDetail.id,
+      username: userDetail.username,
+      nickname: userDetail.nickname,
+      phone: userDetail.phone,
+      email: userDetail.email,
+      orgId: userDetail.orgId,
+      roleIds: userDetail.roleIds || [],
+      status: userDetail.status
+    })
+  } catch (error) {
+    console.error('获取用户详情失败:', error)
+    // 降级：使用record中的数据，roleIds默认空
+    Object.assign(formData, {
+      id: record.id,
+      username: record.username,
+      nickname: record.nickname,
+      phone: record.phone,
+      email: record.email,
+      orgId: record.orgId,
+      roleIds: [],
+      status: record.status
+    })
+  }
   modalVisible.value = true
 }
 
@@ -464,11 +409,17 @@ const handleBatchDelete = async () => {
   }
 }
 
-const handleResetPwd = (record: User) => {
-  resetPwdForm.userId = record.id
-  resetPwdForm.password = ''
-  resetPwdForm.confirmPassword = ''
-  resetPwdVisible.value = true
+const handleResetPwd = async (record: User) => {
+  try {
+    const response = await resetUserPwd(record.id)
+    if (response.data?.code === 200) {
+      message.success(response.data.message || '密码重置成功')
+    } else {
+      message.error(response.data?.message || '密码重置失败')
+    }
+  } catch (error) {
+    message.error('密码重置失败')
+  }
 }
 
 const handleTableChange = (pag: any) => {
@@ -513,33 +464,50 @@ const handleModalCancel = () => {
   formRef.value?.resetFields()
 }
 
-const handleResetPwdOk = async () => {
+// 加载组织树数据
+const loadOrgTree = async () => {
   try {
-    await resetPwdFormRef.value?.validateFields()
-    resetPwdLoading.value = true
-    
-    const response = await resetUserPwd(resetPwdForm.userId!, resetPwdForm.password)
+    const response = await getOrgTree()
     if (response.data?.code === 200) {
-      message.success('密码重置成功')
-      resetPwdVisible.value = false
+      // 转换数据格式以适应 a-tree-select
+      const convertToTreeData = (orgs: any[]): any[] => {
+        return orgs.map(org => ({
+          title: org.orgName,
+          value: org.id,
+          children: org.children ? convertToTreeData(org.children) : undefined
+        }))
+      }
+      orgTreeData.value = convertToTreeData(response.data.data)
     } else {
-      message.error(response.data?.message || '密码重置失败')
+      message.error(response.data?.message || '获取组织树失败')
     }
   } catch (error) {
-    message.error('密码重置失败')
-  } finally {
-    resetPwdLoading.value = false
+    message.error('获取组织树失败')
   }
 }
 
-const handleResetPwdCancel = () => {
-  resetPwdVisible.value = false
-  resetPwdFormRef.value?.resetFields()
+// 加载角色列表
+const loadRoleList = async () => {
+  try {
+    const response = await getRoleList({ pageNum: 1, pageSize: 1000 })
+    if (response.data?.code === 200) {
+      roleOptions.value = response.data.data.records.map((role: any) => ({
+        label: role.roleName,
+        value: role.id
+      }))
+    } else {
+      message.error(response.data?.message || '获取角色列表失败')
+    }
+  } catch (error) {
+    message.error('获取角色列表失败')
+  }
 }
 
 // 生命周期
 onMounted(() => {
   loadData()
+  loadOrgTree()
+  loadRoleList()
 })
 </script>
 

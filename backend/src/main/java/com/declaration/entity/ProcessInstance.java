@@ -47,7 +47,7 @@ public class ProcessInstance extends BaseEntity {
     private Integer status;
 
     @Schema(description = "创建时间")
-    private LocalDateTime createTimeDb;
+    private LocalDateTime createTime;
 
     @Schema(description = "业务KEY")
     private String businessKey;
@@ -59,5 +59,6 @@ public class ProcessInstance extends BaseEntity {
     private LocalDateTime endTime;
 
     @Schema(description = "删除原因")
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String deleteReason;
 }

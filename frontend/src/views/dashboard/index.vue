@@ -66,13 +66,16 @@
             <h3 class="chart-title">最近流程</h3>
             <a-button type="link" size="small" @click="goToPage('/workflow/instance')">查看全部</a-button>
           </div>
-          <a-table :columns="processColumns" :data-source="processData" :pagination="false" size="small">
+          <a-table :columns="processColumns" :data-source="processData" :pagination="false" size="small" :loading="processLoading">
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'status'">
                 <a-tag :color="getStatusColor(record.status)" :bordered="false">
                   {{ record.status }}
                 </a-tag>
               </template>
+            </template>
+            <template #emptyText>
+              <a-empty description="暂无流程数据" :image="null" />
             </template>
           </a-table>
         </div>
@@ -85,20 +88,25 @@
             <h3 class="chart-title">待办任务</h3>
             <a-button type="link" size="small" @click="goToPage('/workflow/task')">查看全部</a-button>
           </div>
-          <a-list item-layout="horizontal" :data-source="taskData" :pagination="false">
-            <template #renderItem="{ item }">
-              <a-list-item class="task-item">
-                <a-list-item-meta :description="item.description">
-                  <template #title>
-                    <a class="task-link" @click="handleTaskClick(item)">{{ item.title }}</a>
-                  </template>
-                </a-list-item-meta>
-                <div>
-                  <a-tag :color="getTimeColor(item.time)" :bordered="false" size="small">{{ item.time }}</a-tag>
-                </div>
-              </a-list-item>
-            </template>
-          </a-list>
+          <a-spin :spinning="taskLoading">
+            <a-list item-layout="horizontal" :data-source="taskData" :pagination="false">
+              <template #renderItem="{ item }">
+                <a-list-item class="task-item">
+                  <a-list-item-meta :description="item.description">
+                    <template #title>
+                      <a class="task-link" @click="handleTaskClick(item)">{{ item.title }}</a>
+                    </template>
+                  </a-list-item-meta>
+                  <div>
+                    <a-tag :color="getTimeColor(item.time)" :bordered="false" size="small">{{ item.time }}</a-tag>
+                  </div>
+                </a-list-item>
+              </template>
+              <template #header v-if="taskData.length === 0 && !taskLoading">
+                <a-empty description="暂无待办任务" :image="null" />
+              </template>
+            </a-list>
+          </a-spin>
         </div>
       </a-col>
     </a-row>
@@ -121,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, markRaw } from 'vue'
+import { ref, onMounted, onUnmounted, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import {
@@ -135,16 +143,61 @@ import {
   RiseOutlined,
   FallOutlined
 } from '@ant-design/icons-vue'
+import { getDashboardStats, getDashboardCharts } from '@/api/dashboard'
+import { getMyProcessInstances, getMyAssignedTasks, type ProcessInstance, type TaskInstance } from '@/api/workflow'
 
 const router = useRouter()
 
 // 统计卡片
 const statCards = ref([
-  { title: '用户总数', value: 112893, icon: markRaw(UserOutlined), theme: 'indigo', trend: '+12.5%', trendUp: true },
-  { title: '流程实例数', value: 8765, icon: markRaw(ProfileOutlined), theme: 'emerald', trend: '+8.2%', trendUp: true },
-  { title: '待办任务', value: 234, icon: markRaw(CheckCircleOutlined), theme: 'amber', trend: '-3.1%', trendUp: false },
-  { title: '今日新增', value: 12, icon: markRaw(PlusCircleOutlined), theme: 'rose', trend: '+2', trendUp: true },
+  { title: '用户总数', value: 0, icon: markRaw(UserOutlined), theme: 'indigo', trend: '', trendUp: true },
+  { title: '总流程数', value: 0, icon: markRaw(ProfileOutlined), theme: 'emerald', trend: '', trendUp: true },
+  { title: '流转中待办', value: 0, icon: markRaw(CheckCircleOutlined), theme: 'amber', trend: '', trendUp: false },
+  { title: '今日新增单据', value: 0, icon: markRaw(PlusCircleOutlined), theme: 'rose', trend: '', trendUp: true },
 ])
+
+const fetchStatsData = async () => {
+  try {
+    const res: any = await getDashboardStats()
+    if (res.data?.code === 200) {
+      const data = res.data.data || {} // 添加默认空对象
+      statCards.value[0].value = data.userCount || 0
+      statCards.value[1].value = data.processInstanceCount || 0
+      statCards.value[2].value = data.pendingTaskCount || 0
+      statCards.value[3].value = data.todayNewCount || 0
+      
+      // 使用API返回的趋势数据（如果有），添加空值检查
+      if (data.userCountTrend) {
+        statCards.value[0].trend = data.userCountTrend
+        statCards.value[0].trendUp = !data.userCountTrend.startsWith('-')
+      }
+      if (data.processInstanceCountTrend) {
+        statCards.value[1].trend = data.processInstanceCountTrend
+        statCards.value[1].trendUp = !data.processInstanceCountTrend.startsWith('-')
+      }
+      if (data.pendingTaskCountTrend) {
+        statCards.value[2].trend = data.pendingTaskCountTrend
+        statCards.value[2].trendUp = !data.pendingTaskCountTrend.startsWith('-')
+      }
+      if (data.todayNewCountTrend) {
+        statCards.value[3].trend = data.todayNewCountTrend
+        statCards.value[3].trendUp = !data.todayNewCountTrend.startsWith('-')
+      }
+    } else {
+      // API失败时显示0，不使用Mock数据
+      statCards.value[0].value = 0
+      statCards.value[1].value = 0
+      statCards.value[2].value = 0
+      statCards.value[3].value = 0
+    }
+  } catch (err) {
+    // API失败时显示0，不使用Mock数据
+    statCards.value[0].value = 0
+    statCards.value[1].value = 0
+    statCards.value[2].value = 0
+    statCards.value[3].value = 0
+  }
+}
 
 // 快捷操作
 const quickActions = ref([
@@ -166,22 +219,100 @@ const processColumns = [
   { title: '时间', dataIndex: 'startTime', key: 'startTime' },
 ]
 
-// 数据
-const processData = ref([
-  { key: '1', name: '请假审批流程', starter: '张三', status: '运行中', startTime: '2026-03-13 10:00' },
-  { key: '2', name: '费用报销流程', starter: '李四', status: '已完成', startTime: '2026-03-13 09:30' },
-  { key: '3', name: '合同审批流程', starter: '王五', status: '运行中', startTime: '2026-03-13 08:45' },
-  { key: '4', name: '采购申请流程', starter: '赵六', status: '已终止', startTime: '2026-03-13 07:20' },
-  { key: '5', name: '项目立项流程', starter: '钱七', status: '运行中', startTime: '2026-03-13 06:15' },
-])
+// 数据与加载状态
+const processData = ref<any[]>([])
+const taskData = ref<any[]>([])
+const processLoading = ref(false)
+const taskLoading = ref(false)
 
-const taskData = ref([
-  { id: 1, title: '部门经理审批 - 请假申请', description: '申请人：张三，类型：年假，天数：3天', time: '2小时前' },
-  { id: 2, title: '财务审核 - 费用报销', description: '申请人：李四，金额：1200元', time: '1天前' },
-  { id: 3, title: '法务审查 - 合同审批', description: '合同编号：HT20260313001', time: '2天前' },
-  { id: 4, title: '总经理审批 - 重大项目', description: '项目：数字化转型，预算200万', time: '3天前' },
-  { id: 5, title: '人事处理 - 入职手续', description: '新员工：孙八，岗位：Java工程师', time: '5天前' },
-])
+// 获取流程状态文本
+const getProcessStatusText = (status: number): string => {
+  const statusMap: Record<number, string> = {
+    0: '运行中',
+    1: '已完成',
+    2: '已终止',
+    3: '挂起'
+  }
+  return statusMap[status] || '未知'
+}
+
+// 格式化时间显示
+const formatTime = (timeStr: string): string => {
+  if (!timeStr) return ''
+  const date = new Date(timeStr)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}`
+}
+
+// 计算相对时间
+const getRelativeTime = (timeStr: string): string => {
+  if (!timeStr) return '未知时间'
+  const now = new Date()
+  const time = new Date(timeStr)
+  const diff = now.getTime() - time.getTime()
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+  
+  if (minutes < 60) return `${minutes}分钟前`
+  if (hours < 24) return `${hours}小时前`
+  if (days < 30) return `${days}天前`
+  return formatTime(timeStr)
+}
+
+// 获取流程实例数据
+const fetchProcessData = async () => {
+  processLoading.value = true
+  try {
+    const res: any = await getMyProcessInstances()
+    if (res.data?.code === 200 && Array.isArray(res.data.data)) {
+      const instances: ProcessInstance[] = res.data.data
+      // 取最近5条数据，添加空值检查
+      processData.value = instances.slice(0, 5).map((item, index) => ({
+        key: String(index + 1),
+        name: item?.processDefinitionName || '未知流程',
+        starter: item?.starterName || '未知',
+        status: getProcessStatusText(item?.status || 0),
+        startTime: formatTime(item?.startTime || '')
+      })).filter(item => item.name && item.starter) // 过滤掉无效数据
+    } else {
+      processData.value = []
+    }
+  } catch (err) {
+    processData.value = []
+  } finally {
+    processLoading.value = false
+  }
+}
+
+// 获取待办任务数据
+const fetchTaskData = async () => {
+  taskLoading.value = true
+  try {
+    const res: any = await getMyAssignedTasks()
+    if (res.data?.code === 200 && Array.isArray(res.data.data)) {
+      const tasks: TaskInstance[] = res.data.data
+      // 取最近5条数据，添加空值检查
+      taskData.value = tasks.slice(0, 5).map((item) => ({
+        id: item?.id || 0,
+        taskId: item?.taskId || '',
+        title: `${item?.taskName || item?.activityName || '待处理任务'} - ${item?.processDefinitionName || '流程任务'}`,
+        description: item?.description || `处理人：${item?.assigneeName || '待签收'}`,
+        time: getRelativeTime(item?.createTime || '')
+      })).filter(item => item.title && item.description) // 过滤掉无效数据
+    } else {
+      taskData.value = []
+    }
+  } catch (err) {
+    taskData.value = []
+  } finally {
+    taskLoading.value = false
+  }
+}
 
 const getStatusColor = (status: string) => {
   const map: Record<string, string> = { '运行中': 'blue', '已完成': 'green', '已终止': 'red', '挂起': 'orange' }
@@ -203,7 +334,7 @@ const goToPage = (path: string) => {
 }
 
 // 初始化图表
-const initCharts = () => {
+const initCharts = async () => {
   const colors = {
     indigo: '#6366F1',
     violet: '#8B5CF6',
@@ -212,61 +343,87 @@ const initCharts = () => {
     rose: '#F43F5E',
   }
 
-  if (chartRef.value) {
-    const barChart = echarts.init(chartRef.value)
-    barChart.setOption({
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: 'rgba(15,23,42,0.9)', borderColor: 'transparent', textStyle: { color: '#fff' } },
-      grid: { left: '3%', right: '4%', bottom: '3%', top: '8%', containLabel: true },
-      xAxis: [{ type: 'category', data: ['请假审批', '费用报销', '合同审批', '采购申请', '项目立项'], axisTick: { show: false }, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } }],
-      yAxis: [{ type: 'value', axisLine: { show: false }, axisTick: { show: false }, splitLine: { lineStyle: { color: '#F1F5F9', type: 'dashed' } }, axisLabel: { color: '#94A3B8' } }],
-      series: [{
-        name: '流程数量',
-        type: 'bar',
-        barWidth: '50%',
-        data: [120, 200, 150, 80, 70],
-        itemStyle: {
-          borderRadius: [6, 6, 0, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#3B82F6' },
-            { offset: 1, color: '#1E40AF' }
-          ])
+  try {
+    const res: any = await getDashboardCharts();
+    if (res.data?.code === 200) {
+      const chartData = res.data.data || {}; // 添加默认空对象
+      const processChart = chartData.processChart || { categories: [], seriesData: [] };
+      const taskPieChart = chartData.taskPieChart || { seriesData: [] };
+      
+      if (chartRef.value) {
+        let barChart = echarts.getInstanceByDom(chartRef.value)
+        if (!barChart) {
+          barChart = echarts.init(chartRef.value)
         }
-      }]
-    })
+        barChart.setOption({
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: 'rgba(15,23,42,0.9)', borderColor: 'transparent', textStyle: { color: '#fff' } },
+          grid: { left: '3%', right: '4%', bottom: '3%', top: '8%', containLabel: true },
+          xAxis: [{ type: 'category', data: processChart.categories || [], axisTick: { show: false }, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } }],
+          yAxis: [{ type: 'value', axisLine: { show: false }, axisTick: { show: false }, splitLine: { lineStyle: { color: '#F1F5F9', type: 'dashed' } }, axisLabel: { color: '#94A3B8' } }],
+          series: [{
+            name: '流程数量',
+            type: 'bar',
+            barWidth: '50%',
+            data: processChart.seriesData || [],
+            itemStyle: {
+              borderRadius: [6, 6, 0, 0],
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: '#3B82F6' },
+                { offset: 1, color: '#1E40AF' }
+              ])
+            }
+          }]
+        })
+      }
+      
+      if (pieChartRef.value) {
+        let pieChart = echarts.getInstanceByDom(pieChartRef.value)
+        if (!pieChart) {
+          pieChart = echarts.init(pieChartRef.value)
+        }
+        pieChart.setOption({
+          tooltip: { trigger: 'item', backgroundColor: 'rgba(30,27,75,0.9)', borderColor: 'transparent', textStyle: { color: '#fff' } },
+          legend: { top: '5%', left: 'center', textStyle: { color: '#64748B' } },
+          series: [{
+            name: '任务分布',
+            type: 'pie',
+            radius: ['42%', '72%'],
+            avoidLabelOverlap: false,
+            itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 },
+            label: { show: false, position: 'center' },
+            emphasis: { label: { show: true, fontSize: 18, fontWeight: '600', color: '#1E293B' } },
+            labelLine: { show: false },
+            color: [colors.indigo, colors.violet, colors.emerald, colors.rose],
+            data: taskPieChart.seriesData || []
+          } as any]
+        })
+      }
+    }
+  } catch(e) {
+    // 图表数据加载失败
   }
-  
+}
+
+// 处理窗口缩放
+const handleResize = () => {
+  if (chartRef.value) {
+    echarts.getInstanceByDom(chartRef.value)?.resize()
+  }
   if (pieChartRef.value) {
-    const pieChart = echarts.init(pieChartRef.value)
-    pieChart.setOption({
-      tooltip: { trigger: 'item', backgroundColor: 'rgba(30,27,75,0.9)', borderColor: 'transparent', textStyle: { color: '#fff' } },
-      legend: { top: '5%', left: 'center', textStyle: { color: '#64748B' } },
-      series: [{
-        name: '任务分布',
-        type: 'pie',
-        radius: ['42%', '72%'],
-        avoidLabelOverlap: false,
-        itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 },
-        label: { show: false, position: 'center' },
-        emphasis: { label: { show: true, fontSize: 18, fontWeight: '600', color: '#1E293B' } },
-        labelLine: { show: false },
-        color: [colors.indigo, colors.violet, colors.emerald, colors.rose],
-        data: [
-          { value: 48, name: '待审批' },
-          { value: 36, name: '处理中' },
-          { value: 24, name: '已完成' },
-          { value: 12, name: '已拒绝' }
-        ]
-      } as any]
-    })
+    echarts.getInstanceByDom(pieChartRef.value)?.resize()
   }
 }
 
 onMounted(() => {
+  fetchStatsData()
+  fetchProcessData()
+  fetchTaskData()
   initCharts()
-  window.addEventListener('resize', () => {
-    echarts.getInstanceByDom(chartRef.value!)?.resize()
-    echarts.getInstanceByDom(pieChartRef.value!)?.resize()
-  })
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 

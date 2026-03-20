@@ -55,12 +55,19 @@ export function deleteUser(id: number) {
   })
 }
 
+// 获取用户详情
+export function getUser(id: number) {
+  return request({
+    url: `/user/${id}`,
+    method: 'get'
+  })
+}
+
 // 重置用户密码
-export function resetUserPwd(userId: number, password: string) {
+export function resetUserPwd(userId: number) {
   return request({
     url: `/user/${userId}/password`,
-    method: 'put',
-    data: { password }
+    method: 'put'
   })
 }
 
@@ -134,11 +141,11 @@ export function getRoleMenus(roleId: number) {
 }
 
 // 更新角色菜单权限
-export function updateRoleMenus(roleId: number, menuIds: number[]) {
+export function updateRoleMenus(data: { roleId: number; menuIds: number[] }) {
   return request({
     url: `/role/menu`,
     method: 'post',
-    data: { roleId, menuIds }
+    data
   })
 }
 
@@ -269,5 +276,47 @@ export function deleteMenu(id: number) {
   return request({
     url: `/system/menu/${id}`,
     method: 'delete'
+  })
+}
+
+// 个人中心相关API
+export interface ProfileForm {
+  nickname: string
+  phone?: string
+  email?: string
+}
+
+export interface ChangePasswordForm {
+  oldPassword: string
+  newPassword: string
+}
+
+// 更新个人资料
+export function updateUserProfile(data: ProfileForm) {
+  return request({
+    url: '/user/profile',
+    method: 'put',
+    data
+  })
+}
+
+// 修改密码
+export function changePassword(data: ChangePasswordForm) {
+  return request({
+    url: '/user/password',
+    method: 'put',
+    data
+  })
+}
+
+// 上传头像
+export function uploadAvatar(data: FormData) {
+  return request({
+    url: '/user/avatar',
+    method: 'post',
+    data,
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
   })
 }

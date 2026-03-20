@@ -472,21 +472,6 @@ const handleExpandAll = () => {
   }
 }
 
-// 获取所有节点的key
-const getAllNodeKeys = (nodes: Menu[]): (number | string)[] => {
-  const keys: (number | string)[] = []
-  const traverse = (items: Menu[]) => {
-    items.forEach(item => {
-      keys.push(item.id as number | string)
-      if (item.children && item.children.length > 0) {
-        traverse(item.children)
-      }
-    })
-  }
-  traverse(nodes)
-  return keys
-}
-
 // 处理单个节点展开/折叠
 const handleExpand = (expanded: boolean, record: Menu) => {
   const recordId = record.id as number | string

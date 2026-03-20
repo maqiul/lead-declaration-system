@@ -42,37 +42,7 @@
         :pagination="pagination"
         @change="handleTableChange"
         rowKey="id"
-      >
-        <template #status="{ record }">
-          <a-tag :color="record.status === 1 ? 'green' : 'red'">
-            {{ record.status === 1 ? '启用' : '禁用' }}
-          </a-tag>
-        </template>
-        
-        <template #action="{ record }">
-          <a-space>
-            <a-button type="link" size="small" @click="openEditModal(record)">编辑</a-button>
-            <a-popconfirm
-              title="确定要切换状态吗？"
-              @confirm="toggleStatus(record)"
-            >
-              <a-button 
-                type="link" 
-                size="small" 
-                :danger="record.status === 1"
-              >
-                {{ record.status === 1 ? '禁用' : '启用' }}
-              </a-button>
-            </a-popconfirm>
-            <a-popconfirm
-              title="确定要删除吗？"
-              @confirm="handleDelete(record.id)"
-            >
-              <a-button type="link" size="small" danger>删除</a-button>
-            </a-popconfirm>
-          </a-space>
-        </template>
-      </a-table>
+      />
     </a-card>
 
     <!-- 编辑弹窗 -->
@@ -167,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, h } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
@@ -296,7 +266,11 @@ const columns = [
     title: '状态',
     key: 'status',
     width: 80,
-    slots: { customRender: 'status' }
+    customRender: ({ record }: { record: CountryInfo }) => {
+      return h('a-tag', { 
+        color: record.status === 1 ? 'green' : 'red'
+      }, record.status === 1 ? '启用' : '禁用')
+    }
   },
   {
     title: '排序',
@@ -314,7 +288,35 @@ const columns = [
     title: '操作',
     key: 'action',
     width: 180,
-    slots: { customRender: 'action' }
+    customRender: ({ record }: { record: CountryInfo }) => {
+      return h('a-space', {}, [
+        h('a-button', {
+          type: 'link',
+          size: 'small',
+          onClick: () => openEditModal(record)
+        }, '编辑'),
+        h('a-popconfirm', {
+          title: '确定要切换状态吗？',
+          onConfirm: () => toggleStatus(record)
+        }, {
+          default: () => h('a-button', {
+            type: 'link',
+            size: 'small',
+            danger: record.status === 1
+          }, record.status === 1 ? '禁用' : '启用')
+        }),
+        h('a-popconfirm', {
+          title: '确定要删除吗？',
+          onConfirm: () => handleDelete(record.id!)
+        }, {
+          default: () => h('a-button', {
+            type: 'link',
+            size: 'small',
+            danger: true
+          }, '删除')
+        })
+      ])
+    }
   }
 ]
 
@@ -369,7 +371,6 @@ const loadCountryList = async () => {
       message.error(response.data?.message || '加载失败')
     }
   } catch (error) {
-    console.error('加载国家列表失败:', error)
     message.error('加载失败')
   } finally {
     loading.value = false
@@ -473,7 +474,6 @@ const handleSave = async () => {
       message.error(response.data?.message || (editingId.value ? '更新失败' : '新增失败'))
     }
   } catch (error) {
-    console.error('保存失败', error)
     message.error('保存失败')
   } finally {
     saving.value = false

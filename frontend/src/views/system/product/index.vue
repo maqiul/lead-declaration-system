@@ -41,26 +41,27 @@
         @change="handleTableChange"
         rowKey="id"
       >
-        <template #declarationElements="{ record }">
-          <a-button type="link" size="small" @click="viewElements(record)">
-            查看申报要素
-          </a-button>
-        </template>
-
-        <template #action="{ record }">
-          <a-space>
-            <a-button type="link" size="small" @click="openEditModal(record)">
-              编辑
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'declarationElements'">
+            <a-button type="link" size="small" @click="viewElements(record)">
+              查看申报要素
             </a-button>
-            <a-popconfirm
-              title="确定要删除该商品吗？"
-              @confirm="handleDelete(record.id)"
-            >
-              <a-button type="link" danger size="small">
-                删除
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click="openEditModal(record)">
+                编辑
               </a-button>
-            </a-popconfirm>
-          </a-space>
+              <a-popconfirm
+                title="确定要删除该商品吗？"
+                @confirm="handleDelete((record as any).id)"
+              >
+                <a-button type="link" danger size="small">
+                  删除
+                </a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
         </template>
       </a-table>
     </a-card>
@@ -200,21 +201,23 @@
         size="small"
         rowKey="key"
       >
-        <template #editable="{ record }">
-          <a-tag :color="record.editable ? 'green' : 'default'">
-            {{ record.editable ? '可编辑' : '只读' }}
-          </a-tag>
-        </template>
-        <template #required="{ record }">
-          <a-tag :color="record.required ? 'red' : 'default'">
-            {{ record.required ? '必填' : '选填' }}
-          </a-tag>
-        </template>
-        <template #options="{ record }">
-          <div v-if="record.type === 'select' && record.options">
-            <a-tag v-for="opt in record.options" :key="opt" color="blue">{{ opt }}</a-tag>
-          </div>
-          <span v-else>-</span>
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'editable'">
+            <a-tag :color="(record as any).editable ? 'green' : 'default'">
+              {{ (record as any).editable ? '可编辑' : '只读' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.key === 'required'">
+            <a-tag :color="(record as any).required ? 'red' : 'default'">
+              {{ (record as any).required ? '必填' : '选填' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.key === 'options'">
+            <div v-if="(record as any).type === 'select' && (record as any).options">
+              <a-tag v-for="opt in (record as any).options" :key="opt" color="blue">{{ opt }}</a-tag>
+            </div>
+            <span v-else>-</span>
+          </template>
         </template>
       </a-table>
     </a-modal>

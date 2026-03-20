@@ -18,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -57,6 +59,11 @@ public class PermissionServiceImpl implements PermissionService {
                 @SuppressWarnings("unchecked")
                 Set<String> permissions = (Set<String>) cachedData;
                 return permissions;
+            } else if (cachedData instanceof Collection) {
+                // 兼容 ArrayList 等 Collection 类型（防御性编程）
+                @SuppressWarnings("unchecked")
+                Collection<String> permCollection = (Collection<String>) cachedData;
+                return new HashSet<>(permCollection);
             } else {
                 // 如果类型不匹配，清除缓存
                 redisTemplate.delete(cacheKey);
@@ -120,6 +127,11 @@ public class PermissionServiceImpl implements PermissionService {
                 @SuppressWarnings("unchecked")
                 Set<String> roles = (Set<String>) cachedData;
                 return roles;
+            } else if (cachedData instanceof Collection) {
+                // 兼容 ArrayList 等 Collection 类型（防御性编程）
+                @SuppressWarnings("unchecked")
+                Collection<String> roleCollection = (Collection<String>) cachedData;
+                return new HashSet<>(roleCollection);
             } else {
                 // 如果类型不匹配，清除缓存
                 redisTemplate.delete(cacheKey);
@@ -155,6 +167,22 @@ public class PermissionServiceImpl implements PermissionService {
         redisTemplate.opsForValue().set(cacheKey, roles, CACHE_EXPIRE_TIME, TimeUnit.MINUTES);
         return roles;
     }
+    
+    @Override
+    public List<Long> getUserRoleIds(Long userId) {
+        // 查询用户角色
+        List<UserRole> userRoles = userRoleDao.selectList(
+            new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId)
+        );
+        
+        if (CollUtil.isEmpty(userRoles)) {
+            return new ArrayList<>();
+        }
+        
+        return userRoles.stream()
+            .map(UserRole::getRoleId)
+            .collect(Collectors.toList());
+    }
 
     @Override
     public List<Menu> getUserMenuTree(Long userId) {
@@ -163,23 +191,43 @@ public class PermissionServiceImpl implements PermissionService {
             List<Menu> allMenus = menuDao.selectList(
                 new LambdaQueryWrapper<Menu>()
                     .eq(Menu::getStatus, 1)
+                    .eq(Menu::getIsShow, 1)  // 过滤隐藏菜单
                     .orderByAsc(Menu::getSort)
             );
             return buildMenuTree(allMenus);
         }
         
-        // 查询用户拥有的菜单权限
-        Set<String> permissions = getUserPermissions(userId);
+        // 1. 查询用户的所有角色ID
+        List<Long> roleIds = getUserRoleIds(userId);
+        if (roleIds == null || roleIds.isEmpty()) {
+            return new ArrayList<>();
+        }
         
-        // 查询所有有效的菜单
-        List<Menu> allMenus = menuDao.selectList(
+        // 2. 通过 sys_role_menu 查询用户角色关联的所有菜单ID
+        List<RoleMenu> roleMenus = roleMenuDao.selectList(
+            new LambdaQueryWrapper<RoleMenu>().in(RoleMenu::getRoleId, roleIds)
+        );
+        
+        if (roleMenus == null || roleMenus.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        List<Long> menuIds = roleMenus.stream()
+            .map(RoleMenu::getMenuId)
+            .distinct()
+            .collect(Collectors.toList());
+        
+        // 3. 查询这些菜单的详细信息（只查启用+显示的）
+        List<Menu> userMenus = menuDao.selectList(
             new LambdaQueryWrapper<Menu>()
+                .in(Menu::getId, menuIds)
                 .eq(Menu::getStatus, 1)
+                .eq(Menu::getIsShow, 1)  // 过滤隐藏菜单
                 .orderByAsc(Menu::getSort)
         );
         
-        // 过滤出用户有权访问的菜单
-        return buildMenuTree(filterMenusByPermissions(allMenus, permissions));
+        // 4. 构建菜单树
+        return buildMenuTree(userMenus);
     }
 
     @Override

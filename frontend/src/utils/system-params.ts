@@ -1,6 +1,5 @@
 import { ref } from 'vue'
 import { getSystemParameters, getConfigValue, getSelectOptions } from '@/api/system/config'
-import { message } from 'ant-design-vue'
 
 /**
  * 系统参数Hook

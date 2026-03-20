@@ -107,7 +107,9 @@
             :dataSource="taskData"
             :columns="taskColumns"
             :pagination="false"
+            :loading="taskLoading"
             size="small"
+            :locale="{ emptyText: '暂无任务数据' }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'status'">
@@ -132,7 +134,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { getRunningProcessInstances, suspendProcessInstance, activateProcessInstance, terminateProcessInstance } from '@/api/workflow'
+import { getRunningProcessInstances, suspendProcessInstance, activateProcessInstance, terminateProcessInstance, getTasksByProcessInstance } from '@/api/workflow'
 
 // 类型定义
 interface ProcessInstance {
@@ -170,6 +172,7 @@ const activeTab = ref('basic')
 const detailVisible = ref(false)
 const currentInstance = ref<ProcessInstance | null>(null)
 const taskData = ref<Task[]>([])
+const taskLoading = ref(false)
 
 // 搜索表单
 const searchForm = reactive<SearchForm>({
@@ -280,7 +283,7 @@ const loadData = async () => {
       status: searchForm.status
     }
     
-    const response = await getRunningProcessInstances()
+    const response = await getRunningProcessInstances(params)
     if (response.data?.code === 200) {
       tableData.value = response.data.data.records
       pagination.total = Number(response.data.data.total) || 0
@@ -294,26 +297,30 @@ const loadData = async () => {
   }
 }
 
-const loadTaskData = async (_instanceId: string) => {
-  // 模拟加载任务数据
-  taskData.value = [
-    {
-      taskId: 'task_001',
-      taskName: '部门经理审批',
-      assigneeName: '王经理',
-      status: 1,
-      createTime: '2026-03-13 10:00:00',
-      endTime: '2026-03-13 10:30:00'
-    },
-    {
-      taskId: 'task_002',
-      taskName: '人事审批',
-      assigneeName: '赵人事',
-      status: 0,
-      createTime: '2026-03-13 10:30:00',
-      endTime: null
+const loadTaskData = async (instanceId: string) => {
+  taskLoading.value = true
+  taskData.value = []
+  try {
+    const response = await getTasksByProcessInstance(instanceId)
+    if (response.data?.code === 200) {
+      const tasks = response.data.data || []
+      taskData.value = tasks.map((task: any) => ({
+        taskId: task.taskId || task.id,
+        taskName: task.taskName || task.activityName || task.name,
+        assigneeName: task.assigneeName || task.assignee || '未分配',
+        status: task.status ?? (task.endTime ? 1 : 0),
+        createTime: task.createTime,
+        endTime: task.endTime
+      }))
+    } else {
+      message.error(response.data?.message || '加载任务列表失败')
     }
-  ]
+  } catch (error) {
+    console.error('加载任务列表失败:', error)
+    message.error('加载任务列表失败')
+  } finally {
+    taskLoading.value = false
+  }
 }
 
 const handleSearch = () => {

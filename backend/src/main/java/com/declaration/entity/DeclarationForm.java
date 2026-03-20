@@ -179,4 +179,10 @@ public class DeclarationForm {
      */
     @TableField(exist = false)
     private List<DeclarationRemittance> remittances;
+
+    /**
+     * 申请人名称（非数据库字段，用于列表显示）
+     */
+    @TableField(exist = false)
+    private String applicantName;
 }

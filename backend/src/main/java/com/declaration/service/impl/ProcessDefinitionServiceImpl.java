@@ -1,7 +1,5 @@
 package com.declaration.service.impl;
 
-import cn.dev33.satoken.stp.StpUtil;
-import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.declaration.dao.ProcessDefinitionDao;
 import com.declaration.entity.ProcessDefinition;
@@ -11,18 +9,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.Deployment;
 import org.flowable.engine.repository.DeploymentBuilder;
-import org.flowable.engine.repository.ProcessDefinitionQuery;
 import org.springframework.stereotype.Service;
+import com.declaration.util.FlowableCleanupUtil;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import cn.dev33.satoken.stp.StpUtil;
 
-import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 流程定义服务实现类
@@ -37,6 +35,7 @@ public class ProcessDefinitionServiceImpl implements ProcessDefinitionService {
 
     private final RepositoryService repositoryService;
     private final ProcessDefinitionDao processDefinitionDao;
+    private final FlowableCleanupUtil cleanupUtil;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -44,34 +43,83 @@ public class ProcessDefinitionServiceImpl implements ProcessDefinitionService {
         try {
             // Flowable部署
             DeploymentBuilder deploymentBuilder = repositoryService.createDeployment();
-            deploymentBuilder.addString(processDefinition.getProcessKey() + ".bpmn20.xml", bpmnXml);
+            // 确保文件名以 .bpmn20.xml 结尾，否则 Flowable 可能不解析
+            String resourceName = processDefinition.getProcessKey() + ".bpmn20.xml";
+            deploymentBuilder.addString(resourceName, bpmnXml);
             deploymentBuilder.name(processDefinition.getProcessName());
             deploymentBuilder.category(processDefinition.getCategory());
             Deployment deployment = deploymentBuilder.deploy();
 
-            // 保存到本地数据库
+            // 获取部署后的流程定义详细信息
             org.flowable.engine.repository.ProcessDefinition flowableDefinition =
                 repositoryService.createProcessDefinitionQuery()
                     .deploymentId(deployment.getId())
                     .singleResult();
 
-            processDefinition.setProcessKey(flowableDefinition.getKey());
-            processDefinition.setVersion(flowableDefinition.getVersion());
-            processDefinition.setBpmnXml(bpmnXml);
-            processDefinition.setStatus(1); // 启用状态
-            
-            // 设置创建人信息
-            if (StpUtil.isLogin()) {
-                processDefinition.setCreateBy(StpUtil.getLoginIdAsLong());
+            if (flowableDefinition == null) {
+                throw new RuntimeException("部署成功但未能获取流程定义信息，请检查 XML 是否包含有效的可执行流程");
             }
-            
-            processDefinitionDao.insert(processDefinition);
 
-            log.info("流程部署成功: {} - {}", processDefinition.getProcessKey(), processDefinition.getProcessName());
+            // 更新或保存到本地数据库
+            ProcessDefinition existing = processDefinitionDao.selectOne(
+                new LambdaQueryWrapper<ProcessDefinition>()
+                    .eq(ProcessDefinition::getProcessKey, flowableDefinition.getKey())
+            );
+
+            if (existing != null) {
+                existing.setProcessName(processDefinition.getProcessName());
+                existing.setCategory(processDefinition.getCategory());
+                existing.setDescription(processDefinition.getDescription());
+                existing.setBpmnXml(bpmnXml);
+                existing.setVersion(flowableDefinition.getVersion());
+                existing.setDeploymentId(flowableDefinition.getId()); // 存储真正的 ProcessDefinitionId
+                existing.setStatus(flowableDefinition.isSuspended() ? 0 : 1);
+                processDefinitionDao.updateById(existing);
+                processDefinition.setId(existing.getId());
+            } else {
+                processDefinition.setProcessKey(flowableDefinition.getKey());
+                processDefinition.setVersion(flowableDefinition.getVersion());
+                processDefinition.setDeploymentId(flowableDefinition.getId());
+                processDefinition.setBpmnXml(bpmnXml);
+                processDefinition.setStatus(flowableDefinition.isSuspended() ? 0 : 1);
+                
+                if (StpUtil.isLogin()) {
+                    processDefinition.setCreateBy(StpUtil.getLoginIdAsLong());
+                }
+                processDefinitionDao.insert(processDefinition);
+            }
+
+            log.info("流程部署成功: {} - ID: {}", processDefinition.getProcessKey(), flowableDefinition.getId());
             return deployment;
         } catch (Exception e) {
             log.error("流程部署失败", e);
             throw new RuntimeException("流程部署失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Deployment deployProcess(InputStream inputStream, String processName, String processKey, String category, String description) {
+        try {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            int nRead;
+            byte[] data = new byte[1024];
+            while ((nRead = inputStream.read(data, 0, data.length)) != -1) {
+                buffer.write(data, 0, nRead);
+            }
+            byte[] bytes = buffer.toByteArray();
+            String bpmnXml = new String(bytes, StandardCharsets.UTF_8);
+
+            ProcessDefinition processDefinition = new ProcessDefinition();
+            processDefinition.setProcessName(processName);
+            processDefinition.setProcessKey(processKey);
+            processDefinition.setCategory(category);
+            processDefinition.setDescription(description);
+
+            return deployProcess(bpmnXml, processDefinition);
+        } catch (IOException e) {
+            log.error("读取流程流失败", e);
+            throw new RuntimeException("读取流程流失败: " + e.getMessage());
         }
     }
 
@@ -92,8 +140,7 @@ public class ProcessDefinitionServiceImpl implements ProcessDefinitionService {
     @Transactional(rollbackFor = Exception.class)
     public Deployment deployProcessFromResource(String resourceName, InputStream inputStream, ProcessDefinition processDefinition) {
         try {
-            // 使用 ByteArrayOutputStream 替代 readAllBytes
-            java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             int nRead;
             byte[] data = new byte[1024];
             while ((nRead = inputStream.read(data, 0, data.length)) != -1) {
@@ -110,14 +157,39 @@ public class ProcessDefinitionServiceImpl implements ProcessDefinitionService {
 
     @Override
     public List<ProcessDefinition> getProcessDefinitions() {
-        ProcessDefinitionQuery query = repositoryService.createProcessDefinitionQuery();
-        List<org.flowable.engine.repository.ProcessDefinition> flowableDefinitions = query.list();
+        // 1. 先获取本地所有记录
+        List<ProcessDefinition> list = processDefinitionDao.selectList(
+            new LambdaQueryWrapper<ProcessDefinition>()
+                .orderByDesc(ProcessDefinition::getCreateTime)
+        );
 
-        if (CollUtil.isEmpty(flowableDefinitions)) {
-            return CollUtil.newArrayList();
+        // 2. 从 Flowable 获取所有最新版本的定义
+        List<org.flowable.engine.repository.ProcessDefinition> flowableDefinitions = 
+            repositoryService.createProcessDefinitionQuery().latestVersion().list();
+            
+        // 3. 循环同步：以 Flowable 为准，补齐或更新本地元数据
+        for (org.flowable.engine.repository.ProcessDefinition flowDef : flowableDefinitions) {
+            ProcessDefinition localDef = list.stream()
+                .filter(d -> d.getProcessKey().equals(flowDef.getKey()))
+                .findFirst()
+                .orElse(null);
+                
+            if (localDef == null) {
+                // 补偿插入：本地表缺失记录（如通过 API 或工具直接部署的）
+                ProcessDefinition newDef = convertToEntity(flowDef);
+                newDef.setDeploymentId(flowDef.getId()); // 设置真正的流程定义ID
+                newDef.setStatus(flowDef.isSuspended() ? 0 : 1);
+                processDefinitionDao.insert(newDef);
+                list.add(newDef);
+            } else {
+                // 状态/版本同步：本地表已有记录，更新其运行态数据
+                localDef.setStatus(flowDef.isSuspended() ? 0 : 1);
+                localDef.setVersion(flowDef.getVersion());
+                localDef.setDeploymentId(flowDef.getId());
+            }
         }
 
-        return flowableDefinitions.stream().map(this::convertToEntity).collect(Collectors.toList());
+        return list;
     }
 
     @Override
@@ -132,8 +204,28 @@ public class ProcessDefinitionServiceImpl implements ProcessDefinitionService {
     }
 
     @Override
-    public void suspendProcessDefinition(String processDefinitionId) {
-        repositoryService.suspendProcessDefinitionById(processDefinitionId);
+    public String getProcessDefinitionXml(String processKey) {
+        ProcessDefinition processDefinition = processDefinitionDao.selectOne(
+            new LambdaQueryWrapper<ProcessDefinition>()
+                .eq(ProcessDefinition::getProcessKey, processKey)
+                .orderByDesc(ProcessDefinition::getId)
+                .last("LIMIT 1")
+        );
+        return processDefinition != null ? processDefinition.getBpmnXml() : null;
+    }
+
+    @Override
+    public void suspendProcessDefinition(String idOrKey) {
+        String processDefinitionId = idOrKey;
+        // 如果是纯数字，认为是本地数据库 ID
+        if (idOrKey.matches("^\\d+$")) {
+            ProcessDefinition def = processDefinitionDao.selectById(Long.parseLong(idOrKey));
+            if (def != null && def.getDeploymentId() != null) {
+                processDefinitionId = def.getDeploymentId();
+            }
+        }
+        
+        repositoryService.suspendProcessDefinitionById(processDefinitionId, true, null);
         
         // 更新本地状态
         ProcessDefinition processDefinition = processDefinitionDao.selectOne(
@@ -148,8 +240,16 @@ public class ProcessDefinitionServiceImpl implements ProcessDefinitionService {
     }
 
     @Override
-    public void activateProcessDefinition(String processDefinitionId) {
-        repositoryService.activateProcessDefinitionById(processDefinitionId);
+    public void activateProcessDefinition(String idOrKey) {
+        String processDefinitionId = idOrKey;
+        if (idOrKey.matches("^\\d+$")) {
+            ProcessDefinition def = processDefinitionDao.selectById(Long.parseLong(idOrKey));
+            if (def != null && def.getDeploymentId() != null) {
+                processDefinitionId = def.getDeploymentId();
+            }
+        }
+
+        repositoryService.activateProcessDefinitionById(processDefinitionId, true, null);
         
         // 更新本地状态
         ProcessDefinition processDefinition = processDefinitionDao.selectOne(
@@ -164,16 +264,33 @@ public class ProcessDefinitionServiceImpl implements ProcessDefinitionService {
     }
 
     @Override
-    public void deleteProcessDefinition(String processDefinitionId, boolean cascade) {
-        repositoryService.deleteDeployment(processDefinitionId, cascade);
+    public void deleteProcessDefinition(String idOrKey, boolean cascade) {
+        String processDefinitionId = idOrKey;
+        ProcessDefinition localDef = null;
+        
+        if (idOrKey.matches("^\\d+$")) {
+            localDef = processDefinitionDao.selectById(Long.parseLong(idOrKey));
+            if (localDef != null && localDef.getDeploymentId() != null) {
+                processDefinitionId = localDef.getDeploymentId();
+            }
+        }
+        
+        org.flowable.engine.repository.ProcessDefinition flowDef = 
+            repositoryService.createProcessDefinitionQuery().processDefinitionId(processDefinitionId).singleResult();
+            
+        if (flowDef != null) {
+            repositoryService.deleteDeployment(flowDef.getDeploymentId(), cascade);
+        }
         
         // 删除本地记录
-        ProcessDefinition processDefinition = processDefinitionDao.selectOne(
-            new LambdaQueryWrapper<ProcessDefinition>()
-                .eq(ProcessDefinition::getProcessKey, processDefinitionId.split(":")[0])
-        );
-        if (processDefinition != null) {
-            processDefinitionDao.deleteById(processDefinition.getId());
+        if (localDef == null) {
+             localDef = processDefinitionDao.selectOne(
+                new LambdaQueryWrapper<ProcessDefinition>()
+                    .eq(ProcessDefinition::getProcessKey, processDefinitionId.split(":")[0])
+            );
+        }
+        if (localDef != null) {
+            processDefinitionDao.deleteById(localDef.getId());
         }
     }
 

@@ -1,16 +1,25 @@
 package com.declaration.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.declaration.dao.TaskInstanceDao;
 import com.declaration.entity.TaskInstance;
+import com.declaration.service.TaskService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.flowable.engine.HistoryService;
+import org.flowable.engine.RepositoryService;
+import org.flowable.engine.RuntimeService;
+import org.flowable.engine.history.HistoricProcessInstance;
+import org.flowable.engine.repository.ProcessDefinition;
+import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
+import org.flowable.task.api.history.HistoricTaskInstance;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,15 +31,14 @@ import java.util.stream.Collectors;
  * @author Administrator
  * @since 2026-03-13
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
-public class TaskServiceImpl implements com.declaration.service.TaskService {
+public class TaskServiceImpl implements TaskService {
 
     private final org.flowable.engine.TaskService flowableTaskService;
-    private final org.flowable.engine.RuntimeService runtimeService;
-    private final org.flowable.engine.RepositoryService repositoryService;
-    private final org.flowable.engine.HistoryService historyService;
+    private final RuntimeService runtimeService;
+    private final RepositoryService repositoryService;
+    private final HistoryService historyService;
     private final TaskInstanceDao taskInstanceDao;
 
     @Override
@@ -66,7 +74,7 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         
         // 更新本地任务状态
         TaskInstance taskInstance = taskInstanceDao.selectOne(
-            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskInstance>()
+            new LambdaQueryWrapper<TaskInstance>()
                 .eq(TaskInstance::getTaskId, taskId)
         );
         if (taskInstance != null) {
@@ -84,7 +92,7 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         
         // 更新本地任务状态
         TaskInstance taskInstance = taskInstanceDao.selectOne(
-            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskInstance>()
+            new LambdaQueryWrapper<TaskInstance>()
                 .eq(TaskInstance::getTaskId, taskId)
         );
         if (taskInstance != null) {
@@ -102,7 +110,7 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         
         // 更新本地任务状态
         TaskInstance taskInstance = taskInstanceDao.selectOne(
-            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskInstance>()
+            new LambdaQueryWrapper<TaskInstance>()
                 .eq(TaskInstance::getTaskId, taskId)
         );
         if (taskInstance != null) {
@@ -137,7 +145,10 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         flowableTaskService.setAssignee(taskId, assigneeId.toString());
         
         // 更新本地任务状态
-        TaskInstance taskInstance = taskInstanceDao.selectById(1L); // 临时处理
+        TaskInstance taskInstance = taskInstanceDao.selectOne(
+            new LambdaQueryWrapper<TaskInstance>()
+                .eq(TaskInstance::getTaskId, taskId)
+        );
         if (taskInstance != null) {
             taskInstance.setAssigneeId(assigneeId);
             taskInstance.setUpdateTime(LocalDateTime.now());
@@ -151,7 +162,10 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         flowableTaskService.delegateTask(taskId, assigneeId.toString());
         
         // 更新本地任务状态
-        TaskInstance taskInstance = taskInstanceDao.selectById(1L); // 临时处理
+        TaskInstance taskInstance = taskInstanceDao.selectOne(
+            new LambdaQueryWrapper<TaskInstance>()
+                .eq(TaskInstance::getTaskId, taskId)
+        );
         if (taskInstance != null) {
             taskInstance.setAssigneeId(assigneeId);
             taskInstance.setUpdateTime(LocalDateTime.now());
@@ -172,14 +186,6 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
     @Transactional(rollbackFor = Exception.class)
     public void addTaskComment(String taskId, Long userId, String message) {
         flowableTaskService.addComment(taskId, null, message);
-        
-        // 保存到本地数据库
-        TaskInstance taskInstance = new TaskInstance();
-        taskInstance.setTaskId(taskId);
-        // taskInstance.setComment(message); // 字段不存在
-        taskInstance.setCreateBy(userId);
-        taskInstance.setCreateTime(LocalDateTime.now());
-        // taskInstanceDao.insert(taskInstance); // 如果有评论表的话
     }
 
     /**
@@ -192,13 +198,19 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         instance.setInstanceId(task.getProcessInstanceId());
         instance.setDefinitionId(task.getProcessDefinitionId());
         instance.setActivityId(task.getTaskDefinitionKey());
-        instance.setAssigneeId(task.getAssignee() != null ? Long.valueOf(task.getAssignee()) : null);
-        instance.setCreateTime(task.getCreateTime().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
+        if (task.getAssignee() != null) {
+            try {
+                Long assigneeId = Long.valueOf(task.getAssignee());
+                instance.setAssigneeId(assigneeId);
+                instance.setAssigneeName("用户" + assigneeId);
+            } catch (Exception e) {}
+        }
+        instance.setCreateTime(task.getCreateTime().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime());
         instance.setPriority(task.getPriority());
         instance.setStatus(task.getAssignee() != null ? 0 : 1);
         
         // 获取流程定义名称
-        org.flowable.engine.repository.ProcessDefinition definition = repositoryService.createProcessDefinitionQuery()
+        ProcessDefinition definition = repositoryService.createProcessDefinitionQuery()
                 .processDefinitionId(task.getProcessDefinitionId())
                 .singleResult();
         if (definition != null) {
@@ -206,18 +218,104 @@ public class TaskServiceImpl implements com.declaration.service.TaskService {
         }
 
         // 获取业务KEY
-        org.flowable.engine.runtime.ProcessInstance pi = runtimeService.createProcessInstanceQuery()
+        ProcessInstance pi = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(task.getProcessInstanceId())
                 .singleResult();
         if (pi != null) {
             instance.setBusinessKey(pi.getBusinessKey());
         } else {
             // 如果运行中查不到，查历史
-            org.flowable.engine.history.HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
+            HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
                     .processInstanceId(task.getProcessInstanceId())
                     .singleResult();
             if (hpi != null) {
                 instance.setBusinessKey(hpi.getBusinessKey());
+            }
+        }
+        
+        return instance;
+    }
+
+    @Override
+    public List<TaskInstance> getAllActiveTasks() {
+        List<Task> tasks = flowableTaskService.createTaskQuery()
+                .active()
+                .orderByTaskCreateTime().desc()
+                .list();
+        
+        return tasks.stream()
+                .map(this::convertTaskInstance)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public long getRunningTasksCount() {
+        return flowableTaskService.createTaskQuery()
+                .active()
+                .count();
+    }
+
+    @Override
+    public List<TaskInstance> getCompletedTasks(Long userId) {
+        // 使用 Flowable HistoryService 查询用户已完成的任务
+        List<HistoricTaskInstance> historicTasks = historyService.createHistoricTaskInstanceQuery()
+                .taskAssignee(userId.toString())
+                .finished()
+                .orderByHistoricTaskInstanceEndTime()
+                .desc()
+                .list();
+        
+        return historicTasks.stream()
+                .map(this::convertHistoricTaskInstance)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 将历史任务转换为本地任务实例
+     */
+    private TaskInstance convertHistoricTaskInstance(HistoricTaskInstance task) {
+        TaskInstance instance = new TaskInstance();
+        instance.setTaskId(task.getId());
+        instance.setTaskName(task.getName());
+        instance.setInstanceId(task.getProcessInstanceId());
+        instance.setDefinitionId(task.getProcessDefinitionId());
+        instance.setActivityId(task.getTaskDefinitionKey());
+        if (task.getAssignee() != null) {
+            try {
+                Long assigneeId = Long.valueOf(task.getAssignee());
+                instance.setAssigneeId(assigneeId);
+                instance.setAssigneeName("用户" + assigneeId);
+            } catch (Exception e) {}
+        }
+        if (task.getCreateTime() != null) {
+            instance.setCreateTime(task.getCreateTime().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime());
+        }
+        if (task.getEndTime() != null) {
+            instance.setEndTime(task.getEndTime().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime());
+        }
+        if (task.getClaimTime() != null) {
+            instance.setClaimTime(task.getClaimTime().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime());
+        }
+        instance.setPriority(task.getPriority());
+        instance.setStatus(1); // 已完成
+        
+        // 获取流程定义名称
+        ProcessDefinition definition = repositoryService.createProcessDefinitionQuery()
+                .processDefinitionId(task.getProcessDefinitionId())
+                .singleResult();
+        if (definition != null) {
+            instance.setProcessDefinitionName(definition.getName());
+        }
+
+        // 获取业务KEY
+        HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
+                .processInstanceId(task.getProcessInstanceId())
+                .singleResult();
+        if (hpi != null) {
+            instance.setBusinessKey(hpi.getBusinessKey());
+            // 获取发起人名称
+            if (hpi.getStartUserId() != null) {
+                instance.setStarterName("用户" + hpi.getStartUserId());
             }
         }
         
