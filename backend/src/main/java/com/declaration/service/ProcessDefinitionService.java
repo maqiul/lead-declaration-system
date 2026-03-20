@@ -25,6 +25,18 @@ public interface ProcessDefinitionService {
     Deployment deployProcess(String bpmnXml, ProcessDefinition processDefinition);
 
     /**
+     * 部署流程定义 (从流部署)
+     *
+     * @param inputStream BPMN 文件流
+     * @param processName 流程名称
+     * @param processKey 流程KEY
+     * @param category 分类
+     * @param description 描述
+     * @return 部署信息
+     */
+    Deployment deployProcess(InputStream inputStream, String processName, String processKey, String category, String description);
+
+    /**
      * 通过文件部署流程
      *
      * @param file BPMN文件
@@ -57,6 +69,14 @@ public interface ProcessDefinitionService {
      * @return 流程定义
      */
     ProcessDefinition getLatestProcessDefinition(String processKey);
+
+    /**
+     * 根据KEY获取流程定义的XML原文
+     *
+     * @param processKey 流程KEY
+     * @return XML字符串
+     */
+    String getProcessDefinitionXml(String processKey);
 
     /**
      * 挂起流程定义

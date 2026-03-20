@@ -5,11 +5,14 @@ export interface DefinitionQueryParams {
   processName?: string
   processKey?: string
   category?: string
+  status?: number
+  pageNum?: number
+  pageSize?: number
 }
 
 export interface ProcessDefinitionForm {
   id?: number
-  name: string
+  processName: string
   processKey: string
   description: string
   category: string
@@ -31,13 +34,13 @@ export interface ProcessDefinition {
 export function deployProcessDefinition(file: File, processInfo: ProcessDefinitionForm) {
   const formData = new FormData()
   formData.append('file', file)
-  formData.append('name', processInfo.name)
+  formData.append('processName', processInfo.processName)
   formData.append('processKey', processInfo.processKey)
   formData.append('category', processInfo.category)
   formData.append('description', processInfo.description)
   
   return request({
-    url: '/workflow/deploy',
+    url: '/workflow/definition/deploy',
     method: 'post',
     data: formData,
     headers: {
@@ -46,37 +49,6 @@ export function deployProcessDefinition(file: File, processInfo: ProcessDefiniti
   })
 }
 
-// 获取流程定义列表
-export function getProcessDefinitions(params?: DefinitionQueryParams) {
-  return request({
-    url: '/workflow/definitions',
-    method: 'get',
-    params
-  })
-}
-
-// 流程定义相关API
-export interface DefinitionQueryParams {
-  pageNum?: number
-  pageSize?: number
-  processName?: string
-  processKey?: string
-  category?: string
-  status?: number
-}
-
-export interface ProcessDefinition {
-  id: number
-  processKey: string
-  processName: string
-  description: string
-  category: string
-  version: number
-  status: number
-  createTime: string
-}
-
-// 获取流程定义列表
 export function getDefinitionList(params: DefinitionQueryParams) {
   return request({
     url: '/workflow/definition',
@@ -85,9 +57,38 @@ export function getDefinitionList(params: DefinitionQueryParams) {
   })
 }
 
+// 启用/激活流程定义
+export function enableProcessDefinition(id: string) {
+  return request({
+    url: `/workflow/definition/enable/${id}`,
+    method: 'post'
+  })
+}
 
+// 停用/挂起流程定义
+export function disableProcessDefinition(id: string) {
+  return request({
+    url: `/workflow/definition/disable/${id}`,
+    method: 'post'
+  })
+}
 
-// 流程实例相关API
+// 删除流程定义
+export function deleteProcessDefinition(id: string) {
+  return request({
+    url: `/workflow/definition/${id}`,
+    method: 'delete'
+  })
+}
+
+// 获取单个流程定义详细内容(XML)
+export function getProcessDefinitionXml(processKey: string) {
+  return request({
+    url: `/workflow/definition/xml/${processKey}`,
+    method: 'get'
+  })
+}
+
 export interface InstanceQueryParams {
   processName?: string
   starterName?: string
@@ -120,10 +121,11 @@ export function getMyProcessInstances() {
 }
 
 // 获取运行中的流程实例
-export function getRunningProcessInstances() {
+export function getRunningProcessInstances(params?: InstanceQueryParams & { pageNum?: number; pageSize?: number }) {
   return request({
     url: '/workflow/instances/running',
-    method: 'get'
+    method: 'get',
+    params
   })
 }
 
@@ -190,6 +192,8 @@ export interface TaskInstance {
   endTime: string | null
   dueTime: string | null
   description: string | null
+  priority?: number
+  processDefinitionName?: string
 }
 
 // 获取我的待办任务
@@ -204,6 +208,14 @@ export function getMyAssignedTasks() {
 export function getMyCandidateTasks() {
   return request({
     url: '/workflow/tasks/candidate',
+    method: 'get'
+  })
+}
+
+// 获取我的已完成任务
+export function getMyCompletedTasks() {
+  return request({
+    url: '/workflow/tasks/completed',
     method: 'get'
   })
 }
@@ -252,5 +264,27 @@ export function getProcessDiagram(deploymentId: string) {
     url: `/workflow/process-definition/${deploymentId}/diagram`,
     method: 'get',
     responseType: 'blob'
+  })
+}
+
+// 监控相关API
+export function getMonitorStats() {
+  return request({
+    url: '/workflow/monitor/stats',
+    method: 'get'
+  })
+}
+
+export function getAllActiveTasks() {
+  return request({
+    url: '/workflow/monitor/tasks',
+    method: 'get'
+  })
+}
+
+export function getMonitorCharts() {
+  return request({
+    url: '/workflow/monitor/charts',
+    method: 'get'
   })
 }

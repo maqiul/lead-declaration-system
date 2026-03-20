@@ -33,7 +33,7 @@
     <!-- 配置分类区域 -->
     <a-tabs v-model:activeKey="activeTab" @change="handleTabChange">
       <a-tab-pane key="basic" tab="基本信息">
-        <a-card>
+        <a-card :loading="basicLoading">
           <a-form
             :model="basicForm"
             :label-col="{ span: 4 }"
@@ -59,14 +59,14 @@
               <a-input v-model:value="basicForm['system.copyright']" placeholder="请输入版权信息" />
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="basicSaving">保存</a-button>
             </a-form-item>
           </a-form>
         </a-card>
       </a-tab-pane>
 
       <a-tab-pane key="ui" tab="界面配置">
-        <a-card>
+        <a-card :loading="uiLoading">
           <a-form
             :model="uiForm"
             :label-col="{ span: 4 }"
@@ -96,14 +96,14 @@
               <a-switch v-model:checked="uiForm['ui.sidebar.collapsed']" checked-children="是" un-checked-children="否" />
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="uiSaving">保存</a-button>
             </a-form-item>
           </a-form>
         </a-card>
       </a-tab-pane>
 
       <a-tab-pane key="business" tab="业务配置">
-        <a-card>
+        <a-card :loading="businessLoading">
           <a-form
             :model="businessForm"
             :label-col="{ span: 4 }"
@@ -127,7 +127,7 @@
               <a-switch v-model:checked="businessForm['business.notification.email-enabled']" checked-children="是" un-checked-children="否" />
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="businessSaving">保存</a-button>
             </a-form-item>
           </a-form>
         </a-card>
@@ -142,28 +142,28 @@
             :pagination="pagination"
             rowKey="id"
           >
-            <template #configType="{ record }">
-              <a-tag :color="getTypeColor(record.configType)">
-                {{ getTypeLabel(record.configType) }}
-              </a-tag>
-            </template>
-            
-            <template #status="{ record }">
-              <a-tag :color="record.status === 1 ? 'green' : 'red'">
-                {{ record.status === 1 ? '启用' : '禁用' }}
-              </a-tag>
-            </template>
-
-            <template #action="{ record }">
-              <a-space>
-                <a-button type="link" size="small" @click="editConfig(record)">编辑</a-button>
-                <a-popconfirm
-                  title="确定要删除这个配置吗？"
-                  @confirm="deleteConfig(record.id)"
-                >
-                  <a-button type="link" size="small" danger>删除</a-button>
-                </a-popconfirm>
-              </a-space>
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'configType'">
+                <a-tag :color="getTypeColor((record as any).configType)">
+                  {{ getTypeLabel((record as any).configType) }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'status'">
+                <a-tag :color="(record as any).status === 1 ? 'green' : 'red'">
+                  {{ (record as any).status === 1 ? '启用' : '禁用' }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'action'">
+                <a-space>
+                  <a-button type="link" size="small" @click="editConfig(record)">编辑</a-button>
+                  <a-popconfirm
+                    title="确定要删除这个配置吗？"
+                    @confirm="deleteConfig((record as any).id)"
+                  >
+                    <a-button type="link" size="small" danger>删除</a-button>
+                  </a-popconfirm>
+                </a-space>
+              </template>
             </template>
           </a-table>
         </a-card>
@@ -283,7 +283,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { useRouter } from 'vue-router'
 import { 
   PlusOutlined, 
   ReloadOutlined
@@ -292,20 +291,34 @@ import {
   getSystemBasicInfo, 
   getUiConfig, 
   getAllConfigs,
+  getConfigsByGroup,
   updateConfig,
   addConfig,
   deleteConfig as deleteConfigApi
 } from '@/api/system/config'
 
-const router = useRouter()
-
 // 响应式数据
-const activeTab = ref('basic')
+const activeTab = ref<string>('basic')
 const loading = ref(false)
 const modalVisible = ref(false)
 const modalTitle = ref('新增配置')
 const confirmLoading = ref(false)
 const formRef = ref()
+
+// 各分类表单的loading状态
+const basicLoading = ref(false)
+const uiLoading = ref(false)
+const businessLoading = ref(false)
+const basicSaving = ref(false)
+const uiSaving = ref(false)
+const businessSaving = ref(false)
+
+// localStorage缓存键名
+const CACHE_KEYS = {
+  basic: 'system_config_basic',
+  ui: 'system_config_ui',
+  business: 'system_config_business'
+}
 
 // 搜索表单
 const searchForm = reactive({
@@ -316,7 +329,6 @@ const searchForm = reactive({
 // 搜索处理方法
 const handleSearch = () => {
   // 这里可以添加搜索逻辑
-  console.log('搜索配置:', searchForm)
 }
 
 const handleReset = () => {
@@ -422,16 +434,16 @@ const pagination = {
 const formRules = {
   configKey: [
     { required: true, message: '请输入配置键', trigger: 'blur' }
-  ],
+  ] as any[],
   configName: [
     { required: true, message: '请输入配置名称', trigger: 'blur' }
-  ],
+  ] as any[],
   configType: [
     { required: true, message: '请选择配置类型', trigger: 'change' }
-  ],
+  ] as any[],
   configGroup: [
     { required: true, message: '请输入配置分组', trigger: 'blur' }
-  ]
+  ] as any[]
 }
 
 // 方法
@@ -439,8 +451,9 @@ const refreshData = async () => {
   await loadData()
 }
 
-const handleTabChange = (key: string) => {
-  if (key === 'all') {
+const handleTabChange = (key: string | number) => {
+  const tabKey = typeof key === 'number' ? key.toString() : key
+  if (tabKey === 'all') {
     loadAllConfigs()
   }
 }
@@ -459,43 +472,131 @@ const loadAllConfigs = async () => {
   }
 }
 
-const loadData = async () => {
+// 从localStorage加载缓存数据
+const loadFromCache = (cacheKey: string): Record<string, any> | null => {
   try {
-    // 加载基本信息
-    const basicResponse = await getSystemBasicInfo()
-    if (basicResponse.data?.code === 200) {
-      Object.assign(basicForm, basicResponse.data.data)
-    }
-
-    // 加载UI配置
-    const uiResponse = await getUiConfig()
-    if (uiResponse.data?.code === 200) {
-      const uiData = uiResponse.data.data
-      // 处理布尔值
-      uiData['ui.footer.show'] = uiData['ui.footer.show'] === 'true'
-      uiData['ui.sidebar.collapsed'] = uiData['ui.sidebar.collapsed'] === 'true'
-      Object.assign(uiForm, uiData)
-    }
-
-    // 加载业务配置
-    const businessResponse = await getAllConfigs()
-    if (businessResponse.data?.code === 200) {
-      const configs = businessResponse.data.data || []
-      const businessConfigs = configs.filter((c: any) => c.configGroup === 'business')
-      businessConfigs.forEach((config: any) => {
-        businessForm[config.configKey] = config.configValue
-      })
+    const cached = localStorage.getItem(cacheKey)
+    if (cached) {
+      return JSON.parse(cached)
     }
   } catch (error) {
-    message.error('加载配置失败')
+    // 读取缓存失败
+  }
+  return null
+}
+
+// 保存数据到localStorage缓存
+const saveToCache = (cacheKey: string, data: Record<string, any>) => {
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify(data))
+  } catch (error) {
+    // 保存缓存失败
   }
 }
 
+// 加载基本信息
+const loadBasicConfig = async () => {
+  basicLoading.value = true
+  try {
+    const response = await getSystemBasicInfo()
+    if (response.data?.code === 200) {
+      const data = response.data.data || {}
+      Object.assign(basicForm, data)
+      // 保存到缓存
+      saveToCache(CACHE_KEYS.basic, data)
+    }
+  } catch (error) {
+    // API失败时从localStorage加载
+    const cached = loadFromCache(CACHE_KEYS.basic)
+    if (cached) {
+      Object.assign(basicForm, cached)
+      message.warning('网络异常，已从本地缓存加载基本信息')
+    } else {
+      message.error('加载基本信息失败')
+    }
+  } finally {
+    basicLoading.value = false
+  }
+}
+
+// 加载UI配置
+const loadUiConfig = async () => {
+  uiLoading.value = true
+  try {
+    const response = await getUiConfig()
+    if (response.data?.code === 200) {
+      const uiData = response.data.data || {}
+      // 处理布尔值
+      uiData['ui.footer.show'] = uiData['ui.footer.show'] === 'true' || uiData['ui.footer.show'] === true
+      uiData['ui.sidebar.collapsed'] = uiData['ui.sidebar.collapsed'] === 'true' || uiData['ui.sidebar.collapsed'] === true
+      Object.assign(uiForm, uiData)
+      // 保存到缓存
+      saveToCache(CACHE_KEYS.ui, uiData)
+    }
+  } catch (error) {
+    // API失败时从localStorage加载
+    const cached = loadFromCache(CACHE_KEYS.ui)
+    if (cached) {
+      Object.assign(uiForm, cached)
+      message.warning('网络异常，已从本地缓存加载界面配置')
+    } else {
+      message.error('加载界面配置失败')
+    }
+  } finally {
+    uiLoading.value = false
+  }
+}
+
+// 加载业务配置
+const loadBusinessConfig = async () => {
+  businessLoading.value = true
+  try {
+    const response = await getConfigsByGroup('business')
+    if (response.data?.code === 200) {
+      const configs = response.data.data || []
+      const businessData: Record<string, any> = {}
+      configs.forEach((config: any) => {
+        // 处理布尔值
+        if (config.configValue === 'true' || config.configValue === 'false') {
+          businessData[config.configKey] = config.configValue === 'true'
+        } else {
+          businessData[config.configKey] = config.configValue
+        }
+      })
+      Object.assign(businessForm, businessData)
+      // 保存到缓存
+      saveToCache(CACHE_KEYS.business, businessData)
+    }
+  } catch (error) {
+    // API失败时从localStorage加载
+    const cached = loadFromCache(CACHE_KEYS.business)
+    if (cached) {
+      Object.assign(businessForm, cached)
+      message.warning('网络异常，已从本地缓存加载业务配置')
+    } else {
+      message.error('加载业务配置失败')
+    }
+  } finally {
+    businessLoading.value = false
+  }
+}
+
+const loadData = async () => {
+  await Promise.all([
+    loadBasicConfig(),
+    loadUiConfig(),
+    loadBusinessConfig()
+  ])
+}
+
 const saveBasicConfig = async () => {
+  basicSaving.value = true
   try {
     for (const [key, value] of Object.entries(basicForm)) {
       await updateConfig(key, { configValue: value })
     }
+    // 保存成功后更新缓存
+    saveToCache(CACHE_KEYS.basic, { ...basicForm })
     message.success('基本信息保存成功')
     
     // 如果修改了系统名称，更新页面标题
@@ -510,29 +611,41 @@ const saveBasicConfig = async () => {
       message.info(`系统名称已更新为: ${basicForm['system.name']}`)
     }
   } catch (error) {
-    message.error('保存失败')
+    message.error('保存失败，请检查网络连接后重试')
+  } finally {
+    basicSaving.value = false
   }
 }
 
 const saveUiConfig = async () => {
+  uiSaving.value = true
   try {
     for (const [key, value] of Object.entries(uiForm)) {
       await updateConfig(key, { configValue: String(value) })
     }
+    // 保存成功后更新缓存
+    saveToCache(CACHE_KEYS.ui, { ...uiForm })
     message.success('界面配置保存成功')
   } catch (error) {
-    message.error('保存失败')
+    message.error('保存失败，请检查网络连接后重试')
+  } finally {
+    uiSaving.value = false
   }
 }
 
 const saveBusinessConfig = async () => {
+  businessSaving.value = true
   try {
     for (const [key, value] of Object.entries(businessForm)) {
       await updateConfig(key, { configValue: String(value) })
     }
+    // 保存成功后更新缓存
+    saveToCache(CACHE_KEYS.business, { ...businessForm })
     message.success('业务配置保存成功')
   } catch (error) {
-    message.error('保存失败')
+    message.error('保存失败，请检查网络连接后重试')
+  } finally {
+    businessSaving.value = false
   }
 }
 

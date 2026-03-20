@@ -1,6 +1,7 @@
 package com.declaration.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.declaration.dto.DeclarationStatisticsDTO;
 import com.declaration.entity.DeclarationForm;
 
 /**
@@ -31,4 +32,10 @@ public interface DeclarationFormService extends IService<DeclarationForm> {
      * @return 是否更新成功
      */
     boolean updateDeclarationForm(DeclarationForm form);
+
+    /**
+     * 获取申报单统计数据
+     * @return 统计数据
+     */
+    DeclarationStatisticsDTO getStatistics();
 }

@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 用户实体类
@@ -59,4 +60,8 @@ public class User extends BaseEntity {
     @TableLogic
     @TableField("deleted")
     private Integer deleted;
+
+    @Schema(description = "用户角色ID列表")
+    @TableField(exist = false)
+    private List<Long> roleIds;
 }

@@ -156,7 +156,19 @@
           checkable
           check-strictly
           default-expand-all
-        />
+        >
+          <template #title="{ menuName, menuType, permission }">
+            <span>
+              <a-tag v-if="menuType === 1" color="blue" style="margin-right: 4px; font-size: 11px;">目录</a-tag>
+              <a-tag v-else-if="menuType === 2" color="green" style="margin-right: 4px; font-size: 11px;">菜单</a-tag>
+              <a-tag v-else-if="menuType === 3" color="orange" style="margin-right: 4px; font-size: 11px;">按钮</a-tag>
+              {{ menuName }}
+              <span v-if="permission" style="color: #999; font-size: 12px; margin-left: 8px">
+                ({{ permission }})
+              </span>
+            </span>
+          </template>
+        </a-tree>
       </div>
     </a-modal>
   </div>
@@ -286,7 +298,7 @@ const formRules: Record<string, Rule[]> = {
 // 权限配置相关
 const permissionVisible = ref(false)
 const permissionLoading = ref(false)
-const checkedKeys = ref<number[]>([])
+const checkedKeys = ref<(number | string)[] | { checked: (number | string)[]; halfChecked: (number | string)[] }>([])
 const currentRoleId = ref<number>()
 
 // 菜单树数据
@@ -298,11 +310,9 @@ const loadMenuTree = async () => {
     const response = await getMenuTree()
     if (response.data?.code === 200) {
       menuTreeData.value = response.data.data || []
-    } else {
-      console.error('加载菜单树失败:', response.data?.message)
     }
   } catch (error) {
-    console.error('加载菜单树失败:', error)
+    // 加载菜单树失败
   }
 }
 
@@ -496,20 +506,45 @@ const handleModalCancel = () => {
 }
 
 const handlePermissionOk = async () => {
+  // 确保 currentRoleId 存在
+  if (!currentRoleId.value) {
+    message.error('角色ID不存在，请重新打开权限配置');
+    return;
+  }
+  
   permissionLoading.value = true
   
   try {
-    const response = await updateRoleMenus(currentRoleId.value!, checkedKeys.value)
+    // 将 checkedKeys 转换为正确的数据结构
+    let menuIds: (number | string)[] = [];
+    if (Array.isArray(checkedKeys.value)) {
+      menuIds = checkedKeys.value;
+    } else if (checkedKeys.value && (checkedKeys.value as { checked: (number | string)[] }).checked) {
+      menuIds = (checkedKeys.value as { checked: (number | string)[] }).checked;
+    }
+    
+    // 确保所有ID都是数字类型
+    const numericMenuIds = menuIds
+      .map((id: number | string) => typeof id === 'string' ? parseInt(id, 10) : id)
+      .filter((id: number) => !isNaN(id));
+    
+    const requestData = {
+      roleId: currentRoleId.value,
+      menuIds: numericMenuIds
+    };
+    
+    const response = await updateRoleMenus(requestData);
     if (response.data?.code === 200) {
-      message.success('权限配置保存成功')
-      permissionVisible.value = false
+      message.success('权限配置保存成功');
+      permissionVisible.value = false;
     } else {
-      message.error(response.data?.message || '权限配置保存失败')
+      message.error(response.data?.message || '权限配置保存失败');
     }
   } catch (error) {
-    message.error('权限配置保存失败')
+    console.error('权限配置保存失败:', error);
+    message.error('权限配置保存失败');
   } finally {
-    permissionLoading.value = false
+    permissionLoading.value = false;
   }
 }
 

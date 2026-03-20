@@ -111,6 +111,11 @@ const handleLogin = async () => {
   try {
     loading.value = true
     await userStore.login(loginForm)
+    
+    // 登录成功后立即获取用户信息和权限
+    await userStore.getUserInfo()
+    await userStore.generateRoutes()
+    
     message.success('登录成功')
     
     const redirect = route.query.redirect as string || '/'

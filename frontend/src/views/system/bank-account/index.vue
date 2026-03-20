@@ -52,52 +52,54 @@
         @change="handleTableChange"
         rowKey="id"
       >
-        <template #status="{ record }">
-          <a-tag :color="record.status === 1 ? 'green' : 'red'">
-            {{ record.status === 1 ? '启用' : '禁用' }}
-          </a-tag>
-        </template>
-        
-        <template #isDefault="{ record }">
-          <a-tag v-if="record.isDefault === 1" color="blue">默认</a-tag>
-          <span v-else>-</span>
-        </template>
-        
-        <template #accountNumber="{ record }">
-          <span v-if="record.accountNumber">{{ maskAccountNumber(record.accountNumber) }}</span>
-          <span v-else>-</span>
-        </template>
-        
-        <template #action="{ record }">
-          <a-space>
-            <a-button type="link" size="small" @click="openEditModal(record)">编辑</a-button>
-            <a-button 
-              v-if="record.isDefault !== 1" 
-              type="link" 
-              size="small" 
-              @click="setDefault(record)"
-            >
-              设为默认
-            </a-button>
-            <a-popconfirm
-              title="确定要切换状态吗？"
-              @confirm="toggleStatus(record)"
-            >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'status'">
+            <a-tag :color="record.status === 1 ? 'green' : 'red'">
+              {{ record.status === 1 ? '启用' : '禁用' }}
+            </a-tag>
+          </template>
+          
+          <template v-else-if="column.key === 'isDefault'">
+            <a-tag v-if="record.isDefault === 1" color="blue">默认</a-tag>
+            <span v-else>-</span>
+          </template>
+          
+          <template v-else-if="column.key === 'accountNumber'">
+            <span v-if="record.accountNumber">{{ maskAccountNumber(record.accountNumber) }}</span>
+            <span v-else>-</span>
+          </template>
+          
+          <template v-else-if="column.key === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click="openEditModal(record as BankAccountConfig)">编辑</a-button>
               <a-button 
+                v-if="record.isDefault !== 1" 
                 type="link" 
                 size="small" 
-                :danger="record.status === 1"
+                @click="setDefault(record as BankAccountConfig)"
               >
-                {{ record.status === 1 ? '禁用' : '启用' }}
+                设为默认
               </a-button>
-            </a-popconfirm>
-            <a-popconfirm
-              title="确定要删除吗？"
-              @confirm="handleDelete(record.id)"
-            >
-              <a-button type="link" size="small" danger>删除</a-button>
-            </a-popconfirm>
-          </a-space>
+              <a-popconfirm
+                title="确定要切换状态吗？"
+                @confirm="toggleStatus(record as BankAccountConfig)"
+              >
+                <a-button 
+                  type="link" 
+                  size="small" 
+                  :danger="record.status === 1"
+                >
+                  {{ record.status === 1 ? '禁用' : '启用' }}
+                </a-button>
+              </a-popconfirm>
+              <a-popconfirm
+                title="确定要删除吗？"
+                @confirm="handleDelete(record.id)"
+              >
+                <a-button type="link" size="small" danger>删除</a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
         </template>
       </a-table>
     </a-card>
@@ -469,54 +471,9 @@ const loadBankAccountList = async () => {
       pagination.total = response.data.data.total || 0
     } else {
       message.error(response.data?.message || '加载失败')
-      // 失败时使用模拟数据
-      bankAccountList.value = [
-        {
-          id: 1,
-          accountName: '美元基本账户',
-          bankName: '中国银行',
-          bankCode: 'BOC',
-          accountNumber: '1234567890123456',
-          swiftCode: 'BKCHCNBJ',
-          iban: '',
-          accountHolder: '宁波智翼科技有限公司',
-          currency: 'USD',
-          branchName: '宁波分行',
-          branchAddress: '浙江省宁波市海曙区',
-          isDefault: 1,
-          status: 1,
-          sort: 1,
-          remarks: '公司主要美元收款账户',
-          createTime: '2026-03-17 10:00:00'
-        }
-      ]
-      pagination.total = 1
     }
   } catch (error) {
-    console.error('加载银行账户列表失败:', error)
-    message.error('加载失败，使用模拟数据')
-    // 错误时使用模拟数据
-    bankAccountList.value = [
-      {
-        id: 1,
-        accountName: '美元基本账户',
-        bankName: '中国银行',
-        bankCode: 'BOC',
-        accountNumber: '1234567890123456',
-        swiftCode: 'BKCHCNBJ',
-        iban: '',
-        accountHolder: '宁波智翼科技有限公司',
-        currency: 'USD',
-        branchName: '宁波分行',
-        branchAddress: '浙江省宁波市海曙区',
-        isDefault: 1,
-        status: 1,
-        sort: 1,
-        remarks: '公司主要美元收款账户',
-        createTime: '2026-03-17 10:00:00'
-      }
-    ]
-    pagination.total = 1
+    message.error('加载失败')
   } finally {
     loading.value = false
   }
@@ -635,7 +592,6 @@ const handleSave = async () => {
       message.error(response.data?.message || (editingId.value ? '更新失败' : '新增失败'))
     }
   } catch (error) {
-    console.error('保存失败', error)
     message.error('保存失败')
   } finally {
     saving.value = false

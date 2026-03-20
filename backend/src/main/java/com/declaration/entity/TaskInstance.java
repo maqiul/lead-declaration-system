@@ -7,7 +7,6 @@ import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 
-
 /**
  * 任务实例实体类
  *
@@ -37,6 +36,9 @@ public class TaskInstance extends BaseEntity {
 
     @Schema(description = "业务KEY (申报单ID)")
     private String businessKey;
+
+    @Schema(description = "发起人名称")
+    private String starterName;
 
     @Schema(description = "节点ID")
     private String activityId;
@@ -69,7 +71,7 @@ public class TaskInstance extends BaseEntity {
     private LocalDateTime dueTime;
 
     @Schema(description = "创建时间")
-    private LocalDateTime createTimeDb;
+    private LocalDateTime createTime;
 
     @Schema(description = "任务描述")
     private String description;

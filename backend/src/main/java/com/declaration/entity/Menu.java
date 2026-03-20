@@ -59,6 +59,10 @@ public class Menu extends BaseEntity {
     @TableField("status")
     private Integer status;
 
+    @Schema(description = "是否显示 0:隐藏 1:显示")
+    @TableField("is_show")
+    private Integer isShow;
+
     @Schema(description = "删除标志 0:未删除 1:已删除")
     @TableLogic
     @TableField("deleted")

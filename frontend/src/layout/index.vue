@@ -14,7 +14,7 @@
           <div class="logo-icon-wrap">
             <thunderbolt-outlined class="logo-icon" />
           </div>
-          <span class="logo-text">{{ systemConfig['system.name'] || '线索申报系统' }}</span>
+          <span class="logo-text">{{ getConfigValue('system.name', '线索申报系统') }}</span>
         </div>
         <div v-else class="logo-icon-wrap logo-icon-wrap--mini">
           <thunderbolt-outlined class="logo-icon" />
@@ -29,6 +29,7 @@
         :items="menuItems"
         @click="handleMenuClick"
         class="modern-menu"
+        :selectable="false"
       />
     </a-layout-sider>
 
@@ -62,7 +63,7 @@
               <span class="user-name">{{ userStore.name || '用户' }}</span>
             </a>
             <template #overlay>
-              <a-menu class="user-dropdown-menu">
+              <a-menu class="user-dropdown-menu" @click="handleUserMenuClick">
                 <a-menu-item key="profile">
                   <user-outlined />
                   <span style="margin-left: 8px">个人中心</span>
@@ -72,7 +73,7 @@
                   <span style="margin-left: 8px">系统设置</span>
                 </a-menu-item>
                 <a-menu-divider />
-                <a-menu-item key="logout" @click="handleLogout" style="color: #F43F5E">
+                <a-menu-item key="logout" style="color: #F43F5E">
                   <logout-outlined />
                   <span style="margin-left: 8px">退出登录</span>
                 </a-menu-item>
@@ -88,8 +89,8 @@
       </a-layout-content>
 
       <!-- 底部 -->
-      <a-layout-footer v-if="systemConfig['ui.footer.show'] !== 'false'" class="footer">
-        {{ systemConfig['ui.footer.text'] || '线索申报系统 ©2026 Created by Admin' }}
+      <a-layout-footer v-if="getConfigValue('ui.footer.show', 'true') !== 'false'" class="footer">
+        {{ getConfigValue('ui.footer.text', '线索申报系统 ©2026 Created by Admin') }}
       </a-layout-footer>
     </a-layout>
   </a-layout>
@@ -119,7 +120,10 @@ import {
   BranchesOutlined,
   DatabaseOutlined,
   ApiOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
+  BankOutlined,
+  GlobalOutlined,
+  DollarOutlined
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
@@ -150,6 +154,15 @@ const systemConfig = ref<Record<string, string>>({
   'ui.footer.show': 'true'
 })
 
+// 安全获取配置值的函数
+const getConfigValue = (key: string, defaultValue: string = ''): string => {
+  try {
+    return systemConfig.value?.[key] ?? defaultValue
+  } catch (error) {
+    return defaultValue
+  }
+}
+
 // 监听路由变化更新选中菜单
 watch(() => route.path, (path) => {
   selectedKeys.value = [path]
@@ -162,7 +175,7 @@ const loadSystemConfig = async () => {
     if (basicResponse.data?.code === 200) {
       Object.assign(systemConfig.value, basicResponse.data.data)
       
-      const systemName = systemConfig.value['system.name'] || '线索申报系统'
+      const systemName = getConfigValue('system.name', '线索申报系统')
       const titleElement = document.getElementById('app-title')
       if (titleElement) {
         titleElement.textContent = systemName
@@ -175,7 +188,7 @@ const loadSystemConfig = async () => {
       Object.assign(systemConfig.value, uiResponse.data.data)
     }
   } catch (error) {
-    console.warn('加载系统配置失败，使用默认配置')
+    // 加载失败时使用默认配置
   }
 }
 
@@ -184,13 +197,14 @@ const loadMenuData = async () => {
   try {
     loading.value = true
     const response = await getUserRoutes()
-    menuData.value = response.data.data || []
+    menuData.value = (response.data?.data && Array.isArray(response.data.data)) 
+      ? response.data.data 
+      : getDefaultMenu()
     
     if (!menuData.value || menuData.value.length === 0) {
       menuData.value = getDefaultMenu()
     }
   } catch (error) {
-    console.error('加载菜单失败:', error)
     menuData.value = getDefaultMenu()
   } finally {
     loading.value = false
@@ -217,7 +231,9 @@ const getDefaultMenu = () => [
       { id: 4, menuName: '角色管理', path: '/system/role', icon: 'TeamOutlined', isShow: 1 },
       { id: 5, menuName: '组织管理', path: '/system/org', icon: 'ApartmentOutlined', isShow: 1 },
       { id: 6, menuName: '菜单管理', path: '/system/menu', icon: 'MenuOutlined', isShow: 1 },
-      { id: 13, menuName: '银行账户', path: '/system/bank-account', icon: 'BankOutlined', isShow: 1 }
+      { id: 13, menuName: '银行账户', path: '/system/bank-account', icon: 'BankOutlined', isShow: 1 },
+      { id: 14, menuName: '国家信息', path: '/system/country', icon: 'GlobalOutlined', isShow: 1 },
+      { id: 15, menuName: '税务退费', path: '/tax-refund', icon: 'DollarOutlined', isShow: 1 }
     ]
   },
   {
@@ -239,33 +255,61 @@ const getDefaultMenu = () => [
 // 菜单项配置
 const menuItems = computed(() => {
   const convertMenu = (menus: any[]): any[] => {
+    // 添加更严格的空值检查
+    if (!menus || !Array.isArray(menus)) {
+      return []
+    }
+    
     return menus
-      .filter(menu => menu.status === 1 && menu.menuType !== 3)
+      .filter(menu => {
+        if (!menu) return false
+        // 检查菜单是否应该显示：status=1 且 isShow/is_show 不为 0
+        const isVisible = menu?.isShow !== 0 && menu?.is_show !== 0
+        return menu?.status === 1 && menu?.menuType !== 3 && isVisible
+      })
       .map(menu => {
+        if (!menu) return null
+        
         const menuItem: any = {
-          key: menu.path || `menu-${menu.id}`,
-          label: menu.menuName
+          key: menu?.path || `menu-${menu?.id || Math.random()}`,
+          label: menu?.menuName || '未知菜单'
         }
         
-        if (menu.icon) {
-          const IconComponent = getIconComponent(menu.icon)
-          if (IconComponent) {
-            menuItem.icon = () => h(IconComponent)
+        // 安全地处理图标
+        if (menu?.icon) {
+          try {
+            const IconComponent = getIconComponent(menu.icon)
+            if (IconComponent) {
+              menuItem.icon = () => h(IconComponent)
+            }
+          } catch (error) {
+            // 图标组件创建失败
           }
         }
         
-        if (menu.children && menu.children.length > 0) {
-          const filteredChildren = menu.children.filter((child: any) => child.status === 1 && child.menuType !== 3)
-          if (filteredChildren.length > 0) {
-            menuItem.children = convertMenu(filteredChildren)
+        // 安全地处理子菜单
+        if (menu?.children && Array.isArray(menu.children) && menu.children.length > 0) {
+          try {
+            const filteredChildren = menu.children.filter((child: any) => {
+              if (!child) return false
+              // 检查子菜单是否应该显示：status=1 且 isShow/is_show 不为 0
+              const isChildVisible = child?.isShow !== 0 && child?.is_show !== 0
+              return child?.status === 1 && child?.menuType !== 3 && isChildVisible
+            })
+            if (filteredChildren.length > 0) {
+              menuItem.children = convertMenu(filteredChildren)
+            }
+          } catch (error) {
+            // 子菜单处理失败
           }
         }
         
         return menuItem
       })
+      .filter(item => item !== null) // 过滤掉null项
   }
   
-  return convertMenu(Array.isArray(menuData.value) ? menuData.value : [menuData.value])
+  return convertMenu(Array.isArray(menuData.value) ? menuData.value : [])
 })
 
 // 获取图标组件
@@ -284,7 +328,10 @@ const getIconComponent = (iconName: string) => {
     'EditOutlined': EditOutlined,
     'FundViewOutlined': FundViewOutlined,
     'DatabaseOutlined': DatabaseOutlined,
-    'ApiOutlined': ApiOutlined
+    'ApiOutlined': ApiOutlined,
+    'BankOutlined': BankOutlined,
+    'GlobalOutlined': GlobalOutlined,
+    'DollarOutlined': DollarOutlined
   }
   return iconMap[iconName] || MenuUnfoldOutlined
 }
@@ -293,34 +340,49 @@ const getIconComponent = (iconName: string) => {
 let menuClickTimeout: any = null
 
 const handleMenuClick = ({ key }: { key: string | number }) => {
+  // 添加安全检查
+  if (!key) {
+    return
+  }
+  
   if (menuClickTimeout) {
     clearTimeout(menuClickTimeout)
   }
   
   menuClickTimeout = setTimeout(() => {
-    const findMenuPath = (menus: any[], targetKey: string, parentPath: string = ''): string | null => {
-      for (const menu of menus) {
-        const menuKey = menu.path || `menu-${menu.id}`
+    try {
+      const findMenuPath = (menus: any[], targetKey: string, parentPath: string = ''): string | null => {
+        if (!Array.isArray(menus)) return null
         
-        if (menuKey === targetKey) {
-          const fullPath = parentPath ? `${parentPath}/${menu.path}` : menu.path
-          return fullPath
+        for (const menu of menus) {
+          if (!menu) continue
+          
+          const menuKey = menu.path || `menu-${menu.id}`
+          
+          if (menuKey === targetKey) {
+            const fullPath = parentPath ? `${parentPath}/${menu.path}` : menu.path
+            return fullPath
+          }
+          
+          if (menu.children && Array.isArray(menu.children)) {
+            const childPath = findMenuPath(menu.children, targetKey, menu.path)
+            if (childPath) return childPath
+          }
         }
-        
-        if (menu.children) {
-          const childPath = findMenuPath(menu.children, targetKey, menu.path)
-          if (childPath) return childPath
-        }
+        return null
       }
-      return null
-    }
-    
-    const path = findMenuPath(menuData.value, key.toString())
-    
-    if (path) {
-      router.push(path).catch(() => {})
-    } else {
-      router.push(`/${key}`).catch(() => {})
+      
+      const path = findMenuPath(menuData.value, key.toString())
+      
+      if (path) {
+        router.push(path).catch(() => {})
+      } else {
+        router.push(`/${key}`).catch(() => {})
+      }
+    } catch (error) {
+      // 菜单点击处理异常
+    } finally {
+      menuClickTimeout = null
     }
   }, 100)
 }
@@ -328,6 +390,22 @@ const handleMenuClick = ({ key }: { key: string | number }) => {
 const handleLogout = async () => {
   await userStore.resetToken()
   router.push('/login')
+}
+
+// 用户下拉菜单点击处理
+const handleUserMenuClick = ({ key }: { key: string | number }) => {
+  const keyStr = String(key)
+  switch (keyStr) {
+    case 'profile':
+      router.push('/profile')
+      break
+    case 'settings':
+      router.push('/system/config')
+      break
+    case 'logout':
+      handleLogout()
+      break
+  }
 }
 
 onMounted(() => {

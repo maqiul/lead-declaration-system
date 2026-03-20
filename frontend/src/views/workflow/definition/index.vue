@@ -36,7 +36,7 @@
           <template #icon><upload-outlined /></template>
           部署流程
         </a-button>
-        <a-button @click="handleBatchDisable" :disabled="selectedRowKeys.length === 0">
+        <a-button @click="handleBatchDisable" :disabled="selectedRowKeys.length === 0" :loading="batchDisableLoading">
           <template #icon><stop-outlined /></template>
           批量停用
         </a-button>
@@ -60,10 +60,10 @@
               {{ record.status === 1 ? '启用' : '停用' }}
             </a-tag>
           </template>
-          <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleView(record)">查看</a-button>
-              <a-button type="link" size="small" @click="handleEdit(record)">编辑</a-button>
+            <template v-else-if="column.key === 'action'">
+              <a-space>
+                <a-button type="link" size="small" @click="handleView(record as ProcessDefinition)">查看</a-button>
+                <a-button type="link" size="small" @click="handleEdit(record as ProcessDefinition)">编辑</a-button>
               <a-button 
                 v-if="record.status === 1" 
                 type="link" 
@@ -104,7 +104,7 @@
       <a-form
         ref="deployFormRef"
         :model="deployForm"
-        :rules="deployRules"
+          :rules="deployRules as any"
         layout="vertical"
       >
         <a-row :gutter="16">
@@ -136,6 +136,7 @@
           <a-upload
             v-model:file-list="fileList"
             :before-upload="beforeUpload"
+            :customRequest="() => {}"
             :max-count="1"
             accept=".bpmn,.xml"
           >
@@ -174,8 +175,14 @@
       
       <div style="margin-top: 24px">
         <h4>BPMN流程图</h4>
-        <div class="bpmn-preview">
-          <a-empty description="流程图预览区域" />
+        <div v-show="!xmlParseError" class="bpmn-preview" ref="bpmnCanvas" style="height: 400px; border: 1px solid #e8e8e8; border-radius: 4px;"></div>
+        <div v-if="xmlParseError" style="height: 400px; border: 1px solid #e8e8e8; border-radius: 4px; padding: 20px; background: #fafafa; overflow-y: auto;">
+          <a-result status="warning" title="无法预览图形">
+            <template #subTitle>
+              该 BPMN 文件仅包含执行逻辑（无 &lt;bpmndi:BPMNDiagram&gt; 坐标数据），因此无法生成对应的图形。<br/>
+              如果在建模工具中重新绘制并保存，即可在此处正常预览。
+            </template>
+          </a-result>
         </div>
       </div>
     </a-modal>
@@ -184,10 +191,16 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { UploadOutlined, StopOutlined } from '@ant-design/icons-vue'
-import type { TableProps, UploadProps } from 'ant-design-vue'
-import { getProcessDefinitions, deployProcessDefinition } from '@/api/workflow'
+import type { TableProps } from 'ant-design-vue'
+import { getDefinitionList, deployProcessDefinition, disableProcessDefinition, enableProcessDefinition, deleteProcessDefinition, getProcessDefinitionXml } from '@/api/workflow'
+// @ts-ignore
+import BpmnViewer from 'bpmn-js/lib/NavigatedViewer'
+import 'bpmn-js/dist/assets/diagram-js.css'
+import 'bpmn-js/dist/assets/bpmn-js.css'
+import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css'
 
 // 类型定义
 interface ProcessDefinition {
@@ -199,6 +212,7 @@ interface ProcessDefinition {
   version: number
   status: number
   createTime: string
+  bpmnXml?: string
 }
 
 interface SearchForm {
@@ -209,6 +223,7 @@ interface SearchForm {
 }
 
 // 响应式数据
+const router = useRouter()
 const loading = ref(false)
 const tableData = ref<ProcessDefinition[]>([])
 const selectedRowKeys = ref<number[]>([])
@@ -274,8 +289,8 @@ const columns = [
 
 // 表格行选择配置
 const rowSelection: TableProps['rowSelection'] = {
-  onChange: (selectedKeys: number[]) => {
-    selectedRowKeys.value = selectedKeys
+  onChange: (selectedKeys: any[]) => {
+    selectedRowKeys.value = selectedKeys as number[]
   }
 }
 
@@ -299,19 +314,50 @@ const deployRules = {
   ],
   processKey: [
     { required: true, message: '请输入流程KEY', trigger: 'blur' },
-    { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '流程KEY格式不正确', trigger: 'blur' }
+    { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '流程KEY只能以英文字母开头，包含字母、数字和下划线', trigger: 'blur' }
   ],
   category: [
     { required: true, message: '请选择流程分类', trigger: 'change' }
-  ],
-  bpmnFile: [
-    { required: true, message: '请上传BPMN文件', trigger: 'change' }
   ]
 }
 
 // 查看弹窗相关
 const viewVisible = ref(false)
 const currentProcess = ref<ProcessDefinition | null>(null)
+const bpmnCanvas = ref<HTMLElement | null>(null)
+const xmlParseError = ref(false)
+let bpmnViewer: any = null
+
+const initBpmnViewer = async (xml: string) => {
+  xmlParseError.value = false;
+  
+  if (!bpmnCanvas.value) {
+    message.error('流程图容器未初始化');
+    return;
+  }
+  
+  if (!bpmnViewer) {
+    bpmnViewer = new BpmnViewer({
+      container: bpmnCanvas.value
+    })
+  }
+  try {
+    const { warnings } = await bpmnViewer.importXML(xml)
+    if (warnings && warnings.length) {
+      console.warn('BPMN 渲染警告:', warnings)
+    }
+    // 让图形居中适应屏幕
+    bpmnViewer.get('canvas').zoom('fit-viewport')
+  } catch (err: any) {
+    console.error('BPMN 渲染失败:', err)
+    if (err.message && err.message.includes('no diagram to display')) {
+      xmlParseError.value = true;
+      message.warning('该 BPMN 文件缺少图形坐标，无法预览图画');
+    } else {
+      message.error('流程图渲染失败，请检查XML格式')
+    }
+  }
+}
 
 // 方法
 const loadData = async () => {
@@ -326,7 +372,7 @@ const loadData = async () => {
       status: searchForm.status
     }
     
-    const response = await getProcessDefinitions(params)
+    const response = await getDefinitionList(params)
     if (response.data?.code === 200) {
       tableData.value = response.data.data.records
       pagination.total = Number(response.data.data.total) || 0
@@ -364,38 +410,108 @@ const handleDeploy = () => {
   deployVisible.value = true
 }
 
-const handleView = (record: ProcessDefinition) => {
+const handleView = async (record: ProcessDefinition) => {
   currentProcess.value = record
   viewVisible.value = true
+  
+  // 等待弹窗DOM加载完成后初始化 BpmnViewer
+  setTimeout(async () => {
+    try {
+      const res = await getProcessDefinitionXml(record.processKey);
+      if (res.data?.code === 200 && res.data?.data) {
+        initBpmnViewer(res.data.data);
+      } else {
+        message.warning('该流程缺少 BPMN XML 源码文件数据，无法预览。');
+      }
+    } catch (err) {
+      message.error('拉取流程图数据失败');
+    }
+  }, 300)
 }
 
 const handleEdit = (record: ProcessDefinition) => {
-  message.info(`编辑流程: ${record.processName}`)
+  router.push(`/workflow/modeler?processKey=${record.processKey}&id=${record.id}`)
 }
 
-// TODO: 后端暂未提供删除、启用、停用流程定义的接口
 const handleDelete = async (id: number) => {
-  message.info('此功能暂未实现')
+  try {
+    const res = await deleteProcessDefinition(id.toString());
+    if (res.data?.code === 200) {
+      message.success('删除成功');
+      loadData();
+    } else {
+      message.error(res.data?.message || '删除失败');
+    }
+  } catch (err) {
+    message.error('删除过程发生错误');
+  }
 }
 
 const handleDisable = async (id: number) => {
-  message.info('此功能暂未实现')
+  try {
+    const res = await disableProcessDefinition(id.toString());
+    if (res.data?.code === 200) {
+      message.success('停用成功');
+      loadData();
+    } else {
+      message.error(res.data?.message || '停用失败');
+    }
+  } catch (err) {
+    message.error('请求失败');
+  }
 }
 
 const handleEnable = async (id: number) => {
-  message.info('此功能暂未实现')
+  try {
+    const res = await enableProcessDefinition(id.toString());
+    if (res.data?.code === 200) {
+      message.success('启用成功');
+      loadData();
+    } else {
+      message.error(res.data?.message || '启用失败');
+    }
+  } catch (err) {
+    message.error('请求失败');
+  }
 }
 
-const handleBatchDisable = () => {
+const batchDisableLoading = ref(false)
+
+const handleBatchDisable = async () => {
   if (selectedRowKeys.value.length === 0) {
     message.warning('请先选择要停用的流程')
     return
   }
   
-  // 模拟批量停用
-  message.success('批量停用成功')
-  selectedRowKeys.value = []
-  loadData()
+  batchDisableLoading.value = true
+  try {
+    // 使用 Promise.allSettled 并发调用停用API
+    const results = await Promise.allSettled(
+      selectedRowKeys.value.map(id => disableProcessDefinition(id.toString()))
+    )
+    
+    // 统计成功和失败的数量
+    const successCount = results.filter(
+      r => r.status === 'fulfilled' && r.value?.data?.code === 200
+    ).length
+    const failCount = results.length - successCount
+    
+    if (failCount === 0) {
+      message.success(`批量停用成功，共停用 ${successCount} 个流程`)
+    } else if (successCount === 0) {
+      message.error('批量停用失败，请检查流程状态')
+    } else {
+      message.warning(`部分停用成功：${successCount} 个成功，${failCount} 个失败`)
+    }
+    
+    // 清空选择并刷新列表
+    selectedRowKeys.value = []
+    loadData()
+  } catch (error) {
+    message.error('批量停用过程发生错误')
+  } finally {
+    batchDisableLoading.value = false
+  }
 }
 
 const handleTableChange = (pag: any) => {
@@ -404,7 +520,7 @@ const handleTableChange = (pag: any) => {
   loadData()
 }
 
-const beforeUpload: UploadProps['beforeUpload'] = (file) => {
+const beforeUpload = (file: File) => {
   const isBpmn = file.type === 'application/xml' || file.name.endsWith('.bpmn') || file.name.endsWith('.xml')
   if (!isBpmn) {
     message.error('只能上传.bpmn或.xml格式的文件!')
@@ -417,7 +533,8 @@ const beforeUpload: UploadProps['beforeUpload'] = (file) => {
     return false
   }
   
-  return true
+  // 阻止默认上传，我们自己用 fileList 接住
+  return false
 }
 
 const handleDeployOk = async () => {
@@ -431,18 +548,31 @@ const handleDeployOk = async () => {
       return
     }
     
-    const file = fileList.value[0].originFileObj
-    const response = await deployProcessDefinition(file, deployForm)
+    const payload = {
+      processName: deployForm.processName,
+      processKey: deployForm.processKey,
+      category: deployForm.category || '',
+      description: deployForm.description
+    };
+    
+    // Ant Design Vue 在 beforeUpload 返回 false 时，file本身就是源文件
+    const fileItem = fileList.value[0]
+    const file = fileItem.originFileObj || fileItem
+    
+    const response = await deployProcessDefinition(file, payload)
     
     if (response.data?.code === 200) {
       message.success('流程部署成功')
       deployVisible.value = false
+      fileList.value = []
+      deployFormRef.value?.resetFields()
       loadData()
     } else {
       message.error(response.data?.message || '流程部署失败')
     }
-  } catch (error) {
-    message.error('流程部署失败')
+  } catch (error: any) {
+    console.error('部署报错:', error);
+    message.error(error.message || '流程部署失败')
   } finally {
     deployLoading.value = false
   }

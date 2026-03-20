@@ -91,7 +91,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import TaskList from './components/TaskList.vue'
-import { getMyAssignedTasks, getMyCandidateTasks, claimTask, completeTask } from '@/api/workflow'
+import { getMyAssignedTasks, getMyCandidateTasks, getMyCompletedTasks, claimTask, completeTask } from '@/api/workflow'
 
 const router = useRouter()
 
@@ -164,22 +164,25 @@ const loadAssignedTasks = async () => {
 const loadCompletedTasks = async () => {
   loading.value = true
   try {
-    // 模拟已办任务数据
-    completedTasks.value = [
-      {
-        taskId: 'task_003',
-        taskName: '人事审批',
-        processName: '入职流程',
-        processInstanceId: 'instance_003',
-        starterName: '王五',
-        priority: 70,
-        createTime: '2026-03-12 14:00:00',
-        dueTime: '2026-03-13 17:00:00',
-        claimTime: '2026-03-12 14:05:00',
-        activityId: 'hrAudit',
-        businessKey: '3'
-      }
-    ]
+    const response = await getMyCompletedTasks()
+    if (response.data?.code === 200) {
+      completedTasks.value = response.data.data.map((item: any) => ({
+        taskId: item.taskId,
+        taskName: item.taskName,
+        processName: item.processDefinitionName,
+        processInstanceId: item.instanceId,
+        starterName: item.starterName || '未知',
+        priority: item.priority || 0,
+        createTime: item.createTime,
+        dueTime: item.dueTime,
+        claimTime: item.claimTime,
+        endTime: item.endTime,
+        activityId: item.activityId,
+        businessKey: item.businessKey
+      }))
+    } else {
+      message.error(response.data?.message || '加载已办任务失败')
+    }
   } catch (error) {
     message.error('加载已办任务失败')
   } finally {
@@ -198,7 +201,7 @@ const loadCandidateTasks = async () => {
         processName: item.processDefinitionName,
         processInstanceId: item.processInstanceId,
         starterName: item.starterName,
-        priority: 90,
+        priority: item.priority || 0,
         createTime: item.createTime,
         dueTime: item.dueTime,
         claimTime: item.claimTime
@@ -249,6 +252,43 @@ const handleComplete = (task: Task) => {
     router.push({
       path: '/declaration/payment',
       query: { id: task.businessKey, taskId: task.taskId, type: 'balance' }
+    })
+    return
+  }
+  if (task.activityId === 'pickupListUpload') {
+    // 提货单上传任务：跳转到申报单详情页，并设置为提货单上传模式
+    router.push({
+      path: '/declaration/form',
+      query: { 
+        id: task.businessKey, 
+        taskId: task.taskId, 
+        mode: 'payment',
+        type: 'pickup',
+        status: 6  // 提货单待传状态
+      }
+    })
+    return
+  }
+  if (task.activityId === 'pickupListAudit') {
+    // 提货单审核任务：跳转到申报单详情页，并设置为审核模式
+    router.push({
+      path: '/declaration/form',
+      query: { 
+        id: task.businessKey, 
+        taskId: task.taskId, 
+        mode: 'audit',
+        status: 7  // 提货单待审状态
+      }
+    })
+    return
+  }
+  
+  // 核心拦截：如果是 declarationProcess，将其导向具体的业务弹框或通过特定的 query 交由管理页弹窗
+  if (task.processName && task.processName.includes('申报') || task.processName === 'declarationProcess') {
+    message.info('正为您跳转至业务单据处理页');
+    router.push({
+      path: '/declaration/manage',
+      query: { action: 'audit', id: task.businessKey, taskId: task.taskId }
     })
     return
   }

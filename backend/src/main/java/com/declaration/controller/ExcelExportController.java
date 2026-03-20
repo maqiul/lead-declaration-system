@@ -5,14 +5,14 @@ import cn.hutool.core.util.StrUtil;
 import com.declaration.entity.ExportDataRequest;
 import org.apache.fesod.sheet.ExcelWriter;
 import org.apache.fesod.sheet.FesodSheet;
-
-import jakarta.servlet.http.HttpServletResponse;
 import org.apache.fesod.sheet.write.metadata.WriteSheet;
 import org.apache.fesod.sheet.write.metadata.fill.FillConfig;
+
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.core.io.ClassPathResource;
 
-
+import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
@@ -43,7 +43,8 @@ public class ExcelExportController {
             if (templatePath == null) {
                 throw new RuntimeException("模板文件不存在");
             }
-                        // 设置响应头
+            
+            // 设置响应头
             String fileName = "Export_Documents_" + System.currentTimeMillis() + ".xlsx";
             response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(fileName, StandardCharsets.UTF_8.toString()));
@@ -73,7 +74,6 @@ public class ExcelExportController {
                 
                 // 准备装箱单专用数据
                 Map<String, Object> packingData = preparePackingListData(requestData);
-
                 
                 // 填充装箱单数据
                 writer.fill(packingData, packingSheet);
@@ -83,11 +83,6 @@ public class ExcelExportController {
                 
                 writer.finish();
             }
-            
-
-            // 删除临时文件
-            // tempFile.delete();
-
             
             System.out.println("Excel模板填充导出成功");
             
@@ -114,7 +109,7 @@ public class ExcelExportController {
         }
         
         // 尝试从文件系统获取模板
-        java.io.File templateFile = new java.io.File("templates/temple.xlsx");
+        File templateFile = new File("templates/temple.xlsx");
         if (templateFile.exists()) {
             return templateFile.getAbsolutePath();
         }
@@ -151,8 +146,6 @@ public class ExcelExportController {
         fillData.put("totalNetWeight",requestData.get("totalNetWeight"));
         fillData.put("totalVolume",requestData.get("totalVolume"));
         fillData.put("totalQuantity",requestData.get("totalQuantity"));
-//        List<Map<String, Object>> products = (List<Map<String, Object>>) requestData.get("products");
-//        fillData.put("products",products);
         
         return fillData;
     }
@@ -160,6 +153,7 @@ public class ExcelExportController {
      /**
       * 创建产品列表数据
       */
+     @SuppressWarnings("unchecked")
      private List<ExportDataRequest.ProductInfo> createProductListData(Map<String, Object> requestData) {
          List<ExportDataRequest.ProductInfo> productList = new ArrayList<>();
          List<Map<String, Object>> products = (List<Map<String, Object>>) requestData.get("products");
@@ -167,9 +161,8 @@ public class ExcelExportController {
          for (Map<String, Object> product : products) {
              ExportDataRequest.ProductInfo productInfo = new ExportDataRequest.ProductInfo();
              productInfo.setProductName((String) product.get("productName"));
-             productInfo.setHsCode((String) product.get("hsCode"));  // 设置HS编码
-             // 设置申报要素
-             @SuppressWarnings("unchecked")
+             productInfo.setHsCode((String) product.get("hsCode"));
+             
              List<Map<String, Object>> declarationElements = (List<Map<String, Object>>) product.get("declarationElements");
              productInfo.setDeclarationElements(declarationElements);
              productInfo.setQuantity((Integer) product.get("quantity"));
@@ -184,7 +177,6 @@ public class ExcelExportController {
              productInfo.setWgt("KGS");
                          
              // 设置箱子信息
-             @SuppressWarnings("unchecked")
              Map<String, Object> cartonInfo = (Map<String, Object>) product.get("cartonInfo");
              if (cartonInfo != null) {
                  productInfo.setCartonNo((String) cartonInfo.get("cartonNo"));
@@ -197,10 +189,6 @@ public class ExcelExportController {
 
          return productList;
      }
-
-
-
-
 
     /**
      * 数字转英文大写
@@ -276,15 +264,4 @@ public class ExcelExportController {
         
         return packingData;
     }
-    
-    /**
-     * 创建装箱单产品数据
-     */
-    private List<ExportDataRequest.ProductInfo> createPackingListData(Map<String, Object> requestData) {
-        // 装箱单可以使用相同的产品数据，或者根据需要进行特殊处理
-        return createProductListData(requestData);
-    }
-    
-
-    
 }

@@ -1,5 +1,7 @@
 package com.declaration.controller;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.declaration.annotation.RequiresPermissions;
 import com.declaration.common.Result;
 import com.declaration.entity.ProcessDefinition;
@@ -13,19 +15,21 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.flowable.engine.ProcessEngines;
 import org.flowable.engine.repository.Deployment;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import cn.dev33.satoken.stp.StpUtil;
 
-import jakarta.validation.Valid;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
- * 工作流控制器
- *
- * @author Administrator
- * @since 2026-03-13
+ * 工作流管理控制器
  */
 @Slf4j
 @RestController
@@ -38,54 +42,159 @@ public class WorkflowController {
     private final ProcessInstanceService processInstanceService;
     private final TaskService taskService;
 
-    @PostMapping("/deploy")
+    @PostMapping("/definition/deploy")
     @Operation(summary = "部署流程定义")
-    @RequiresPermissions("workflow:deploy")
-    public Result<String> deployProcess(@RequestParam("file") MultipartFile file,
-                                       @Valid ProcessDefinition processDefinition) {
+    @RequiresPermissions("workflow:definition:deploy")
+    public Result<String> deployProcessDefinition(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("processName") String processName,
+            @RequestParam("processKey") String processKey,
+            @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "description", required = false) String description) {
+        
         try {
-            Deployment deployment = processDefinitionService.deployProcessFromFile(file, processDefinition);
-            return Result.success("部署成功", deployment.getId());
+            Deployment deployment = processDefinitionService.deployProcess(
+                file.getInputStream(), 
+                processName, 
+                processKey, 
+                category, 
+                description
+            );
+            return Result.success(deployment.getId());
         } catch (Exception e) {
-            return Result.fail(e.getMessage());
+            log.error("部署流程失败", e);
+            return Result.fail("部署流程失败: " + e.getMessage());
         }
     }
 
-    @GetMapping("/definitions")
+    @GetMapping("/definition")
     @Operation(summary = "获取流程定义列表")
     @RequiresPermissions("workflow:definition:list")
-    public Result<List<ProcessDefinition>> getProcessDefinitions() {
+    public Result<IPage<ProcessDefinition>> getProcessDefinitions(
+            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "10") Integer pageSize,
+            @RequestParam(required = false) String processName,
+            @RequestParam(required = false) String processKey,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Integer status) {
+        
         List<ProcessDefinition> definitions = processDefinitionService.getProcessDefinitions();
-        return Result.success(definitions);
+        
+        Stream<ProcessDefinition> stream = definitions.stream();
+        if (processName != null && !processName.isEmpty()) {
+            stream = stream.filter(d -> d.getProcessName() != null && d.getProcessName().contains(processName));
+        }
+        if (processKey != null && !processKey.isEmpty()) {
+            stream = stream.filter(d -> d.getProcessKey() != null && d.getProcessKey().contains(processKey));
+        }
+        if (category != null && !category.isEmpty()) {
+            stream = stream.filter(d -> category.equals(d.getCategory()));
+        }
+        if (status != null) {
+            stream = stream.filter(d -> status.equals(d.getStatus()));
+        }
+        
+        List<ProcessDefinition> filtered = stream.collect(Collectors.toList());
+        int total = filtered.size();
+        
+        int fromIndex = (pageNum - 1) * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, total);
+        List<ProcessDefinition> pagedData = fromIndex < total ? filtered.subList(fromIndex, toIndex) : new ArrayList<>();
+
+        Page<ProcessDefinition> page = new Page<>(pageNum, pageSize, total);
+        page.setRecords(pagedData);
+        
+        return Result.success(page);
+    }
+
+    @PostMapping("/definition/disable/{processDefinitionId}")
+    @Operation(summary = "挂起/停用流程定义")
+    @RequiresPermissions("workflow:definition:update")
+    public Result<Void> suspendProcessDefinition(@PathVariable String processDefinitionId) {
+        processDefinitionService.suspendProcessDefinition(processDefinitionId);
+        return Result.success(null);
+    }
+
+    @PostMapping("/definition/enable/{processDefinitionId}")
+    @Operation(summary = "激活/启用流程定义")
+    @RequiresPermissions("workflow:definition:update")
+    public Result<Void> activateProcessDefinition(@PathVariable String processDefinitionId) {
+        processDefinitionService.activateProcessDefinition(processDefinitionId);
+        return Result.success(null);
+    }
+
+    @DeleteMapping("/definition/{processDefinitionId}")
+    @Operation(summary = "删除流程定义")
+    @RequiresPermissions("workflow:definition:delete")
+    public Result<Void> deleteProcessDefinition(
+            @PathVariable String processDefinitionId,
+            @RequestParam(defaultValue = "false") boolean cascade) {
+        processDefinitionService.deleteProcessDefinition(processDefinitionId, cascade);
+        return Result.success(null);
+    }
+
+    @GetMapping("/definition/xml/{processKey}")
+    @Operation(summary = "获取流程定义XML内容")
+    public Result<String> getProcessDefinitionXml(@PathVariable String processKey) {
+        String xml = processDefinitionService.getProcessDefinitionXml(processKey);
+        return Result.success(xml);
     }
 
     @PostMapping("/instance/start")
     @Operation(summary = "启动流程实例")
     @RequiresPermissions("workflow:instance:start")
     public Result<ProcessInstance> startProcessInstance(
-            @Parameter(description = "流程定义KEY") @RequestParam String processDefinitionKey,
-            @Parameter(description = "业务KEY") @RequestParam(required = false) String businessKey,
-            @Parameter(description = "流程变量") @RequestBody(required = false) Map<String, Object> variables) {
+            @RequestParam String processDefinitionKey,
+            @RequestParam String businessKey,
+            @RequestBody(required = false) Map<String, Object> variables) {
         ProcessInstance instance = processInstanceService.startProcessInstance(processDefinitionKey, businessKey, variables);
         return Result.success(instance);
     }
 
     @GetMapping("/instances/my")
     @Operation(summary = "获取我的流程实例")
+    @RequiresPermissions("workflow:instance:list")
     public Result<List<ProcessInstance>> getMyProcessInstances() {
-        if (!cn.dev33.satoken.stp.StpUtil.isLogin()) {
-             return Result.fail("未登录");
+        if (!StpUtil.isLogin()) {
+            return Result.fail("用户未登录");
         }
-        Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+        
+        Long userId = StpUtil.getLoginIdAsLong();
         List<ProcessInstance> instances = processInstanceService.getProcessInstancesByStarter(userId);
         return Result.success(instances);
     }
-
+    
     @GetMapping("/instances/running")
     @Operation(summary = "获取运行中的流程实例")
     @RequiresPermissions("workflow:instance:list")
-    public Result<List<ProcessInstance>> getRunningProcessInstances() {
+    public Result<List<ProcessInstance>> getRunningProcessInstances(
+            @Parameter(description = "流程名称") @RequestParam(required = false) String processName,
+            @Parameter(description = "发起人姓名") @RequestParam(required = false) String starterName,
+            @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
         List<ProcessInstance> instances = processInstanceService.getRunningProcessInstances();
+        
+        // 过滤条件
+        if (processName != null && !processName.isEmpty()) {
+            instances = instances.stream()
+                .filter(instance -> instance.getProcessName() != null && 
+                    instance.getProcessName().contains(processName))
+                .collect(Collectors.toList());
+        }
+        
+        if (starterName != null && !starterName.isEmpty()) {
+            instances = instances.stream()
+                .filter(instance -> instance.getStarterName() != null && 
+                    instance.getStarterName().contains(starterName))
+                .collect(Collectors.toList());
+        }
+        
+        if (status != null) {
+            instances = instances.stream()
+                .filter(instance -> instance.getStatus() != null && 
+                    instance.getStatus().equals(status))
+                .collect(Collectors.toList());
+        }
+        
         return Result.success(instances);
     }
 
@@ -118,10 +227,10 @@ public class WorkflowController {
     @GetMapping("/tasks/assigned")
     @Operation(summary = "获取我的待办任务")
     public Result<List<TaskInstance>> getMyAssignedTasks() {
-        if (!cn.dev33.satoken.stp.StpUtil.isLogin()) {
+        if (!StpUtil.isLogin()) {
             return Result.fail("未登录");
         }
-        Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+        Long userId = StpUtil.getLoginIdAsLong();
         List<TaskInstance> tasks = taskService.getAssignedTasks(userId);
         return Result.success(tasks);
     }
@@ -129,25 +238,35 @@ public class WorkflowController {
     @GetMapping("/tasks/candidate")
     @Operation(summary = "获取我的候选任务")
     public Result<List<TaskInstance>> getMyCandidateTasks() {
-        if (!cn.dev33.satoken.stp.StpUtil.isLogin()) {
+        if (!StpUtil.isLogin()) {
             return Result.fail("未登录");
         }
-        Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+        Long userId = StpUtil.getLoginIdAsLong();
         
-        // 获取用户的角色列表作为候选组
-        List<String> roleKeys = cn.dev33.satoken.stp.StpUtil.getRoleList();
+        List<String> roleKeys = StpUtil.getRoleList();
         
         List<TaskInstance> tasks = taskService.getCandidateTasks(userId, roleKeys);
+        return Result.success(tasks);
+    }
+
+    @GetMapping("/tasks/completed")
+    @Operation(summary = "获取我的已完成任务")
+    public Result<List<TaskInstance>> getMyCompletedTasks() {
+        if (!StpUtil.isLogin()) {
+            return Result.fail("未登录");
+        }
+        Long userId = StpUtil.getLoginIdAsLong();
+        List<TaskInstance> tasks = taskService.getCompletedTasks(userId);
         return Result.success(tasks);
     }
 
     @PostMapping("/task/claim/{taskId}")
     @Operation(summary = "签收任务")
     public Result<Boolean> claimTask(@Parameter(description = "任务ID") @PathVariable String taskId) {
-        if (!cn.dev33.satoken.stp.StpUtil.isLogin()) {
+        if (!StpUtil.isLogin()) {
             return Result.fail("未登录");
         }
-        Long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+        Long userId = StpUtil.getLoginIdAsLong();
         taskService.claimTask(taskId, userId);
         return Result.success(true);
     }
@@ -188,5 +307,47 @@ public class WorkflowController {
     public Result<List<TaskInstance>> getTasksByProcessInstance(@Parameter(description = "流程实例ID") @PathVariable String instanceId) {
         List<TaskInstance> tasks = processInstanceService.getTasksByProcessInstance(instanceId);
         return Result.success(tasks);
+    }
+
+    @GetMapping("/monitor/stats")
+    @Operation(summary = "获取流程监控统计数据")
+    @RequiresPermissions("workflow:monitor:view")
+    public Result<Map<String, Object>> getMonitorStats() {
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalProcesses", processDefinitionService.getProcessDefinitions().size());
+        stats.put("runningInstances", processInstanceService.getRunningProcessInstances().size());
+        stats.put("pendingTasks", taskService.getRunningTasksCount());
+        stats.put("completedToday", 0);
+        return Result.success(stats);
+    }
+
+    @GetMapping("/monitor/tasks")
+    @Operation(summary = "获取全系统所有活跃任务")
+    @RequiresPermissions("workflow:monitor:view")
+    public Result<List<TaskInstance>> getAllActiveTasks() {
+        return Result.success(taskService.getAllActiveTasks());
+    }
+
+    @GetMapping("/monitor/charts")
+    @Operation(summary = "获取流程监控图表数据")
+    @RequiresPermissions("workflow:monitor:view")
+    public Result<Map<String, Object>> getMonitorCharts() {
+        Map<String, Object> data = new HashMap<>();
+        List<ProcessDefinition> defs = processDefinitionService.getProcessDefinitions();
+        List<Map<String, Object>> pieData = new ArrayList<>();
+        
+        for (ProcessDefinition def : defs) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("name", def.getProcessName());
+            // 真实统计
+            long count = ProcessEngines.getDefaultProcessEngine()
+                    .getRuntimeService().createProcessInstanceQuery()
+                    .processDefinitionKey(def.getProcessKey())
+                    .count();
+            item.put("value", count);
+            pieData.add(item);
+        }
+        data.put("typeDistribution", pieData);
+        return Result.success(data);
     }
 }

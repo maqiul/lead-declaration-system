@@ -7,23 +7,62 @@
           
           <!-- 审核模式下的按钮 -->
           <template v-if="isAudit">
-            <a-button type="primary" @click="handleApprove" :loading="submitting">{{ getAuditActionText() }}通过</a-button>
-            <a-button danger @click="handleReject" :loading="submitting">{{ getAuditActionText() }}驳回</a-button>
+            <a-button 
+              type="primary" 
+              @click="handleApprove" 
+              :loading="submitting"
+              v-permission="['business:declaration:audit']"
+            >{{ getAuditActionText() }}通过</a-button>
+            <a-button 
+              danger 
+              @click="handleReject" 
+              :loading="submitting"
+              v-permission="['business:declaration:audit']"
+            >{{ getAuditActionText() }}驳回</a-button>
           </template>
           
           <!-- 水单提交模式下的按钮 -->
           <template v-else-if="isPaymentMode">
-            <a-button v-if="formStatus === 2" type="primary" @click="handleSubmitAudit('deposit')" :loading="submitting">提交定金审核</a-button>
-            <a-button v-if="formStatus === 4" type="primary" @click="handleSubmitAudit('balance')" :loading="submitting">提交尾款审核</a-button>
+            <a-button v-if="formStatus === 2" type="primary" @click="handleSubmitAudit('deposit')" :loading="submitting" v-permission="['business:declaration:payment']">提交定金审核</a-button>
+            <a-button v-if="formStatus === 4" type="primary" @click="handleSubmitAudit('balance')" :loading="submitting" v-permission="['business:declaration:payment']">提交尾款审核</a-button>
+            <a-button v-if="formStatus === 6" type="primary" @click="handleSubmitAudit('pickup')" :loading="submitting" :disabled="pickupAttachments.length === 0" v-permission="['business:declaration:pickup-submit']">提交提货单审核</a-button>
           </template>
           
           <!-- 普通模式下的按钮 -->
           <template v-else>
             <!-- 保存草稿按钮 -->
-            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" @click="handleSaveDraft" :loading="submitting">保存草稿</a-button>
+            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" @click="handleSaveDraft" :loading="submitting" v-permission="['business:declaration:add']">保存草稿</a-button>
             
             <!-- 只在草稿状态且非只读模式下显示提交按钮 -->
-            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" type="primary" @click="handleSubmit" :loading="submitting">提交申报</a-button>
+            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" type="primary" @click="handleSubmit" :loading="submitting" v-permission="['business:declaration:submit']">提交申报</a-button>
+            
+            <!-- 提货单待传状态下显示提货单提交按钮 -->
+            <a-button 
+              v-if="formStatus === 6 && !isReadonly" 
+              type="primary" 
+              @click="handleSubmitAudit('pickup')" 
+              :loading="submitting" 
+              :disabled="pickupAttachments.length === 0"
+              v-permission="['business:declaration:pickup-submit']"
+            >
+              提交提货单审核 (附件: {{ pickupAttachments.length }}个)
+            </a-button>
+            
+            <!-- 提货单待审状态下显示审核按钮 -->
+            <template v-if="formStatus === 7 && !isReadonly">
+              <a-button 
+                type="primary" 
+                @click="handleApprove" 
+                :loading="submitting"
+                v-permission="['business:declaration:pickup-audit']"
+              >审核通过</a-button>
+              <a-button 
+                danger 
+                @click="handleReject" 
+                :loading="submitting"
+                v-permission="['business:declaration:pickup-audit']"
+              >审核驳回</a-button>
+            </template>
           </template>
         </a-space>
       </template>
@@ -610,6 +649,45 @@
         </a-table>
         <a-empty v-if="balanceRemittanceList.length === 0" description="暂无尾款水单" />
       </a-card>
+
+      <!-- 提货单附件 (尾款审核通过后显示) -->
+      <a-card v-if="formStatus && formStatus >= 6" title="提货单附件" size="small" class="section-card">
+        <template #extra>
+          <a-button v-if="!isReadonly && formStatus === 6" type="primary" size="small" @click="handleUploadPickup" v-permission="['business:declaration:pickup-submit']">
+            <template #icon><UploadOutlined /></template>
+            上传提货单
+          </a-button>
+        </template>
+        
+        <a-table 
+          :dataSource="pickupAttachments" 
+          :columns="pickupColumns" 
+          :pagination="false"
+          rowKey="id"
+          size="small"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'fileName'">
+              <a :href="getFilePreviewUrl(record.id)" target="_blank">{{ record.fileName }}</a>
+            </template>
+            <template v-else-if="column.key === 'fileType'">
+              <a-tag :color="getFileTagColor(record.fileType)">
+                {{ getFileTypeDisplay(record.fileType) }}
+              </a-tag>
+            </template>
+            <template v-else-if="column.key === 'createTime'">
+              {{ record.createTime ? dayjs(record.createTime).format('YYYY-MM-DD HH:mm') : '' }}
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <a-space>
+                <a-button type="link" size="small" @click="handleDownloadFile(record)" v-permission="['business:declaration:download']">下载</a-button>
+                <a-button v-if="!isReadonly && formStatus === 6" type="link" size="small" danger @click="handleDeletePickup(record)" v-permission="['business:declaration:pickup-delete']">删除</a-button>
+              </a-space>
+            </template>
+          </template>
+        </a-table>
+        <a-empty v-if="pickupAttachments.length === 0" description="暂无提货单附件" />
+      </a-card>
     </a-card>
   </div>
 </template>
@@ -619,9 +697,24 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, UploadOutlined, CameraOutlined } from '@ant-design/icons-vue'
-import { Dayjs } from 'dayjs'
-import dayjs from 'dayjs'
-import { getDeclarationDetail, addDeclaration, updateDeclaration, uploadFile, saveDraft, deleteDeclaration } from '@/api/business/declaration'
+import dayjs, { Dayjs } from 'dayjs'
+import {
+  getDeclarationDetail, 
+  addDeclaration, 
+  updateDeclaration, 
+  uploadFile, 
+  saveDraft, 
+  deleteDeclaration,
+  submitDeclaration,
+  submitForAudit,
+  auditDeclaration,
+  saveRemittance,
+  updateRemittance,
+  deleteRemittance,
+  getPickupAttachments,
+  savePickupAttachment,
+  deleteAttachment
+} from '@/api/business/declaration'
 import { getProductTypes } from '@/api/system/product'
 import { getTransportModes } from '@/api/system/config'
 
@@ -654,17 +747,23 @@ const getAuditActionText = () => {
   if (formStatus.value === 1) return '初审'
   if (formStatus.value === 3) return '定金审核'
   if (formStatus.value === 5) return '尾款审核'
+  if (formStatus.value === 7) return '提货单审核'
   return '审批'
 }
 
-// 提交审核（定金/尾款）
-const handleSubmitAudit = async (type: 'deposit' | 'balance') => {
+// 提交审核（定金/尾款/提货单）
+const handleSubmitAudit = async (type: 'deposit' | 'balance' | 'pickup') => {
   if (!formId.value) return
   submitting.value = true
   try {
-    const { submitForAudit } = await import('@/api/business/declaration')
     await submitForAudit(formId.value, type)
-    message.success(type === 'deposit' ? '定金信息已提交审核' : '尾款信息已提交审核')
+    
+    let msg = '已提交审核'
+    if (type === 'deposit') msg = '定金信息已提交审核'
+    else if (type === 'balance') msg = '尾款信息已提交审核'
+    else if (type === 'pickup') msg = '提货单已提交审核'
+    
+    message.success(msg)
     goBack()
   } catch (error) {
     message.error('提交失败')
@@ -678,7 +777,6 @@ const handleApprove = async () => {
   if (!formId.value) return
   submitting.value = true
   try {
-    const { auditDeclaration } = await import('@/api/business/declaration')
     await auditDeclaration(formId.value, 1) // 1 是通过
     message.success(`${getAuditActionText()}已通过`)
     if (formStatus.value === 1) {
@@ -697,7 +795,6 @@ const handleReject = async () => {
   if (!formId.value) return
   submitting.value = true
   try {
-    const { auditDeclaration } = await import('@/api/business/declaration')
     await auditDeclaration(formId.value, 2) // 2 是驳回
     message.success(`${getAuditActionText()}已驳回`)
     goBack()
@@ -714,18 +811,25 @@ const handleSaveRemittance = async (record: any) => {
   if (!formId.value) return
   submitting.value = true
   try {
-    const { saveRemittance } = await import('@/api/business/declaration')
     const data = {
       ...record,
       remittanceDate: record.remittanceDate.format('YYYY-MM-DD'),
     }
-    const res = await saveRemittance(formId.value, data)
-    if (res.data && res.data.code === 200) {
-      record.id = res.data.data?.id || record.id
+    
+    if (record.id) {
+      // 更新现有水单
+      await updateRemittance(record.id, data)
+      message.success('水单信息更新成功')
+    } else {
+      // 新增水单
+      const res = await saveRemittance(formId.value, data)
+      if (res.data && res.data.code === 200) {
+        record.id = res.data.data?.id || record.id
+      }
+      message.success('水单信息保存成功，已生成对应单证')
     }
-    message.success('水单信息保存成功，已生成对应单证')
   } catch (error) {
-    message.error('保存失败')
+    message.error('操作失败')
   } finally {
     submitting.value = false
   }
@@ -790,7 +894,6 @@ const handleDeleteRemittance = async (record: any) => {
   if (record.id) {
     // 已保存的水单需要调用后端删除
     try {
-      const { deleteRemittance } = await import('@/api/business/declaration')
       await deleteRemittance(record.id)
       message.success('水单删除成功')
     } catch (error) {
@@ -814,16 +917,15 @@ const balanceRemittanceList = computed(() =>
   remittanceList.value.filter(r => r.remittanceType === 2)
 )
 
-const remittanceColumns = [
-  { title: '类型', key: 'remittanceType', width: 80 },
-  { title: '名称', key: 'remittanceName', width: 120 },
-  { title: '日期', key: 'remittanceDate', width: 130 },
-  { title: '金额', key: 'remittanceAmount', width: 100 },
-  { title: '汇率', key: 'exchangeRate', width: 80 },
-  { title: '手续费', key: 'bankFee', width: 80 },
-  { title: '入账金额', key: 'creditedAmount', width: 100 },
-  { title: '附件', key: 'photoUrl', width: 100 },
-  { title: '操作', key: 'action', width: 100 }
+// 提货单附件列表
+const pickupAttachments = ref<any[]>([])
+
+// 提货单表格列配置
+const pickupColumns = [
+  { title: '文件名', key: 'fileName', dataIndex: 'fileName' },
+  { title: '类型', key: 'fileType', width: 100 },
+  { title: '上传时间', key: 'createTime', width: 180 },
+  { title: '操作', key: 'action', width: 120 }
 ]
 
 // 不包含类型列的列定义
@@ -1358,7 +1460,7 @@ const handleSubmit = async () => {
       totalNetWeight: totals.value.totalNetWeight,
       totalVolume: totals.value.totalVolume,
       totalAmount: totals.value.totalAmount,
-      status: 1, // 已提交状态
+      status: 0, // 初始保存为草稿状态，由后续 /submit 启动流程并改为1
       products: productList.value.map((product: any) => ({
         ...product,
         elementValues: (product.declarationElements || [])
@@ -1377,6 +1479,7 @@ const handleSubmit = async () => {
     // 如果是从草稿提交，我们需要告诉后端这个表单原本在草稿表
     // 或者后端可以在 submit 逻辑中自动处理
     
+    let finalId = formId.value
     if (formId.value && formStatus.value !== 0) {
       // 更新正式表单
       await updateDeclaration(formId.value, submitData as any)
@@ -1385,6 +1488,7 @@ const handleSubmit = async () => {
       // 新增正式表单 (包括从草稿提交)
       const res = await addDeclaration(submitData as any)
       if (res.data && res.data.code === 200) {
+        finalId = res.data.data
         // 如果是从草稿提交成功，手动删除草稿
         if (formId.value && formStatus.value === 0) {
             try {
@@ -1393,7 +1497,20 @@ const handleSubmit = async () => {
                 console.error('删除旧草稿失败:', e)
             }
         }
-        message.success('申报单提交成功')
+        message.success('申报单保存成功')
+      } else {
+        throw new Error(res.data.message || '保存失败')
+      }
+    }
+
+    // 关键修复：显式调用提交接口启动 Flowable 流程
+    if (finalId) {
+      console.log('正在启动流程, ID:', finalId)
+      const submitRes = await submitDeclaration(finalId)
+      if (submitRes.data && submitRes.data.code === 200) {
+        message.success('流程启动完成，已进入部门初审阶段')
+      } else {
+        message.warning('表单已保存，但流程启动失败: ' + (submitRes.data?.message || '未知错误'))
       }
     }
     
@@ -1430,6 +1547,7 @@ const loadData = async () => {
         // 更新状态和只读模式
         const submittedStatus = detailData.status || 0
         formStatus.value = submittedStatus
+        console.log('🔄 更新formStatus为:', submittedStatus)
         
         // 只读状态判断：
         // 1. 如果 URL 参数 readonly=true，保持只读
@@ -1492,7 +1610,7 @@ const loadData = async () => {
             // 添加体积字段
             volume: product.volume || 0
           }))
-          console.log('✅ 加载产品列表成功:', productList.value.length + ' 个产品')
+          console.log('加载产品列表成功:', productList.value.length + ' 个产品')
           
           // 打印产品详情用于调试
           productList.value.forEach((p: any, idx: number) => {
@@ -1524,7 +1642,7 @@ const loadData = async () => {
               .filter((cp: any) => cp.cartonId === carton.id)
               .map((cp: any) => cp.productId)
           }))
-          console.log('✅ 加载箱子列表成功:', cartonList.value.length + ' 个箱子')
+          console.log('加载箱子列表成功:', cartonList.value.length + ' 个箱子')
           
           // 打印箱子详情用于调试
           cartonList.value.forEach((c: any, idx: number) => {
@@ -1552,7 +1670,32 @@ const loadData = async () => {
               url: rem.photoUrl,
             }] : []
           }))
-          console.log('✅ 加载水单列表成功:', remittanceList.value.length + ' 条记录')
+          console.log('加载水单列表成功:', remittanceList.value.length + ' 条记录')
+        }
+        // 填充提货单附件(若需要)，如果是状态 >=6 开始加载
+        const fStatus = formStatus.value || 0
+        if (fStatus >= 6 && formId.value) {
+          try {
+            console.log('开始加载提货单附件，申报单ID:', formId.value)
+            const pickupRes = await getPickupAttachments(formId.value)
+            console.log('提货单附件API响应:', pickupRes)
+            if (pickupRes.data && pickupRes.data.code === 200) {
+              pickupAttachments.value = pickupRes.data.data.map((att: any) => ({
+                id: att.id,
+                fileName: att.fileName,
+                fileUrl: att.fileUrl || `/api/v1/files/download?id=${att.id}`,
+                fileType: 'PickupList',
+                createTime: att.createTime
+              }))
+              console.log('提货单附件加载成功，数量:', pickupAttachments.value.length)
+            } else {
+              console.warn('提货单附件加载失败:', pickupRes.data?.message || '未知错误')
+              pickupAttachments.value = [] // 确保数组为空而不是undefined
+            }
+          } catch (e) {
+            console.warn('加载提货单附件失败:', e)
+            pickupAttachments.value = [] // 确保数组为空而不是undefined
+          }
         }
         
         message.success('数据加载成功')
@@ -1561,7 +1704,7 @@ const loadData = async () => {
         message.error('获取申报单详情失败')
       }
     } catch (error: any) {
-      console.error('❌ 加载申报单详情失败:', error)
+      console.error('加载申报单详情失败:', error)
       message.error('加载数据失败: ' + (error.message || '未知错误'))
     }
   }
@@ -1592,6 +1735,104 @@ const testDataStructure = (elements: any[]) => {
       currentValue: element.value
     })
   })
+}
+
+// 上传提货单
+const handleUploadPickup = async () => {
+  if (!formId.value) return message.error('申报单ID不存在')
+  
+  try {
+    const fileInput = document.createElement('input')
+    fileInput.type = 'file'
+    fileInput.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png'
+    fileInput.onchange = async (e: any) => {
+      const file = e.target.files[0]
+      if (file) {
+        // 第一步：上传物理文件
+        const response = await uploadFile(file, 'PickupList')  // 直接指定文件类型为PickupList
+        if (response.data && response.data.code === 200) {
+          const fileInfo = response.data.data
+          
+          // fileInfo已经是完整的DeclarationAttachment对象，包含了正确的ID和fileUrl
+          // 直接保存到数据库，避免重复上传
+          const attachRes = await savePickupAttachment(formId.value!, {
+            fileName: fileInfo.fileName,
+            fileUrl: fileInfo.fileUrl,
+            fileType: 'PickupList'  // 确保文件类型正确
+          })
+          
+          if (attachRes.data && attachRes.data.code === 200) {
+            message.success('提货单上传成功')
+            // 重新加载提货单列表
+            const pickupRes = await getPickupAttachments(formId.value!)
+            if (pickupRes.data && pickupRes.data.code === 200) {
+              pickupAttachments.value = pickupRes.data.data.map((att: any) => ({
+                id: att.id,
+                fileName: att.fileName,
+                fileUrl: att.fileUrl || `/api/v1/files/download?id=${att.id}`,
+                fileType: 'PickupList',
+                createTime: att.createTime
+              }))
+            }
+          } else {
+            message.error(attachRes.data.message || '保存提货单记录失败')
+          }
+        }
+      }
+    }
+    fileInput.click()
+  } catch (error) {
+    message.error('上传失败')
+  }
+}
+
+// 获取文件类型标签颜色
+const getFileTagColor = (fileType: string) => {
+  const colorMap: Record<string, string> = {
+    'PickupList': 'orange',
+    'Invoice': 'blue',
+    'PackingList': 'green',
+    'Remittance': 'purple',
+    'Contract': 'magenta',
+    'FullDocuments': 'cyan'
+  }
+  return colorMap[fileType] || 'default'
+}
+
+// 获取文件类型显示文本
+const getFileTypeDisplay = (fileType: string) => {
+  const textMap: Record<string, string> = {
+    'PickupList': '提货单',
+    'Invoice': '商业发票',
+    'PackingList': '装箱单',
+    'Remittance': '水单',
+    'Contract': '合同',
+    'FullDocuments': '全套单证'
+  }
+  return textMap[fileType] || fileType
+}
+
+// 下载文件
+const handleDownloadFile = (record: any) => {
+  const link = document.createElement('a')
+  link.href = getFilePreviewUrl(record.id)
+  link.download = record.fileName
+  link.click()
+}
+
+// 删除提货单
+const handleDeletePickup = async (record: any) => {
+  try {
+    const res = await deleteAttachment(record.id)
+    if (res.data && res.data.code === 200) {
+      pickupAttachments.value = pickupAttachments.value.filter(item => item.id !== record.id)
+      message.success('删除成功')
+    } else {
+      message.error(res.data.message || '删除失败')
+    }
+  } catch (error) {
+    message.error('删除失败')
+  }
 }
 
 onMounted(() => {

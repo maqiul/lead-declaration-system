@@ -33,8 +33,14 @@ export const asyncRoutes: RouteRecordRaw[] = [
       {
         path: 'dashboard',
         name: 'Dashboard',
-        component: () => import('@/views/dashboard/index.vue'),
-        meta: { title: '首页', icon: 'HomeOutlined' }
+        component: () => import('@/views/dashboard/simple.vue'),
+        meta: { title: '首页', icon: 'HomeOutlined', affix: true }
+      },
+      {
+        path: 'profile',
+        name: 'Profile',
+        component: () => import('@/views/profile/index.vue'),
+        meta: { title: '个人中心', hidden: true }
       }
     ]
   },
@@ -101,6 +107,33 @@ export const asyncRoutes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/tax-refund',
+    component: Layout,
+    name: 'TaxRefund',
+    redirect: '/tax-refund/list',
+    meta: { title: '税务退费', icon: 'DollarOutlined' },
+    children: [
+      {
+        path: 'apply',
+        name: 'TaxRefundApply',
+        component: () => import('@/views/tax-refund/apply/index.vue'),
+        meta: { title: '退税申请', icon: 'PlusOutlined' }
+      },
+      {
+        path: 'list',
+        name: 'TaxRefundList',
+        component: () => import('@/views/tax-refund/list/index.vue'),
+        meta: { title: '申请列表', icon: 'UnorderedListOutlined' }
+      },
+      {
+        path: 'detail/:id',
+        name: 'TaxRefundDetail',
+        component: () => import('@/views/tax-refund/detail/index.vue'),
+        meta: { title: '申请详情', icon: 'FileSearchOutlined', hideInMenu: true }
+      }
+    ]
+  },
+  {
     path: '/workflow',
     component: Layout,
     name: 'Workflow',
@@ -139,46 +172,6 @@ export const asyncRoutes: RouteRecordRaw[] = [
     ]
   },
   {
-    path: '/business',
-    component: Layout,
-    name: 'Business',
-    meta: { title: '业务管理', icon: 'ShoppingOutlined' },
-    children: [
-      {
-        path: 'finance-review',
-        name: 'FinanceReview',
-        component: () => import('@/views/business/tax-refund/finance-review.vue'),
-        meta: { title: '财务审核', icon: 'AuditOutlined' }
-      }
-    ]
-  },
-  {
-    path: '/demo',
-    component: Layout,
-    name: 'Demo',
-    meta: { title: '演示功能', icon: 'ExperimentOutlined' },
-    children: [
-      {
-        path: 'shipping-list',
-        name: 'ShippingListDemo',
-        component: () => import('@/views/demo/simple-shipping-demo.vue'),
-        meta: { title: '发货清单演示', icon: 'UnorderedListOutlined' }
-      },
-      {
-        path: 'declaration-form',
-        name: 'DeclarationFormDemo',
-        component: () => import('@/views/demo/declaration-form-demo.vue'),
-        meta: { title: '申报表单演示', icon: 'FileTextOutlined' }
-      },
-      {
-        path: 'declaration-history',
-        name: 'DeclarationHistory',
-        component: () => import('@/views/demo/declaration-history.vue'),
-        meta: { title: '申报历史记录', icon: 'HistoryOutlined' }
-      }
-    ]
-  },
-  {
     path: '/declaration',
     component: Layout,
     name: 'Declaration',
@@ -209,47 +202,60 @@ export const asyncRoutes: RouteRecordRaw[] = [
         meta: { title: '申报统计', icon: 'BarChartOutlined' }
       }
     ]
+  },
+  {
+    path: '/contract',
+    component: Layout,
+    name: 'Contract',
+    meta: { title: '合同管理', icon: 'FileTextOutlined' },
+    children: [
+      {
+        path: 'template',
+        name: 'ContractTemplate',
+        component: () => import('@/views/contract/template/index.vue'),
+        meta: { title: '模板管理', icon: 'FileAddOutlined' }
+      },
+      {
+        path: 'generation',
+        name: 'ContractGeneration',
+        component: () => import('@/views/contract/generation/index.vue'),
+        meta: { title: '合同列表', icon: 'HistoryOutlined' }
+      }
+    ]
   }
 ]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes: constantRoutes
+  routes: [...constantRoutes, ...asyncRoutes]
 })
 
 // 预加载组件
 preloadComponents.forEach(loader => {
-  loader().catch(err => console.warn('预加载组件失败:', err))
+  loader().catch(() => {})
 })
 
 // 路由守卫
 router.beforeEach(async (to, _from, next) => {
-  console.log('路由守卫触发:', to.path)
   const userStore = useUserStore()
   
   if (to.path === '/login') {
     next()
   } else {
     if (userStore.token) {
-      console.log('用户已登录，routes长度:', userStore.routes.length)
       if (userStore.routes.length === 0) {
         try {
-          console.log('开始获取用户信息和生成路由')
           await userStore.getUserInfo()
           await userStore.generateRoutes()
-          console.log('路由生成完成，重新导航')
           next({ ...to, replace: true })
         } catch (error) {
-          console.error('路由守卫错误:', error)
           await userStore.resetToken()
           next(`/login?redirect=${to.path}`)
         }
       } else {
-        console.log('使用已缓存的路由')
         next()
       }
     } else {
-      console.log('用户未登录，跳转到登录页')
       next(`/login?redirect=${to.path}`)
     }
   }

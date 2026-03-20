@@ -2,23 +2,33 @@ package com.declaration.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.declaration.dao.DeclarationFormDao;
+import com.declaration.dao.DeclarationProductDao;
+import com.declaration.dto.DeclarationStatisticsDTO;
 import com.declaration.entity.DeclarationForm;
 import com.declaration.entity.DeclarationProduct;
 import com.declaration.entity.DeclarationCarton;
 import com.declaration.entity.DeclarationCartonProduct;
 import com.declaration.entity.DeclarationElementValue;
+import com.declaration.entity.DeclarationRemittance;
+import com.declaration.entity.DeclarationAttachment;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.DeclarationProductService;
 import com.declaration.service.DeclarationCartonService;
 import com.declaration.service.DeclarationCartonProductService;
 import com.declaration.service.DeclarationElementValueService;
+import com.declaration.service.DeclarationRemittanceService;
+import com.declaration.service.DeclarationAttachmentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import cn.dev33.satoken.stp.StpUtil;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,8 +48,9 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     private final DeclarationCartonService cartonService;
     private final DeclarationCartonProductService cartonProductService;
     private final DeclarationElementValueService elementValueService;
-    private final com.declaration.service.DeclarationRemittanceService remittanceService;
-    private final com.declaration.service.DeclarationAttachmentService attachmentService;
+    private final DeclarationRemittanceService remittanceService;
+    private final DeclarationAttachmentService attachmentService;
+    private final DeclarationProductDao declarationProductDao;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -61,11 +72,21 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             }
             
             // 设置组织ID (如果未提供)
-            if (form.getOrgId() == null && cn.dev33.satoken.stp.StpUtil.isLogin()) {
-                Object userOrgId = cn.dev33.satoken.stp.StpUtil.getSession().get("orgId");
+            if (form.getOrgId() == null && StpUtil.isLogin()) {
+                Object userOrgId = StpUtil.getSession().get("orgId");
                 if (userOrgId != null) {
-                    form.setOrgId(Long.valueOf(userOrgId.toString()));
+                    try {
+                        Long orgId = Long.valueOf(userOrgId.toString());
+                        form.setOrgId(orgId);
+                        log.info("设置申报单组织ID: {}", orgId);
+                    } catch (NumberFormatException e) {
+                        log.warn("组织ID格式错误: {}", userOrgId);
+                    }
+                } else {
+                    log.warn("用户会话中未找到组织ID");
                 }
+            } else if (form.getOrgId() != null) {
+                log.info("申报单已提供组织ID: {}", form.getOrgId());
             }
             
             // 保存申报单主表
@@ -169,7 +190,7 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                 elementValueService.lambdaUpdate()
                         .in(DeclarationElementValue::getProductId, productIds)
                         .remove();
-                productService.removeByIds(java.util.Arrays.asList(productIds));
+                productService.removeByIds(Arrays.asList(productIds));
             }
 
             // 删除箱子及相关的关联关系
@@ -181,7 +202,7 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                 cartonProductService.lambdaUpdate()
                         .in(DeclarationCartonProduct::getCartonId, cartonIds)
                         .remove();
-                cartonService.removeByIds(java.util.Arrays.asList(cartonIds));
+                cartonService.removeByIds(Arrays.asList(cartonIds));
             }
 
             // 3. 重新保存新的关联数据 (复用保存逻辑的部分代码，但需要跳过主表保存)
@@ -285,16 +306,16 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             }
             
             // 查询水单信息
-            List<com.declaration.entity.DeclarationRemittance> remittances = remittanceService.lambdaQuery()
-                    .eq(com.declaration.entity.DeclarationRemittance::getFormId, id)
-                    .orderByAsc(com.declaration.entity.DeclarationRemittance::getRemittanceDate)
+            List<DeclarationRemittance> remittances = remittanceService.lambdaQuery()
+                    .eq(DeclarationRemittance::getFormId, id)
+                    .orderByAsc(DeclarationRemittance::getRemittanceDate)
                     .list();
             form.setRemittances(remittances);
 
             // 查询附件信息
-            List<com.declaration.entity.DeclarationAttachment> attachments = attachmentService.lambdaQuery()
-                    .eq(com.declaration.entity.DeclarationAttachment::getFormId, id)
-                    .orderByDesc(com.declaration.entity.DeclarationAttachment::getCreateTime)
+            List<DeclarationAttachment> attachments = attachmentService.lambdaQuery()
+                    .eq(DeclarationAttachment::getFormId, id)
+                    .orderByDesc(DeclarationAttachment::getCreateTime)
                     .list();
             form.setAttachments(attachments);
         }
@@ -309,5 +330,140 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
         String datePrefix = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String randomSuffix = String.valueOf(System.currentTimeMillis() % 10000);
         return "DEC" + datePrefix + randomSuffix;
+    }
+
+    @Override
+    public DeclarationStatisticsDTO getStatistics() {
+        DeclarationStatisticsDTO dto = new DeclarationStatisticsDTO();
+        
+        // 1. 统计总申报单数（排除草稿）
+        Long totalForms = this.lambdaQuery()
+                .ne(DeclarationForm::getStatus, 0)
+                .count();
+        dto.setTotalForms(totalForms != null ? totalForms : 0L);
+        
+        // 2. 统计本月申报数
+        LocalDate now = LocalDate.now();
+        LocalDate firstDayOfMonth = now.withDayOfMonth(1);
+        Long monthForms = this.lambdaQuery()
+                .ne(DeclarationForm::getStatus, 0)
+                .ge(DeclarationForm::getCreateTime, firstDayOfMonth.atStartOfDay())
+                .count();
+        dto.setMonthForms(monthForms != null ? monthForms : 0L);
+        
+        // 3. 统计总金额和平均金额
+        List<DeclarationForm> allForms = this.lambdaQuery()
+                .ne(DeclarationForm::getStatus, 0)
+                .select(DeclarationForm::getTotalAmount)
+                .list();
+        
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        for (DeclarationForm form : allForms) {
+            if (form.getTotalAmount() != null) {
+                totalAmount = totalAmount.add(form.getTotalAmount());
+            }
+        }
+        dto.setTotalAmount(totalAmount);
+        
+        if (totalForms != null && totalForms > 0) {
+            dto.setAvgAmount(totalAmount.divide(BigDecimal.valueOf(totalForms), 2, java.math.RoundingMode.HALF_UP));
+        } else {
+            dto.setAvgAmount(BigDecimal.ZERO);
+        }
+        
+        // 4. 按状态统计
+        List<DeclarationStatisticsDTO.StatusStat> statusStats = new ArrayList<>();
+        Map<Integer, String> statusNameMap = new HashMap<>();
+        statusNameMap.put(0, "草稿");
+        statusNameMap.put(1, "已提交");
+        statusNameMap.put(2, "已审核");
+        statusNameMap.put(3, "已完成");
+        
+        for (int status = 1; status <= 3; status++) {
+            final int s = status;
+            List<DeclarationForm> statusForms = this.lambdaQuery()
+                    .eq(DeclarationForm::getStatus, s)
+                    .select(DeclarationForm::getTotalAmount)
+                    .list();
+            
+            long count = statusForms.size();
+            BigDecimal amount = BigDecimal.ZERO;
+            for (DeclarationForm form : statusForms) {
+                if (form.getTotalAmount() != null) {
+                    amount = amount.add(form.getTotalAmount());
+                }
+            }
+            
+            statusStats.add(new DeclarationStatisticsDTO.StatusStat(
+                    statusNameMap.get(status), count, amount));
+        }
+        dto.setStatusStats(statusStats);
+        
+        // 5. 按产品统计（前10名热门产品）
+        List<DeclarationProduct> allProducts = productService.lambdaQuery()
+                .select(DeclarationProduct::getProductName, DeclarationProduct::getHsCode, 
+                        DeclarationProduct::getQuantity, DeclarationProduct::getAmount)
+                .list();
+        
+        // 按产品名称分组统计
+        Map<String, DeclarationStatisticsDTO.ProductStat> productMap = new HashMap<>();
+        for (DeclarationProduct product : allProducts) {
+            String key = product.getProductName();
+            if (key == null || key.isEmpty()) continue;
+            
+            DeclarationStatisticsDTO.ProductStat stat = productMap.get(key);
+            if (stat == null) {
+                stat = new DeclarationStatisticsDTO.ProductStat();
+                stat.setProductName(product.getProductName());
+                stat.setHsCode(product.getHsCode());
+                stat.setCount(0L);
+                stat.setTotalAmount(BigDecimal.ZERO);
+                productMap.put(key, stat);
+            }
+            stat.setCount(stat.getCount() + (product.getQuantity() != null ? product.getQuantity() : 0));
+            if (product.getAmount() != null) {
+                stat.setTotalAmount(stat.getTotalAmount().add(product.getAmount()));
+            }
+        }
+        
+        List<DeclarationStatisticsDTO.ProductStat> productStats = new ArrayList<>(productMap.values());
+        productStats.sort((a, b) -> b.getTotalAmount().compareTo(a.getTotalAmount()));
+        if (productStats.size() > 10) {
+            productStats = productStats.subList(0, 10);
+        }
+        dto.setProductStats(productStats);
+        
+        // 6. 按目的地统计
+        List<DeclarationForm> formsWithDestination = this.lambdaQuery()
+                .ne(DeclarationForm::getStatus, 0)
+                .select(DeclarationForm::getDestinationCountry, DeclarationForm::getTotalAmount)
+                .list();
+        
+        Map<String, DeclarationStatisticsDTO.DestinationStat> destMap = new HashMap<>();
+        for (DeclarationForm form : formsWithDestination) {
+            String dest = form.getDestinationCountry();
+            if (dest == null || dest.isEmpty()) {
+                dest = "未知";
+            }
+            
+            DeclarationStatisticsDTO.DestinationStat stat = destMap.get(dest);
+            if (stat == null) {
+                stat = new DeclarationStatisticsDTO.DestinationStat();
+                stat.setDestination(dest);
+                stat.setCount(0L);
+                stat.setTotalAmount(BigDecimal.ZERO);
+                destMap.put(dest, stat);
+            }
+            stat.setCount(stat.getCount() + 1);
+            if (form.getTotalAmount() != null) {
+                stat.setTotalAmount(stat.getTotalAmount().add(form.getTotalAmount()));
+            }
+        }
+        
+        List<DeclarationStatisticsDTO.DestinationStat> destinationStats = new ArrayList<>(destMap.values());
+        destinationStats.sort((a, b) -> b.getTotalAmount().compareTo(a.getTotalAmount()));
+        dto.setDestinationStats(destinationStats);
+        
+        return dto;
     }
 }

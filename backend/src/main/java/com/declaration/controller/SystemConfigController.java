@@ -31,7 +31,6 @@ public class SystemConfigController {
 
     @GetMapping("/basic-info")
     @Operation(summary = "获取系统基本信息")
-    @RequiresPermissions("system:config:query")
     public Result<Map<String, String>> getSystemBasicInfo() {
         Map<String, String> basicInfo = systemConfigService.getSystemBasicInfo();
         return Result.success(basicInfo);
@@ -39,7 +38,6 @@ public class SystemConfigController {
 
     @GetMapping("/ui-config")
     @Operation(summary = "获取UI配置")
-    @RequiresPermissions("system:config:query")
     public Result<Map<String, String>> getUiConfig() {
         Map<String, String> uiConfig = systemConfigService.getUiConfig();
         return Result.success(uiConfig);
@@ -47,7 +45,6 @@ public class SystemConfigController {
 
     @GetMapping("/group/{group}")
     @Operation(summary = "根据分组获取配置")
-    @RequiresPermissions("system:config:query")
     public Result<List<SystemConfig>> getConfigsByGroup(@PathVariable String group) {
         List<SystemConfig> configs = systemConfigService.getConfigsByGroup(group);
         return Result.success(configs);
@@ -55,7 +52,6 @@ public class SystemConfigController {
 
     @GetMapping("/{configKey}")
     @Operation(summary = "根据配置键获取配置值")
-    @RequiresPermissions("system:config:query")
     public Result<String> getConfigValue(@PathVariable String configKey) {
         String value = systemConfigService.getConfigValue(configKey);
         return Result.success(value);
@@ -72,7 +68,6 @@ public class SystemConfigController {
 
     @GetMapping("/all")
     @Operation(summary = "获取所有启用的配置")
-    @RequiresPermissions("system:config:query")
     public Result<List<SystemConfig>> getAllEnabledConfigs() {
         List<SystemConfig> configs = systemConfigService.getAllEnabledConfigs();
         return Result.success(configs);
@@ -104,7 +99,6 @@ public class SystemConfigController {
 
     @GetMapping("/options/{configKey}")
     @Operation(summary = "获取配置选项")
-    @RequiresPermissions("system:config:query")
     public Result<List<ConfigOptionDTO>> getConfigOptions(@PathVariable String configKey) {
         List<ConfigOptionDTO> options = systemConfigService.getConfigOptions(configKey);
         return Result.success(options);
@@ -120,7 +114,6 @@ public class SystemConfigController {
 
     @GetMapping("/system-params")
     @Operation(summary = "获取系统内置参数")
-    @RequiresPermissions("system:config:query")
     public Result<List<SystemConfig>> getSystemParameters() {
         List<SystemConfig> params = systemConfigService.getSystemParameters();
         return Result.success(params);
@@ -128,7 +121,6 @@ public class SystemConfigController {
 
     @GetMapping("/select-options/{configKey}")
     @Operation(summary = "获取下拉框选项")
-    @RequiresPermissions("system:config:query")
     public Result<List<ConfigOptionDTO>> getSelectOptions(@PathVariable String configKey) {
         List<ConfigOptionDTO> options = systemConfigService.getSelectOptions(configKey);
         return Result.success(options);
@@ -145,7 +137,6 @@ public class SystemConfigController {
 
     @GetMapping("/redis/{configKey}")
     @Operation(summary = "从Redis获取配置")
-    @RequiresPermissions("system:config:query")
     public Result<String> getConfigFromRedis(@PathVariable String configKey) {
         String value = systemConfigService.getConfigFromRedis(configKey);
         return Result.success(value);
@@ -161,7 +152,6 @@ public class SystemConfigController {
 
     @PostMapping("/redis/batch-get")
     @Operation(summary = "从Redis批量获取配置")
-    @RequiresPermissions("system:config:query")
     public Result<Map<String, String>> batchGetConfigsFromRedis(@RequestBody List<String> configKeys) {
         Map<String, String> configs = systemConfigService.batchGetConfigsFromRedis(configKeys);
         return Result.success(configs);

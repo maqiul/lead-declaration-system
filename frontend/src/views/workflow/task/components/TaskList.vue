@@ -98,6 +98,7 @@
 import { ref, reactive } from 'vue'
 import { message } from 'ant-design-vue'
 import { ReloadOutlined } from '@ant-design/icons-vue'
+import { transferTask } from '@/api/workflow'
 
 // 类型定义
 interface Task {
@@ -170,13 +171,8 @@ const transferRules = {
 }
 */
 
-// 用户选项（模拟数据）
-const userOptions = ref([
-  { label: '张三', value: 1 },
-  { label: '李四', value: 2 },
-  { label: '王五', value: 3 },
-  { label: '赵六', value: 4 }
-])
+// 用户选项
+const userOptions = ref([])
 
 // 表格列配置
 const columns = [
@@ -271,16 +267,25 @@ const handleTransfer = (record: Task) => {
 const handleTransferOk = async () => {
   try {
     await transferFormRef.value?.validateFields()
+    
+    if (!currentTask.value?.taskId || !transferForm.assigneeId) {
+      message.error('请选择转办人员')
+      return
+    }
+    
     transferLoading.value = true
     
-    // 模拟转办操作
-    setTimeout(() => {
+    const response = await transferTask(currentTask.value.taskId, transferForm.assigneeId)
+    if (response.data?.code === 200) {
       message.success('任务转办成功')
       transferVisible.value = false
-      transferLoading.value = false
       emit('refresh')
-    }, 1000)
-  } catch (error) {
+    } else {
+      message.error(response.data?.message || '转办失败')
+    }
+  } catch (error: any) {
+    message.error(error?.message || '转办失败')
+  } finally {
     transferLoading.value = false
   }
 }

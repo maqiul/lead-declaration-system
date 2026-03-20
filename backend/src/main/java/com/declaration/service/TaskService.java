@@ -87,11 +87,33 @@ public interface TaskService {
     TaskInstance getTaskById(String taskId);
 
     /**
-     * 添加任务评论
+     * 追加评论
      *
      * @param taskId 任务ID
      * @param userId 用户ID
      * @param message 评论内容
      */
     void addTaskComment(String taskId, Long userId, String message);
+
+    /**
+     * 获取系统当前正在运行的待确办任务总数
+     *
+     * @return 任务数
+     */
+    long getRunningTasksCount();
+
+    /**
+     * 获取系统所有活跃任务
+     *
+     * @return 任务列表
+     */
+    List<TaskInstance> getAllActiveTasks();
+
+    /**
+     * 获取用户已完成的任务
+     *
+     * @param userId 用户ID
+     * @return 已完成任务列表
+     */
+    List<TaskInstance> getCompletedTasks(Long userId);
 }

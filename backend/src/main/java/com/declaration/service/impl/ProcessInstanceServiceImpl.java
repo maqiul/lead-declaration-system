@@ -14,6 +14,8 @@ import org.flowable.engine.runtime.ProcessInstanceBuilder;
 import org.flowable.task.api.history.HistoricTaskInstance;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.flowable.engine.RepositoryService;
+import org.flowable.engine.repository.ProcessDefinition;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -35,7 +37,9 @@ public class ProcessInstanceServiceImpl implements ProcessInstanceService {
 
     private final RuntimeService runtimeService;
     private final HistoryService historyService;
+    private final RepositoryService repositoryService;
     private final ProcessInstanceDao processInstanceDao;
+    private final org.flowable.engine.TaskService flowableTaskService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -50,6 +54,8 @@ public class ProcessInstanceServiceImpl implements ProcessInstanceService {
                 builder.variables(variables);
             }
 
+            log.info("开始启动流程: definitionKey={}, businessKey={}", processDefinitionKey, businessKey);
+            
             // 启动流程
             org.flowable.engine.runtime.ProcessInstance flowableInstance = builder.start();
 
@@ -66,7 +72,6 @@ public class ProcessInstanceServiceImpl implements ProcessInstanceService {
             if (StpUtil.isLogin()) {
                 Long userId = StpUtil.getLoginIdAsLong();
                 processInstance.setStarterId(userId);
-                // TODO: 获取用户姓名
                 processInstance.setStarterName("用户" + userId);
             }
 
@@ -195,7 +200,6 @@ public class ProcessInstanceServiceImpl implements ProcessInstanceService {
      */
     private ProcessInstance convertRuntimeInstance(org.flowable.engine.runtime.ProcessInstance flowableInstance) {
         ProcessInstance instance = new ProcessInstance();
-        // instance.setId(flowableInstance.getId());
         instance.setInstanceId(flowableInstance.getId());
         instance.setDefinitionId(flowableInstance.getProcessDefinitionId());
         instance.setProcessKey(flowableInstance.getProcessDefinitionKey());
@@ -203,6 +207,40 @@ public class ProcessInstanceServiceImpl implements ProcessInstanceService {
         instance.setStatus(0); // 运行中
         instance.setStartTime(convertDateToLocalDateTime(flowableInstance.getStartTime()));
         instance.setCurrentActivityId(flowableInstance.getActivityId());
+
+        // 获取流程名称
+        ProcessDefinition def = repositoryService.createProcessDefinitionQuery()
+                .processDefinitionId(flowableInstance.getProcessDefinitionId())
+                .singleResult();
+        if (def != null) {
+            instance.setProcessName(def.getName());
+        }
+
+        // 获取当前节点名称
+        org.flowable.task.api.Task activeTask = flowableTaskService.createTaskQuery().processInstanceId(flowableInstance.getId()).singleResult();
+        if (activeTask != null) {
+            instance.setCurrentActivityName(activeTask.getName());
+        }
+
+        // 获取发起人
+        if (flowableInstance.getStartUserId() != null) {
+            try {
+                Long starterId = Long.valueOf(flowableInstance.getStartUserId());
+                instance.setStarterId(starterId);
+                // 使用默认格式显示发起人
+                instance.setStarterName("用户" + starterId);
+            } catch (Exception e) {
+                log.warn("解析发起人ID失败: {}", flowableInstance.getStartUserId(), e);
+            }
+        }
+
+        // 用本地库的信息覆盖发起人（如果有）
+        ProcessInstance localQuery = processInstanceDao.selectById(flowableInstance.getId());
+        if (localQuery != null) {
+            if (localQuery.getStarterId() != null) instance.setStarterId(localQuery.getStarterId());
+            if (localQuery.getStarterName() != null) instance.setStarterName(localQuery.getStarterName());
+        }
+
         return instance;
     }
 
@@ -211,7 +249,6 @@ public class ProcessInstanceServiceImpl implements ProcessInstanceService {
      */
     private ProcessInstance convertHistoricInstance(HistoricProcessInstance historicInstance) {
         ProcessInstance instance = new ProcessInstance();
-        // instance.setId(historicInstance.getId());
         instance.setInstanceId(historicInstance.getId());
         instance.setDefinitionId(historicInstance.getProcessDefinitionId());
         instance.setProcessKey(historicInstance.getProcessDefinitionKey());
@@ -219,6 +256,30 @@ public class ProcessInstanceServiceImpl implements ProcessInstanceService {
         instance.setStartTime(convertDateToLocalDateTime(historicInstance.getStartTime()));
         instance.setEndTime(convertDateToLocalDateTime(historicInstance.getEndTime()));
         instance.setStatus(historicInstance.getEndTime() != null ? 1 : 0); // 已完成或运行中
+
+        // 获取流程名称
+        ProcessDefinition def = repositoryService.createProcessDefinitionQuery()
+                .processDefinitionId(historicInstance.getProcessDefinitionId())
+                .singleResult();
+        if (def != null) {
+            instance.setProcessName(def.getName());
+        }
+
+        // 获取发起人
+        if (historicInstance.getStartUserId() != null) {
+            try {
+                Long starterId = Long.valueOf(historicInstance.getStartUserId());
+                instance.setStarterId(starterId);
+                instance.setStarterName("用户" + starterId);
+            } catch (Exception e) {}
+        }
+
+        ProcessInstance localQuery = processInstanceDao.selectById(historicInstance.getId());
+        if (localQuery != null) {
+            if (localQuery.getStarterId() != null) instance.setStarterId(localQuery.getStarterId());
+            if (localQuery.getStarterName() != null) instance.setStarterName(localQuery.getStarterName());
+        }
+
         return instance;
     }
 
@@ -235,7 +296,9 @@ public class ProcessInstanceServiceImpl implements ProcessInstanceService {
         task.setActivityId(historicTask.getTaskDefinitionKey());
         task.setActivityName(historicTask.getName());
         if (historicTask.getAssignee() != null) {
-            task.setAssigneeId(Long.valueOf(historicTask.getAssignee()));
+            try {
+                task.setAssigneeId(Long.valueOf(historicTask.getAssignee()));
+            } catch (NumberFormatException ignored) {}
         }
         task.setStatus(historicTask.getEndTime() != null ? 1 : 0); // 已办或待办
         task.setPriority(historicTask.getPriority());
