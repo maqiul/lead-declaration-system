@@ -123,11 +123,18 @@
                 提货单审核
               </a-button>
               <!-- 生成合同按钮 -->
+<<<<<<< HEAD
               <a-button type="link" size="small" style="color: #722ed1;" @click="handleOpenGenerate(record as any)" v-permission="['business:declaration:audit']">
                 <template #icon><FileTextOutlined /></template>
                 生成合同
               </a-button>
 
+=======
+              <a-button type="link" size="small" style="color: #722ed1;" @click="handleOpenGenerate(record as any)" v-permission="['business:declaration:contract']">
+                <template #icon><FileTextOutlined /></template>
+                生成合同
+              </a-button>
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
               <a-button v-if="record.status >= 2" type="link" size="small" @click="handleDownload(record as any)" v-permission="['business:declaration:download']">
                 <template #icon><DownloadOutlined /></template>
                 单证
@@ -154,6 +161,10 @@
       v-model:open="attachmentModalVisible" 
       title="附件管理" 
       width="700px"
+<<<<<<< HEAD
+=======
+      :footer="null"
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
     >
       <template #footer>
         <a-button @click="attachmentModalVisible = false">关闭</a-button>
@@ -188,6 +199,7 @@
                   下载
                 </a-button>
                 <a-button 
+<<<<<<< HEAD
                   v-if="currentDeclaration && currentDeclaration.status >= 1" 
                   type="link" 
                   size="small" 
@@ -199,6 +211,8 @@
                   重新生成
                 </a-button>
                 <a-button 
+=======
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
                   v-if="canReplaceAttachment(item)" 
                   type="link" 
                   size="small" 
@@ -274,14 +288,22 @@
 import { ref, reactive, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
+<<<<<<< HEAD
 import { PlusOutlined, DownloadOutlined, EyeOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, DollarOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+=======
+import { PlusOutlined, DownloadOutlined, EyeOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, DollarOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined } from '@ant-design/icons-vue'
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList,
   deleteDeclaration as deleteDeclarationApi,
   getDeclarationDetail,
+<<<<<<< HEAD
   submitDeclaration,
   regenerateDocuments
+=======
+  submitDeclaration
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 } from '@/api/business/declaration'
 import { getEnabledTemplates, generateContract } from '@/api/business/contract'
 import { h } from 'vue'
@@ -324,6 +346,7 @@ const pagination = reactive({
 
 // 表格列配置
 const columns = [
+<<<<<<< HEAD
   { title: '申报单号', dataIndex: 'formNo', key: 'formNo', width: 160 },
   { title: '申报人', dataIndex: 'applicantName', key: 'applicantName', width: 100 },
   { title: '发货人', dataIndex: 'shipperCompany', key: 'shipperCompany', width: 150 },
@@ -331,6 +354,15 @@ const columns = [
   { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate', width: 120 },
   { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', width: 100 },
   { title: '总箱数', dataIndex: 'totalCartons', key: 'totalCartons', width: 80 },
+=======
+  { title: '申报单号', dataIndex: 'formNo', key: 'formNo' },
+  { title: '申报人', dataIndex: 'applicantName', key: 'applicantName' },
+  { title: '发货人', dataIndex: 'shipperCompany', key: 'shipperCompany' },
+  { title: '收货人', dataIndex: 'consigneeCompany', key: 'consigneeCompany' },
+  { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate' },
+  { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount' },
+  { title: '总箱数', dataIndex: 'totalCartons', key: 'totalCartons' },
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
   { 
     title: '状态', 
     key: 'status', 
@@ -355,6 +387,12 @@ const columns = [
 const attachmentModalVisible = ref(false)
 const currentAttachments = ref<any[]>([])
 const currentDeclaration = ref<DeclarationRecord | null>(null)
+
+// 附件替换弹窗
+const replaceModalVisible = ref(false)
+const replaceLoading = ref(false)
+const currentReplacingAttachment = ref<any>(null)
+const replaceFileList = ref<any[]>([])
 
 // 附件替换弹窗
 const replaceModalVisible = ref(false)
@@ -499,6 +537,7 @@ const handleDelete = async (record: DeclarationRecord) => {
   }
 }
 
+<<<<<<< HEAD
 // 重新生成单据
 const handleRegenerate = (record: DeclarationRecord) => {
   Modal.confirm({
@@ -519,6 +558,8 @@ const handleRegenerate = (record: DeclarationRecord) => {
   })
 }
 
+=======
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 // 生成合同相关
 const generateModalVisible = ref(false)
 const generateLoading = ref(false)
@@ -688,11 +729,15 @@ const downloadAttachment = (attachment: any) => {
   }
 }
 
+<<<<<<< HEAD
 
 
 
 const canReplaceAttachment = (attachment: any) => {
   console.log('Checking attachment replacement:', attachment)
+=======
+const canReplaceAttachment = (attachment: any) => {
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
   // 只有已完成状态的申报单才能替换附件
   return true // 暂时允许所有状态替换
 }

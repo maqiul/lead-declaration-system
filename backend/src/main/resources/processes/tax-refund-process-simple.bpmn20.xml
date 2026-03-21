@@ -4,8 +4,13 @@
              xmlns:xsd="http://www.w3.org/2001/XMLSchema"
              xmlns:flowable="http://flowable.org/bpmn"
              xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+<<<<<<< HEAD
              xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
              xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+=======
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
              targetNamespace="http://www.flowable.org/processdef">
 
   <process id="tax_refund_process_simple" name="税务退费审批流程(简化版)" isExecutable="true">
@@ -62,6 +67,7 @@
   <bpmndi:BPMNDiagram id="BPMNDiagram_tax_refund_process_simple">
     <bpmndi:BPMNPlane bpmnElement="tax_refund_process_simple" id="BPMNPlane_tax_refund_process_simple">
       <bpmndi:BPMNShape bpmnElement="startEvent" id="BPMNShape_startEvent">
+<<<<<<< HEAD
         <dc:Bounds height="30.0" width="30.0" x="100.0" y="160.0" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape bpmnElement="departmentSubmit" id="BPMNShape_departmentSubmit">
@@ -81,6 +87,27 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape bpmnElement="endEvent" id="BPMNShape_endEvent">
         <dc:Bounds height="28.0" width="28.0" x="930.0" y="161.0" />
+=======
+        <omgdc:Bounds height="30.0" width="30.0" x="100.0" y="160.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="departmentSubmit" id="BPMNShape_departmentSubmit">
+        <omgdc:Bounds height="80.0" width="100.0" x="180.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="financeReview" id="BPMNShape_financeReview">
+        <omgdc:Bounds height="80.0" width="100.0" x="330.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="generateDocument" id="BPMNShape_generateDocument">
+        <omgdc:Bounds height="80.0" width="100.0" x="480.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="financeFinalReview" id="BPMNShape_financeFinalReview">
+        <omgdc:Bounds height="80.0" width="100.0" x="630.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="archiveDocument" id="BPMNShape_archiveDocument">
+        <omgdc:Bounds height="80.0" width="100.0" x="780.0" y="135.0" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="endEvent" id="BPMNShape_endEvent">
+        <omgdc:Bounds height="28.0" width="28.0" x="930.0" y="161.0" />
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
       </bpmndi:BPMNShape>
       
       <!-- 连线定义 -->

@@ -128,6 +128,7 @@
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
               <a-button type="primary" html-type="submit" :loading="businessSaving">保存</a-button>
+<<<<<<< HEAD
             </a-form-item>
           </a-form>
         </a-card>
@@ -161,6 +162,8 @@
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
               <a-button type="primary" html-type="submit" :loading="fileUploadSaving">保存</a-button>
+=======
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             </a-form-item>
           </a-form>
         </a-card>
@@ -614,6 +617,7 @@ const loadBusinessConfig = async () => {
   }
 }
 
+<<<<<<< HEAD
 const loadFileUploadConfig = async () => {
   fileUploadLoading.value = true
   try {
@@ -633,12 +637,18 @@ const loadFileUploadConfig = async () => {
   }
 }
 
+=======
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 const loadData = async () => {
   await Promise.all([
     loadBasicConfig(),
     loadUiConfig(),
+<<<<<<< HEAD
     loadBusinessConfig(),
     loadFileUploadConfig()
+=======
+    loadBusinessConfig()
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
   ])
 }
 
@@ -699,6 +709,7 @@ const saveBusinessConfig = async () => {
     message.error('保存失败，请检查网络连接后重试')
   } finally {
     businessSaving.value = false
+<<<<<<< HEAD
   }
 }
 
@@ -718,6 +729,8 @@ const saveFileUploadConfig = async () => {
     message.error('保存失败，请检查网络连接后重试')
   } finally {
     fileUploadSaving.value = false
+=======
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
   }
 }
 
