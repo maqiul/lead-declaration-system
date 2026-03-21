@@ -1,0 +1,178 @@
+Sheets: ['报关单', '申报要素', '发票', '装箱单']
+
+--- Sheet: 报关单 ---
+R1C1: 中华人民共和国海关进口货物报关单
+R2C1: 预录入编号：
+R2C5: 海关编号：
+R3C1: 境内发货人 3302968B3G
+R3C5: 出境关别
+R3C7: 出口日期
+R3C11: 申报日期
+R3C14: 备案号
+R4C1: 宁波梓熠科技有限公司
+R5C1: 91330203MAEAPFR6XR 
+R6C1: 境外收货人
+R6C5: 运输方式
+R6C7: 运输工具名称及航次号
+R6C11: 提运单号
+R7C1: Union Retail Limited Liability Partnership                                                                                                     
+                                                                                                            
+R7C5: 公路运输
+R8C1: 生产销售单位
+R8C5: 监管方式
+R8C7: 征免性质
+R8C11: 许可证
+R9C1: 宁波梓熠科技有限公司
+R9C5: 一般贸易
+R9C7: 一般征税
+R10C1: 合同协议号
+R10C5: 贸易国(地区)
+R10C7: 运抵国(地区)
+R10C11: 指运港
+R10C14: 离境口岸
+R11C1: ZIYI-26-0124
+R11C5: 哈萨克斯坦
+R11C7: 哈萨克斯坦
+R11C11: 哈萨克斯坦
+R12C1: 包装种类
+R12C5: 件数
+R12C6: 毛重(千克)
+R12C7: 净重(千克)
+R12C9: 成交方式
+R12C11: 运费
+R12C13: 保费
+R12C16: 杂费
+R13C1: 纸箱
+R13C5: 60
+R13C6: 832.8
+R13C7: 790.8
+R13C9: FOB
+R14C1: 随附单证
+R15C1: 随附单证1：
+R15C8: 随附单证2：合同；发票；装箱单
+R16C1: 标记唛码及备注
+R18C1: 项号
+R18C2: 商品编号
+R18C4: 商品名称及规格型号
+R18C7: 数量及单位
+R18C8: 单价/总价/币制
+R18C11: 原产国(地区)
+R18C12: 最终目的国(地区)
+R18C14: 境内货源地
+R18C17: 征免
+R19C1: 1
+R19C2: 8523591000
+R19C4: RFID标签
+R19C7: 60000个
+R19C8: 0.165
+R19C9: 9900
+R19C10: USD
+R19C11: 中国（CHN）
+R19C12: 哈萨克斯坦（KAZ)
+R19C14: 宁波其他（33029）
+R19C17: 照章征税（1）
+R20C4: 用途：提供唯一数据；是否录制：否；品牌：无；型号：IMPINJ MONZA R6P;品牌类型：无品牌；出口享惠情况：不确定
+R20C7: 60000(个）
+R28C4: 特殊关系确认：
+R28C7: 价格影响确认：
+R28C10: 支付特许权使用费确认：
+R28C15: 自报自缴：
+R29C1: 报关人员        报关人员证号            电话
+R29C7: 兹申明对以上内容承担如实申报、依法纳税责任
+R29C13: 海关批注及签章
+
+--- Sheet: 申报要素 ---
+R1C1: 申报要素
+R4C1: 项号：1
+R5C1: 商品编码：8523591000
+R6C1: 商品名称：RFID标签
+R7C1: 0:用途; 提供唯一数据
+R8C1: 1:是否录制;否
+R9C1: 2:品牌; 无
+R10C1: 3:型号：IMPINJ MONZA R6P
+R11C1: 4:品牌类型;无品牌
+R12C1: 5:出口享惠情况;不确定
+
+--- Sheet: 发票 ---
+R1C1: Issuer: NINGBO ZIYI TECHNOLOGY CO.,LTD
+                                                                                 
+R1C2: 商业发票
+COMMERCIAL INVOICE
+R2C1: XIUFENG, GAOQIAO TOWN, HAISHU DISTRICT, NINGBO, ZHEJIANG,CHINA
+R3C1: To: Union Retail Limited Liability Partnership
+                                                                                          
+R4C1: 050060, Republic of Kazakhstan, Almaty city, Bostandykdistrict, 34 Abish Kekilbayuly Street, office 7-04
+R4C2: No:  ZIYI-26-0124
+R4C5: Date:  January. 24, 2026
+R5C1: Transport details             BY TRUCK
+R5C2: Terms of payment  T/T
+R6C1: From  SHANGHAI, CHINA
+R7C1: To     Kazakstan
+R8C1: Numbers and kind of packages description of goods
+R8C2: Quantities
+R8C4: Unit Price
+R8C6: Amount
+R9C3: FOB SHANGHAI
+R9C6: CHINA
+    
+R10C1: IMPINJ MONZA R6P (RFID LABEL)
+R10C2: 60000
+R10C3: PCS
+R10C4: USD
+R10C5: 0.165
+R10C6: USD
+R10C7: =B10*E10
+R17C1:       TOTAL:
+R17C2: =SUM(B10:B16)
+R17C3: PCS
+R17C6: USD
+R17C7: =SUM(G10:G16)
+R18C1: SAY NINE THOUSAND AND NINE HUNDRED USD ONLY
+R19C1: TOTAL PACKED IN 60 CARTONS
+R20C1: N/M
+
+--- Sheet: 装箱单 ---
+R1C1: Issuer: NINGBO ZIYI TECHNOLOGY CO.,LTD
+                                                                                 
+R1C2: 装箱单
+PACKING LIST
+R2C1: XIUFENG, GAOQIAO TOWN, HAISHU DISTRICT, NINGBO, ZHEJIANG,CHINA
+R3C1: To: Union Retail Limited Liability Partnership
+                                                                                          
+R4C1: 050060, Republic of Kazakhstan, Almaty city, Bostandykdistrict, 34 Abish Kekilbayuly Street, office 7-04
+R4C2: No:  ZIYI-26-0124
+R4C6: Date:  January. 24, 2026
+R5C1: Transport details             BY TRUCK
+R5C2: Terms of payment  T/T
+R6C1: From  SHANGHAI, CHINA
+R7C1: To      Kazakstan
+R8C1: Numbers and kind of packages description of goods
+R8C2: Quantities
+R8C4: PKGS
+R8C6: G.W.
+R8C8: N.W.
+R8C10: MEAS.
+R9C1: IMPINJ MONZA R6P (RFID LABEL)
+R9C2: 60000
+R9C3: PCS
+R9C4: 60
+R9C5: CARTONS
+R9C6: 832.8
+R9C7: KGS
+R9C8: 790.8
+R9C9: KGS
+R9C10: 2.6
+R9C11: CBM
+R17C1:       TOTAL:
+R17C2: =SUM(B9:B16)
+R17C3: PCS
+R17C4: =SUM(D9:D16)
+R17C5: CARTONS
+R17C6: =SUM(F9:F16)
+R17C7: KGS
+R17C8: =SUM(H9:H16)
+R17C9: KGS
+R17C10: =SUM(J9:J16)
+R17C11: CBM
+R18C1: TOTAL PACKED IN 60 CARTONS
+R19C1: N/M

@@ -7,9 +7,13 @@ import com.declaration.entity.ContractTemplate;
 import com.declaration.entity.DeclarationForm;
 import com.declaration.service.ContractGenerateService;
 import com.declaration.service.ContractGenerationService;
+<<<<<<< HEAD
 import com.declaration.service.ContractTemplateService;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.SystemConfigService;
+=======
+import com.declaration.service.DeclarationFormService;
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
@@ -46,9 +50,13 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
 
     private final ContractTemplateDao contractTemplateDao;
     private final ContractGenerationService contractGenerationService;
+<<<<<<< HEAD
     private final ContractTemplateService contractTemplateService;
     private final DeclarationFormService declarationFormService;
     private final SystemConfigService systemConfigService;
+=======
+    private final DeclarationFormService declarationFormService;
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 
     @Value("${file.upload.contract-path:/uploads/contracts}")
     private String contractUploadPath;
@@ -73,6 +81,7 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
                 return null;
             }
 
+<<<<<<< HEAD
             // 2. 从数据库配置获取模板文件路径(优先)
             String dynamicTemplatePath = systemConfigService.getConfigValue("file.upload.template-path", templateUploadPath);
             // 3. 从数据库配置获取合同生成路径(优先)
@@ -86,6 +95,15 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             }
 
             // 5. 构建模板数据(合并外部传入的数据和申报单数据)
+=======
+            // 2. 查询申报单详情
+            DeclarationForm declarationForm = declarationFormService.getById(declarationFormId);
+            if (declarationForm == null) {
+                throw new RuntimeException("申报单不存在");
+            }
+
+            // 3. 构建模板数据（合并外部传入的数据和申报单数据）
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             Map<String, Object> templateData = new HashMap<>();
             if (dataMap != null) {
                 templateData.putAll(dataMap);
@@ -116,16 +134,27 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             // 4. 生成合同编号
             String contractNo = generateContractNumber(template.getTemplateType());
 
+<<<<<<< HEAD
             // 5. 构造模板文件路径(使用完整配置路径,不再拼接用户目录)
             Path templatePath = Paths.get(dynamicTemplatePath, template.getFileName());
+=======
+            // 5. 构造模板文件路径
+            Path templatePath = Paths.get(System.getProperty("user.dir"), template.getFilePath());
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             if (!Files.exists(templatePath)) {
                 log.warn("模板文件不存在: {}，跳过合同生成", templatePath);
                 return null;
             }
 
+<<<<<<< HEAD
             // 6. 生成输出文件路径(使用完整配置路径,不再拼接用户目录)
             String fileName = contractNo + "_" + System.currentTimeMillis() + ".docx";
             Path outputPath = Paths.get(dynamicContractPath, fileName);
+=======
+            // 6. 生成输出文件路径
+            String fileName = contractNo + "_" + System.currentTimeMillis() + ".docx";
+            Path outputPath = Paths.get(System.getProperty("user.dir"), contractUploadPath, fileName);
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 
             // 确保输出目录存在
             Files.createDirectories(outputPath.getParent());
@@ -161,9 +190,13 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
     }
 
     @Override
+<<<<<<< HEAD
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRED, rollbackFor = Exception.class)
     public String uploadTemplateFile(MultipartFile file, Long templateId) {
         String savedFilePath = null;
+=======
+    public String uploadTemplateFile(MultipartFile file, Long templateId) {
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
         try {
             if (file.isEmpty()) {
                 throw new RuntimeException("上传文件不能为空");
@@ -179,15 +212,21 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             String extension = originalFilename.substring(originalFilename.lastIndexOf("."));
             String fileName = UUID.randomUUID().toString().replaceAll("-", "") + extension;
 
+<<<<<<< HEAD
             // 从数据库配置获取模板文件路径(优先)
             String dynamicTemplatePath = systemConfigService.getConfigValue("file.upload.template-path", templateUploadPath);
 
             // 构造保存路径(使用完整配置路径,不再拼接用户目录)
             Path savePath = Paths.get(dynamicTemplatePath, fileName);
+=======
+            // 构造保存路径
+            Path savePath = Paths.get(System.getProperty("user.dir"), templateUploadPath, fileName);
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             Files.createDirectories(savePath.getParent());
 
             // 保存文件
             file.transferTo(savePath);
+<<<<<<< HEAD
             savedFilePath = savePath.toString();
             
             // 更新模板的文件信息
@@ -216,6 +255,14 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
                     log.warn("回滚时删除文件失败: {}", deleteException.getMessage());
                 }
             }
+=======
+
+            log.info("模板文件上传成功: {}, 大小: {} bytes", fileName, file.getSize());
+            return savePath.toString();
+
+        } catch (Exception e) {
+            log.error("模板文件上传失败", e);
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             throw new RuntimeException("模板文件上传失败: " + e.getMessage());
         }
     }

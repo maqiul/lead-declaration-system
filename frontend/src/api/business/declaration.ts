@@ -341,6 +341,7 @@ export function getDeclarationAttachments(formId: number) {
     url: `/v1/declarations/${formId}/attachments`,
     method: 'get'
   })
+<<<<<<< HEAD
 }
 
 // 重新生成单据
@@ -349,4 +350,6 @@ export function regenerateDocuments(id: number) {
     url: `/v1/declarations/${id}/regenerate-documents`,
     method: 'post'
   })
+=======
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 }

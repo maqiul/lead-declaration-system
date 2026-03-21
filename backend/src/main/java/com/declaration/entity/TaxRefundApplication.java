@@ -84,6 +84,7 @@ public class TaxRefundApplication {
     private String firstReviewOpinion;
 
     /**
+<<<<<<< HEAD
      * 初审人ID
      */
     private Long firstReviewerId;
@@ -99,6 +100,8 @@ public class TaxRefundApplication {
     private LocalDateTime firstReviewTime;
 
     /**
+=======
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
      * 当前审批人ID
      */
     private Long currentApproverId;
@@ -145,6 +148,7 @@ public class TaxRefundApplication {
     private String finalReviewOpinion;
 
     /**
+<<<<<<< HEAD
      * 复审人ID
      */
     private Long finalReviewerId;
@@ -160,6 +164,8 @@ public class TaxRefundApplication {
     private LocalDateTime finalReviewTime;
 
     /**
+=======
+>>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
      * 生成的退税文件路径
      */
     private String filePath;
