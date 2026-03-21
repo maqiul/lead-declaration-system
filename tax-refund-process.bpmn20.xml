@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             xmlns:flowable="http://flowable.org/bpmn"
              xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-             xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-             xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-             targetNamespace="http://flowable.org/bpmn">
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             targetNamespace="http://www.flowable.org/processdef">
 
   <process id="tax_refund_process" name="税务退费审批流程" isExecutable="true">
     
@@ -15,15 +17,15 @@
     <userTask id="departmentSubmit" name="部门提交信息" 
               flowable:assignee="${initiator}">
       <extensionElements>
-        <flowable:taskListener event="create" class="com.declaration.listener.DepartmentSubmitListener" />
+        <flowable:taskListener event="create" delegateExpression="${taxRefundExecutionListener}"></flowable:taskListener>
       </extensionElements>
     </userTask>
     
     <!-- 财务初审任务 -->
-    <userTask id="financeFirstReview" name="财务初审" 
+    <userTask id="financeReview" name="财务初审" 
               flowable:candidateGroups="finance">
       <extensionElements>
-        <flowable:taskListener event="create" class="com.declaration.listener.FinanceReviewListener" />
+        <flowable:taskListener event="create" delegateExpression="${taxRefundExecutionListener}"></flowable:taskListener>
       </extensionElements>
     </userTask>
     
@@ -32,26 +34,26 @@
                  flowable:class="com.declaration.service.DocumentGenerationService" />
     
     <!-- 返回发起人任务 -->
-    <userTask id="returnToInitiator" name="文件返回发起人" 
+    <userTask id="returnDocument" name="文件返回发起人" 
               flowable:assignee="${initiator}">
       <extensionElements>
-        <flowable:taskListener event="create" class="com.declaration.listener.ReturnDocumentListener" />
+        <flowable:taskListener event="create" delegateExpression="${taxRefundExecutionListener}"></flowable:taskListener>
       </extensionElements>
     </userTask>
     
     <!-- 提交发票退税信息任务 -->
-    <userTask id="submitInvoiceInfo" name="提交发票退税信息" 
+    <userTask id="invoiceSubmit" name="提交发票退税信息" 
               flowable:assignee="${initiator}">
       <extensionElements>
-        <flowable:taskListener event="create" class="com.declaration.listener.InvoiceSubmitListener" />
+        <flowable:taskListener event="create" delegateExpression="${taxRefundExecutionListener}"></flowable:taskListener>
       </extensionElements>
     </userTask>
     
     <!-- 财务复审任务 -->
-    <userTask id="financeSecondReview" name="财务复审" 
+    <userTask id="financeFinalReview" name="财务复审" 
               flowable:candidateGroups="finance">
       <extensionElements>
-        <flowable:taskListener event="create" class="com.declaration.listener.FinanceFinalReviewListener" />
+        <flowable:taskListener event="create" delegateExpression="${taxRefundExecutionListener}"></flowable:taskListener>
       </extensionElements>
     </userTask>
     
@@ -64,12 +66,12 @@
     
     <!-- 流程连线 -->
     <sequenceFlow id="flow1" sourceRef="startEvent" targetRef="departmentSubmit" />
-    <sequenceFlow id="flow2" sourceRef="departmentSubmit" targetRef="financeFirstReview" />
-    <sequenceFlow id="flow3" sourceRef="financeFirstReview" targetRef="generateDocument" />
-    <sequenceFlow id="flow4" sourceRef="generateDocument" targetRef="returnToInitiator" />
-    <sequenceFlow id="flow5" sourceRef="returnToInitiator" targetRef="submitInvoiceInfo" />
-    <sequenceFlow id="flow6" sourceRef="submitInvoiceInfo" targetRef="financeSecondReview" />
-    <sequenceFlow id="flow7" sourceRef="financeSecondReview" targetRef="archiveDocument" />
+    <sequenceFlow id="flow2" sourceRef="departmentSubmit" targetRef="financeReview" />
+    <sequenceFlow id="flow3" sourceRef="financeReview" targetRef="generateDocument" />
+    <sequenceFlow id="flow4" sourceRef="generateDocument" targetRef="returnDocument" />
+    <sequenceFlow id="flow5" sourceRef="returnDocument" targetRef="invoiceSubmit" />
+    <sequenceFlow id="flow6" sourceRef="invoiceSubmit" targetRef="financeFinalReview" />
+    <sequenceFlow id="flow7" sourceRef="financeFinalReview" targetRef="archiveDocument" />
     <sequenceFlow id="flow8" sourceRef="archiveDocument" targetRef="endEvent" />
     
   </process>
@@ -78,31 +80,31 @@
   <bpmndi:BPMNDiagram id="BPMNDiagram_tax_refund_process">
     <bpmndi:BPMNPlane bpmnElement="tax_refund_process" id="BPMNPlane_tax_refund_process">
       <bpmndi:BPMNShape bpmnElement="startEvent" id="BPMNShape_startEvent">
-        <dc:Bounds height="30.0" width="30.0" x="100.0" y="160.0" />
+        <omgdc:Bounds height="30.0" width="30.0" x="100.0" y="160.0" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape bpmnElement="departmentSubmit" id="BPMNShape_departmentSubmit">
-        <dc:Bounds height="80.0" width="100.0" x="180.0" y="135.0" />
+        <omgdc:Bounds height="80.0" width="100.0" x="180.0" y="135.0" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape bpmnElement="financeFirstReview" id="BPMNShape_financeFirstReview">
-        <dc:Bounds height="80.0" width="100.0" x="330.0" y="135.0" />
+      <bpmndi:BPMNShape bpmnElement="financeReview" id="BPMNShape_financeReview">
+        <omgdc:Bounds height="80.0" width="100.0" x="330.0" y="135.0" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape bpmnElement="generateDocument" id="BPMNShape_generateDocument">
-        <dc:Bounds height="80.0" width="100.0" x="480.0" y="135.0" />
+        <omgdc:Bounds height="80.0" width="100.0" x="480.0" y="135.0" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape bpmnElement="returnToInitiator" id="BPMNShape_returnToInitiator">
-        <dc:Bounds height="80.0" width="100.0" x="630.0" y="135.0" />
+      <bpmndi:BPMNShape bpmnElement="returnDocument" id="BPMNShape_returnDocument">
+        <omgdc:Bounds height="80.0" width="100.0" x="630.0" y="135.0" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape bpmnElement="submitInvoiceInfo" id="BPMNShape_submitInvoiceInfo">
-        <dc:Bounds height="80.0" width="100.0" x="780.0" y="135.0" />
+      <bpmndi:BPMNShape bpmnElement="invoiceSubmit" id="BPMNShape_invoiceSubmit">
+        <omgdc:Bounds height="80.0" width="100.0" x="780.0" y="135.0" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape bpmnElement="financeSecondReview" id="BPMNShape_financeSecondReview">
-        <dc:Bounds height="80.0" width="100.0" x="930.0" y="135.0" />
+      <bpmndi:BPMNShape bpmnElement="financeFinalReview" id="BPMNShape_financeFinalReview">
+        <omgdc:Bounds height="80.0" width="100.0" x="930.0" y="135.0" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape bpmnElement="archiveDocument" id="BPMNShape_archiveDocument">
-        <dc:Bounds height="80.0" width="100.0" x="1080.0" y="135.0" />
+        <omgdc:Bounds height="80.0" width="100.0" x="1080.0" y="135.0" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape bpmnElement="endEvent" id="BPMNShape_endEvent">
-        <dc:Bounds height="28.0" width="28.0" x="1230.0" y="161.0" />
+        <omgdc:Bounds height="28.0" width="28.0" x="1230.0" y="161.0" />
       </bpmndi:BPMNShape>
       
       <!-- 连线定义 -->

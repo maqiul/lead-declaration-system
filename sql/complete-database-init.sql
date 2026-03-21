@@ -265,6 +265,8 @@ CREATE TABLE `declaration_product` (
   `amount` decimal(15,2) NOT NULL COMMENT '金额',
   `gross_weight` decimal(10,3) NOT NULL COMMENT '毛重(KGS)',
   `net_weight` decimal(10,3) NOT NULL COMMENT '净重(KGS)',
+  `cartons` int NOT NULL DEFAULT '1' COMMENT '箱数',
+  `volume` decimal(10,3) NOT NULL DEFAULT '0.000' COMMENT '体积(CBM)',
   `sort_order` int NOT NULL DEFAULT '0' COMMENT '排序',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
