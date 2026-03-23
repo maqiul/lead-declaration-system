@@ -55,6 +55,14 @@ mybatis-plus:
 file:
   upload-path: f:/uploads/
 
+# 系统日志配置
+system:
+  log:
+    # 日志保留天数
+    keep-days: 30
+    # 是否开启操作日志
+    enabled: true
+
 # Sa-Token配置
 sa-token:
   # token名称 (同时也是cookie名称)

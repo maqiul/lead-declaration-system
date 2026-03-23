@@ -57,6 +57,9 @@
           <template v-if="column.key === 'applicationNo'">
             <a @click="handleView(record)" class="application-link">{{ record.applicationNo }}</a>
           </template>
+          <template v-else-if="column.key === 'applicationType'">
+            <span>{{ getApplicationTypeText(record.applicationType) }}</span>
+          </template>
           <template v-else-if="column.key === 'status'">
             <a-tag :color="getStatusColor(record.status)" class="status-tag">
               {{ getStatusText(record.status) }}
@@ -144,6 +147,16 @@ const rowSelection: TableProps['rowSelection'] = {
   onChange: (selectedKeys: any[]) => {
     selectedRowKeys.value = selectedKeys as number[]
   }
+}
+
+// 获取申请类型文本
+const getApplicationTypeText = (type: string) => {
+  const typeMap: Record<string, string> = {
+    'EXPORT_REFUND': '出口退税',
+    'VAT_REFUND': '增值税退税',
+    'OTHER_REFUND': '其他退税'
+  }
+  return typeMap[type] || type || '未知'
 }
 
 // 获取状态文本

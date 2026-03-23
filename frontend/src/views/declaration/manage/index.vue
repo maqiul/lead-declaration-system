@@ -122,13 +122,13 @@
                 <template #icon><CheckCircleOutlined /></template>
                 提货单审核
               </a-button>
-              <!-- 生成合同按钮 -->
+              <!-- 生成合同按钮 - 初审通过后且无合同时显示 -->
               <a-button 
-                v-if="!hasExistingContract(record.id)" 
+                v-if="record.status >= 1 && !record.hasContract" 
                 type="link" 
                 size="small" 
                 style="color: #722ed1;" 
-                @click="handleOpenGenerate(record as any)" 
+                @click="handleOpenGenerate(record)" 
                 v-permission="['business:declaration:audit']"
               >
                 <template #icon><FileTextOutlined /></template>
@@ -194,27 +194,23 @@
                   <template #icon><DownloadOutlined /></template>
                   下载
                 </a-button>
-                <!-- 重新生成按钮 - 根据文件类型动态显示 -->
-                <template v-for="fileType in getAvailableFileTypes(currentDeclaration)" :key="fileType.type">
-                  <a-button 
-                    v-if="currentDeclaration && currentDeclaration.status >= 1" 
-                    type="link" 
-                    size="small" 
-                    :style="{ color: fileType.color }" 
-                    @click="handleRegenerateByType(currentDeclaration, fileType.type)"
-                    v-permission="['business:declaration:audit']"
-                  >
-                    <template #icon><ReloadOutlined /></template>
-                    {{ fileType.label }}
-                  </a-button>
-                </template>
+                <!-- 统一的重新生成按钮 -->
                 <a-button 
-                  v-if="canReplaceAttachment(item)" 
+                  type="link" 
+                  size="small" 
+                  style="color: #1890ff;" 
+                  @click="handleRegenerateSimple(item)"
+                  v-permission="['business:declaration:audit']"
+                >
+                  <template #icon><ReloadOutlined /></template>
+                  重新生成
+                </a-button>
+                <a-button 
                   type="link" 
                   size="small" 
                   style="color: #faad14;"
                   @click="showReplaceModal(item)"
-                  v-permission="['business:declaration:edit']"
+                  v-permission="['business:declaration:audit']"
                 >
                   <template #icon><UploadOutlined /></template>
                   替换
@@ -257,11 +253,11 @@
                     下载
                   </a-button>
                   <a-button 
-                    v-if="canReplaceContract(item)" 
                     type="link" 
                     size="small" 
                     style="color: #faad14;"
                     @click="showReplaceContractModal(item)"
+                     v-permission="['business:declaration:audit']"
                   >
                     <template #icon><UploadOutlined /></template>
                     替换
@@ -370,7 +366,6 @@ import {
   deleteDeclaration as deleteDeclarationApi,
   getDeclarationDetail,
   submitDeclaration,
-  auditDeclaration,
   getDeclarationAttachments,
   regenerateDocuments,
   regenerateAllDocuments,
@@ -448,6 +443,7 @@ const columns = [
 const attachmentModalVisible = ref(false)
 const currentAttachments = ref<any[]>([])
 const currentContracts = ref<any[]>([]) // 新增：合同列表
+const currentContractsLoading = ref(false) // 合同数据加载状态
 const currentDeclaration = ref<DeclarationRecord | null>(null)
 
 // 附件替换弹窗
@@ -481,17 +477,43 @@ const loadData = async () => {
       const records = response.data.data.records as any[]
       const recordsWithAttachments = await Promise.all(
         records.map(async (record) => {
+          // 预加载附件信息
           if (record.status >= 2) { // 只为需要显示按钮的记录加载附件
             try {
               const attachmentResponse = await getDeclarationAttachments(record.id)
               if (attachmentResponse.data && attachmentResponse.data.code === 200) {
-                record.attachments = attachmentResponse.data.data || []
+                const attachments = attachmentResponse.data.data || []
+                record.attachments = attachments
+                            
+                // 不再预处理按钮信息，改为运行时判断
               }
             } catch (error) {
               console.warn(`获取申报单${record.id}附件信息失败:`, error)
               record.attachments = []
+              record.regenerateButtons = []
             }
+          } else {
+            record.attachments = []
+            record.regenerateButtons = []
           }
+          
+          // 预加载合同信息（用于生成合同按钮判断）
+          if (record.status >= 1) { // 初审通过后的申报单才需要判断合同
+            try {
+              const contractResponse = await getContractsByDeclaration(record.id)
+              if (contractResponse.data && contractResponse.data.code === 200) {
+                record.hasContract = (contractResponse.data.data || []).length > 0
+              } else {
+                record.hasContract = false
+              }
+            } catch (error) {
+              console.warn(`获取申报单${record.id}合同信息失败:`, error)
+              record.hasContract = false
+            }
+          } else {
+            record.hasContract = false
+          }
+          
           return record
         })
       )
@@ -594,6 +616,7 @@ const handleDownload = async (record: DeclarationRecord) => {
       
       // 加载相关合同
       try {
+        currentContractsLoading.value = true
         const contractResponse = await getContractsByDeclaration(record.id)
         if (contractResponse.data && contractResponse.data.code === 200) {
           currentContracts.value = contractResponse.data.data || []
@@ -601,6 +624,8 @@ const handleDownload = async (record: DeclarationRecord) => {
       } catch (contractError) {
         console.warn('加载合同失败:', contractError)
         currentContracts.value = []
+      } finally {
+        currentContractsLoading.value = false
       }
       
       attachmentModalVisible.value = true
@@ -630,86 +655,67 @@ const handleDelete = async (record: DeclarationRecord) => {
   }
 }
 
-// 重新生成单据
-const handleRegenerate = (record: DeclarationRecord) => {
-  Modal.confirm({
-    title: '确认重新生成',
-    content: `确定要重新生成申报单 ${record.formNo} 的单据吗？`,
-    onOk: async () => {
-      try {
-        const res = await regenerateDocuments(record.id)
-        if (res.data && res.data.code === 200) {
-          message.success('单据重新生成成功')
-        } else {
-          message.error('生成失败: ' + (res.data?.message || '未知错误'))
-        }
-      } catch (e: any) {
-        message.error('生成失败: ' + (e.message || '网络错误'))
-      }
-    }
-  })
-}
 
-// 重新生成标准单证
-const handleRegenerateStandard = (record: DeclarationRecord) => {
-  Modal.confirm({
-    title: '确认重新生成',
-    content: `确定要重新生成申报单 ${record.formNo} 的标准单证吗？`,
-    onOk: async () => {
-      try {
-        const res = await regenerateDocuments(record.id)
-        if (res.data && res.data.code === 200) {
-          message.success('标准单证重新生成成功')
-        } else {
-          message.error('生成失败: ' + (res.data?.message || '未知错误'))
-        }
-      } catch (e: any) {
-        message.error('生成失败: ' + (e.message || '网络错误'))
-      }
-    }
-  })
-}
+// // 重新生成标准单证
+// const handleRegenerateStandard = (record: DeclarationRecord) => {
+//   Modal.confirm({
+//     title: '确认重新生成',
+//     content: `确定要重新生成申报单 ${record.formNo} 的标准单证吗？`,
+//     onOk: async () => {
+//       try {
+//         const res = await regenerateDocuments(record.id)
+//         if (res.data && res.data.code === 200) {
+//           message.success('标准单证重新生成成功')
+//         } else {
+//           message.error('生成失败: ' + (res.data?.message || '未知错误'))
+//         }
+//       } catch (e: any) {
+//         message.error('生成失败: ' + (e.message || '网络错误'))
+//       }
+//     }
+//   })
+// }
 
-// 重新生成全套单证
-const handleRegenerateAll = (record: DeclarationRecord) => {
-  Modal.confirm({
-    title: '确认重新生成',
-    content: `确定要重新生成申报单 ${record.formNo} 的全套单证吗？`,
-    onOk: async () => {
-      try {
-        const res = await regenerateAllDocuments(record.id)
-        if (res.data && res.data.code === 200) {
-          message.success('全套单证重新生成成功')
-        } else {
-          message.error('生成失败: ' + (res.data?.message || '未知错误'))
-        }
-      } catch (e: any) {
-        message.error('生成失败: ' + (e.message || '网络错误'))
-      }
-    }
-  })
-}
+// // 重新生成全套单证
+// const handleRegenerateAll = (record: DeclarationRecord) => {
+//   Modal.confirm({
+//     title: '确认重新生成',
+//     content: `确定要重新生成申报单 ${record.formNo} 的全套单证吗？`,
+//     onOk: async () => {
+//       try {
+//         const res = await regenerateAllDocuments(record.id)
+//         if (res.data && res.data.code === 200) {
+//           message.success('全套单证重新生成成功')
+//         } else {
+//           message.error('生成失败: ' + (res.data?.message || '未知错误'))
+//         }
+//       } catch (e: any) {
+//         message.error('生成失败: ' + (e.message || '网络错误'))
+//       }
+//     }
+//   })
+// }
 
-// 重新生成水单报告
-const handleRegenerateRemittance = (record: DeclarationRecord, type: number) => {
-  const typeName = type === 1 ? '定金' : '尾款'
-  Modal.confirm({
-    title: '确认重新生成',
-    content: `确定要重新生成申报单 ${record.formNo} 的${typeName}水单吗？`,
-    onOk: async () => {
-      try {
-        const res = await regenerateRemittanceReport(record.id, type)
-        if (res.data && res.data.code === 200) {
-          message.success(`${typeName}水单重新生成成功`)
-        } else {
-          message.error('生成失败: ' + (res.data?.message || '未知错误'))
-        }
-      } catch (e: any) {
-        message.error('生成失败: ' + (e.message || '网络错误'))
-      }
-    }
-  })
-}
+// // 重新生成水单报告
+// const handleRegenerateRemittance = (record: DeclarationRecord, type: number) => {
+//   const typeName = type === 1 ? '定金' : '尾款'
+//   Modal.confirm({
+//     title: '确认重新生成',
+//     content: `确定要重新生成申报单 ${record.formNo} 的${typeName}水单吗？`,
+//     onOk: async () => {
+//       try {
+//         const res = await regenerateRemittanceReport(record.id, type)
+//         if (res.data && res.data.code === 200) {
+//           message.success(`${typeName}水单重新生成成功`)
+//         } else {
+//           message.error('生成失败: ' + (res.data?.message || '未知错误'))
+//         }
+//       } catch (e: any) {
+//         message.error('生成失败: ' + (e.message || '网络错误'))
+//       }
+//     }
+//   })
+// }
 
 // 生成合同相关
 const generateModalVisible = ref(false)
@@ -720,7 +726,7 @@ const generateForm = reactive({
   templateId: undefined as number | undefined
 })
 
-const handleOpenGenerate = async (record: DeclarationRecord) => {
+const handleOpenGenerate = async (record: any) => {
   generateForm.declarationFormId = record.id
   generateForm.templateId = undefined
   
@@ -876,78 +882,124 @@ const formatFileSize = (size: number) => {
   return (size / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-// 获取可用的文件类型按钮 - 基于实际附件类型生成
-const getAvailableFileTypes = (record: any) => {
-  // 如果有附件信息，根据实际的fileType生成按钮
-  if (record.attachments && record.attachments.length > 0) {
-    return getButtonConfigFromAttachments(record.attachments)
-  }
+
+
+// // 根据附件类型生成按钮配置
+// const getButtonConfigFromAttachments = (attachments: any[]) => {
+//   const fileTypes = []
+//   const existingTypes = new Set(attachments.map((att: any) => att.fileType))
   
-  // 如果没有附件信息，显示默认常用按钮
-  return [
-    { type: 'standard', label: '海关附件', color: '#1890ff' },
-    { type: 'all', label: '海关文件', color: '#722ed1' }
-  ]
+//   // 根据实际存在的附件类型显示对应按钮
+//   if (existingTypes.has('FullDocuments')) {
+//     fileTypes.push({ type: 'standard', label: '海关附件', color: '#1890ff' })
+//   }
+  
+//   if (existingTypes.has('AllDocuments')) {
+//     fileTypes.push({ type: 'all', label: '海关文件', color: '#722ed1' })
+//   }
+  
+//   if (existingTypes.has('Remittance_Deposit')) {
+//     fileTypes.push({ type: 'deposit', label: '定金水单', color: '#52c41a' })
+//   }
+  
+//   if (existingTypes.has('Remittance_Balance')) {
+//     fileTypes.push({ type: 'balance', label: '尾款水单', color: '#fa8c16' })
+//   }
+  
+//   return fileTypes
+// }
+
+
+
+
+
+
+
+// 获取附件对应的申报单信息
+const getDeclarationForAttachment = (attachment: any) => {
+  // 从附件信息中获取申报单ID，然后在当前数据源中查找
+  const formId = attachment.formId
+  if (!formId || !dataSource.value) return null
+  
+  return dataSource.value.find((record: any) => record.id === formId) || null
 }
 
-// 根据附件类型生成按钮配置
-const getButtonConfigFromAttachments = (attachments: any[]) => {
-  const fileTypes = []
-  const existingTypes = new Set(attachments.map((att: any) => att.fileType))
+
+// 简化版重新生成处理
+const handleRegenerateSimple = async (attachment: any) => {
+  const declaration = getDeclarationForAttachment(attachment)
+  if (!declaration) return
   
-  // 根据实际存在的附件类型显示对应按钮
-  if (existingTypes.has('FullDocuments')) {
-    fileTypes.push({ type: 'standard', label: '海关附件', color: '#1890ff' })
+  const fileType = attachment.fileType || attachment.type
+  if (!fileType) {
+    message.warning('无法识别文件类型')
+    return
   }
   
-  if (existingTypes.has('AllDocuments')) {
-    fileTypes.push({ type: 'all', label: '海关文件', color: '#722ed1' })
+  // 根据文件类型调用不同接口
+  try {
+    let response
+    switch (fileType) {
+      case 'standard':
+        response = await regenerateDocuments(declaration.id)
+        break
+      case 'all':
+        response = await regenerateAllDocuments(declaration.id)
+        break
+      case 'deposit':
+        // 定金水单 - type=1
+        response = await regenerateRemittanceReport(declaration.id, 1)
+        break
+      case 'balance':
+        // 尾款水单 - type=2
+        response = await regenerateRemittanceReport(declaration.id, 2)
+        break
+      default:
+        message.warning('不支持的文件类型')
+        return
+    }
+    
+    if (response.data && response.data.code === 200) {
+      message.success(`${getFileTypeName(fileType)}重新生成成功`)
+      // 重新加载附件列表
+      await loadAttachmentsForDeclaration(declaration)
+    } else {
+      message.error(`${getFileTypeName(fileType)}重新生成失败: ${response.data?.message || '未知错误'}`)
+    }
+  } catch (error: any) {
+    message.error(`${getFileTypeName(fileType)}重新生成失败: ${error.message || '网络错误'}`)
   }
-  
-  if (existingTypes.has('Remittance_Deposit')) {
-    fileTypes.push({ type: 'deposit', label: '定金水单', color: '#52c41a' })
-  }
-  
-  if (existingTypes.has('Remittance_Balance')) {
-    fileTypes.push({ type: 'balance', label: '尾款水单', color: '#fa8c16' })
-  }
-  
-  return fileTypes
 }
 
-// 根据类型处理重新生成
-const handleRegenerateByType = (record: any, type: string) => {
-  switch (type) {
-    case 'standard':
-      handleRegenerateStandard(record)
-      break
-    case 'all':
-      handleRegenerateAll(record)
-      break
-    case 'deposit':
-      handleRegenerateRemittance(record, 1)
-      break
-    case 'balance':
-      handleRegenerateRemittance(record, 2)
-      break
+// 获取文件类型名称
+const getFileTypeName = (fileType: string) => {
+  const typeMap: Record<string, string> = {
+    'standard': '标准单证',
+    'all': '全套单证',
+    'deposit': '定金水单',
+    'balance': '尾款水单'
+  }
+  return typeMap[fileType] || fileType
+}
+
+// 为申报单重新加载附件
+const loadAttachmentsForDeclaration = async (declaration: any) => {
+  try {
+    const response = await getDeclarationAttachments(declaration.id)
+    if (response.data && response.data.code === 200) {
+      const attachments = response.data.data || []
+      declaration.attachments = attachments
+      
+      // 更新当前显示的附件（如果是当前申报单）
+      if (currentDeclaration.value && currentDeclaration.value.id === declaration.id) {
+        currentAttachments.value = attachments
+      }
+    }
+  } catch (error) {
+    console.warn(`重新加载申报单${declaration.id}附件失败:`, error)
   }
 }
 
-// 检查是否有定金水单
-const hasDepositRemittance = (record: any) => {
-  // 这里可以根据实际业务逻辑判断
-  // 比如检查是否存在定金类型的水单记录
-  // 暂时根据申报单状态或其他条件判断
-  return record.status >= 3 // 假设状态3及以上才有定金
-}
-
-// 检查是否有尾款水单
-const hasBalanceRemittance = (record: any) => {
-  // 这里可以根据实际业务逻辑判断
-  // 比如检查是否存在尾款类型的水单记录
-  // 暂时根据申报单状态或其他条件判断
-  return record.status >= 5 // 假设状态5及以上才有尾款
-}
 
 const downloadAttachment = (attachment: any) => {
   if (attachment.fileUrl) {
@@ -958,84 +1010,16 @@ const downloadAttachment = (attachment: any) => {
 
 
 
-const canReplaceAttachment = (attachment: any) => {
-  console.log('Checking attachment replacement:', attachment)
-  // 只有已完成状态的申报单才能替换附件
-  return true // 暂时允许所有状态替换
-}
+// const canReplaceAttachment = (attachment: any) => {
+//   console.log('Checking attachment replacement:', attachment)
+//   // 只有已完成状态的申报单才能替换附件
+//   return true // 暂时允许所有状态替换
+// }
 
-// 获取当前用户信息
-const getCurrentUser = () => {
-  const userInfo = localStorage.getItem('user-info')
-  if (!userInfo) return null
-  
-  try {
-    return JSON.parse(userInfo)
-  } catch (error) {
-    console.error('解析用户信息失败:', error)
-    return null
-  }
-}
 
-// 检查用户是否为管理员
-const isUserAdmin = () => {
-  const user = getCurrentUser()
-  if (!user) return false
-  
-  const roles = user.roles || []
-  return roles.includes('admin') || roles.includes('administrator') || roles.includes('1')
-}
 
-// 检查用户是否有特定权限
-const hasPermission = (permission: string) => {
-  const user = getCurrentUser()
-  if (!user) return false
-  
-  const permissions = user.permissions || []
-  return permissions.includes(permission)
-}
 
-// 判断申报单是否已有合同
-const hasExistingContract = (declarationId: number) => {
-  if (!currentContracts.value || currentContracts.value.length === 0) {
-    return false
-  }
-  
-  // 检查是否有属于当前申报单的合同
-  return currentContracts.value.some(contract => 
-    contract.declarationFormId === declarationId
-  )
-}
 
-// 合同替换权限判断
-const canReplaceContract = (contract: any) => {
-  // 管理员可以直接替换
-  if (isUserAdmin()) {
-    return true
-  }
-  
-  // 有合同编辑权限的用户可以替换
-  if (hasPermission('business:contract:edit')) {
-    return true
-  }
-  
-  // 有申报审批权限的用户可以替换
-  if (hasPermission('business:declaration:audit')) {
-    return true
-  }
-  
-  // 合同创建者可以替换自己创建的合同
-  const user = getCurrentUser()
-  if (user && contract.generatedBy) {
-    const currentUserId = user.userId || user.id
-    if (contract.generatedBy === currentUserId) {
-      return true
-    }
-  }
-  
-  // 默认不允许替换
-  return false
-}
 
 // 显示合同替换弹窗
 const showReplaceContractModal = (contract: any) => {

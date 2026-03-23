@@ -326,7 +326,6 @@ import {
   getUiConfig, 
   getAllConfigs,
   getConfigsByGroup,
-  getConfigValue,
   updateConfig,
   addConfig,
   deleteConfig as deleteConfigApi

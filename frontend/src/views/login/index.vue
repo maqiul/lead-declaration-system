@@ -94,8 +94,8 @@ const rememberMe = ref(true)
 const systemName = computed(() => getSystemParam('system.name', '线索申报系统'))
 
 const loginForm = reactive({
-  username: 'admin',
-  password: 'admin'
+  username: '',
+  password: ''
 })
 
 const rules: Record<string, Rule[]> = {
