@@ -128,7 +128,6 @@
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
               <a-button type="primary" html-type="submit" :loading="businessSaving">保存</a-button>
-<<<<<<< HEAD
             </a-form-item>
           </a-form>
         </a-card>
@@ -162,8 +161,6 @@
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
               <a-button type="primary" html-type="submit" :loading="fileUploadSaving">保存</a-button>
-=======
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             </a-form-item>
           </a-form>
         </a-card>
@@ -176,6 +173,7 @@
             :columns="columns"
             :loading="loading"
             :pagination="pagination"
+            :scroll="{ x: 1000 }"
             rowKey="id"
           >
             <template #bodyCell="{ column, record }">
@@ -328,6 +326,7 @@ import {
   getUiConfig, 
   getAllConfigs,
   getConfigsByGroup,
+  getConfigValue,
   updateConfig,
   addConfig,
   deleteConfig as deleteConfigApi
@@ -435,9 +434,9 @@ const columns = [
   },
   {
     title: '配置类型',
+    dataIndex: 'configType',
     key: 'configType',
-    width: 100,
-    slots: { customRender: 'configType' }
+    width: 100
   },
   {
     title: '配置分组',
@@ -447,15 +446,15 @@ const columns = [
   },
   {
     title: '状态',
+    dataIndex: 'status',
     key: 'status',
-    width: 80,
-    slots: { customRender: 'status' }
+    width: 80
   },
   {
     title: '操作',
     key: 'action',
     width: 150,
-    slots: { customRender: 'action' }
+    fixed: 'right' as const
   }
 ]
 
@@ -485,6 +484,9 @@ const formRules = {
 // 方法
 const refreshData = async () => {
   await loadData()
+  if (activeTab.value === 'all') {
+    await loadAllConfigs()
+  }
 }
 
 const handleTabChange = (key: string | number) => {
@@ -617,7 +619,6 @@ const loadBusinessConfig = async () => {
   }
 }
 
-<<<<<<< HEAD
 const loadFileUploadConfig = async () => {
   fileUploadLoading.value = true
   try {
@@ -629,26 +630,30 @@ const loadFileUploadConfig = async () => {
         fileUploadData[config.configKey] = config.configValue
       })
       Object.assign(fileUploadForm, fileUploadData)
+      console.log('加载文件上传配置:', fileUploadData)
+    } else {
+      console.warn('获取文件上传配置失败:', response.data?.message)
+      // 如果没有配置项，初始化默认值
+      Object.assign(fileUploadForm, {
+        'file.upload.template-path': '/uploads/templates',
+        'file.upload.contract-path': '/uploads/contracts',
+        'file.upload.export-path': '/uploads/exports'
+      })
     }
   } catch (error) {
+    console.error('加载文件上传配置异常:', error)
     message.error('加载文件上传配置失败')
   } finally {
     fileUploadLoading.value = false
   }
 }
 
-=======
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 const loadData = async () => {
   await Promise.all([
     loadBasicConfig(),
     loadUiConfig(),
-<<<<<<< HEAD
     loadBusinessConfig(),
     loadFileUploadConfig()
-=======
-    loadBusinessConfig()
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
   ])
 }
 
@@ -709,7 +714,6 @@ const saveBusinessConfig = async () => {
     message.error('保存失败，请检查网络连接后重试')
   } finally {
     businessSaving.value = false
-<<<<<<< HEAD
   }
 }
 
@@ -721,16 +725,49 @@ const fileUploadForm = reactive<Record<string, any>>({})
 const saveFileUploadConfig = async () => {
   fileUploadSaving.value = true
   try {
-    for (const [key, value] of Object.entries(fileUploadForm)) {
-      await updateConfig(key, { configValue: String(value) })
+    // 确保配置项存在，如果不存在则创建
+    const configItems = [
+      { key: 'file.upload.template-path', name: '模板文件路径', defaultValue: '/uploads/templates' },
+      { key: 'file.upload.contract-path', name: '合同生成路径', defaultValue: '/uploads/contracts' },
+      { key: 'file.upload.export-path', name: 'Excel导出路径', defaultValue: '/uploads/exports' }
+    ]
+    
+    // 先检查并创建缺失的配置项
+    for (const item of configItems) {
+      if (!fileUploadForm[item.key]) {
+        fileUploadForm[item.key] = item.defaultValue
+      }
+      
+      try {
+        // 尝试更新配置
+        await updateConfig(item.key, { configValue: String(fileUploadForm[item.key]) })
+      } catch (updateError) {
+        console.warn(`更新配置 ${item.key} 失败，尝试创建:`, updateError)
+        // 如果更新失败，可能是配置项不存在，尝试创建
+        try {
+          await addConfig({
+            configKey: item.key,
+            configName: item.name,
+            configValue: String(fileUploadForm[item.key]),
+            inputType: 1,
+            configType: 1,
+            configGroup: 'file-upload',
+            status: 1,
+            sort: configItems.findIndex(i => i.key === item.key) + 1
+          })
+        } catch (createError) {
+          console.error(`创建配置 ${item.key} 失败:`, createError)
+          throw createError
+        }
+      }
     }
+    
     message.success('文件上传配置保存成功')
-  } catch (error) {
-    message.error('保存失败，请检查网络连接后重试')
+  } catch (error: any) {
+    console.error('保存文件上传配置失败:', error)
+    message.error('保存失败：' + (error.message || '请检查网络连接'))
   } finally {
     fileUploadSaving.value = false
-=======
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
   }
 }
 

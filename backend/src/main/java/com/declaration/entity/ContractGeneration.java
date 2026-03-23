@@ -1,6 +1,7 @@
 package com.declaration.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -31,11 +32,23 @@ public class ContractGeneration {
      * 关联的申报单ID
      */
     private Long declarationFormId;
+    
+    /**
+     * 申报单编号（非数据库字段，用于前端显示）
+     */
+    @TableField(exist = false)
+    private String declarationFormCode;
 
     /**
      * 使用的模板ID
      */
     private Long templateId;
+    
+    /**
+     * 模板名称（非数据库字段，用于前端显示）
+     */
+    @TableField(exist = false)
+    private String templateName;
 
     /**
      * 生成的文件名

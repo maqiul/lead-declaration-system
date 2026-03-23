@@ -320,3 +320,68 @@ export function uploadAvatar(data: FormData) {
     }
   })
 }
+
+// 国家信息相关API
+export interface CountryInfo {
+  id?: number
+  countryCode: string
+  chineseName: string
+  englishName: string
+  abbreviation: string
+  continent: string
+  status: number
+  sort: number
+  createTime?: string
+}
+
+// 获取所有启用的国家信息（用于下拉选择）
+export function getEnabledCountries() {
+  return request({
+    url: '/v1/countries/enabled',
+    method: 'get'
+  })
+}
+
+// 获取国家列表（分页）
+export function getCountryList(params: any) {
+  return request({
+    url: '/v1/countries',
+    method: 'get',
+    params
+  })
+}
+
+// 新增国家
+export function addCountry(data: CountryInfo) {
+  return request({
+    url: '/v1/countries',
+    method: 'post',
+    data
+  })
+}
+
+// 修改国家
+export function updateCountry(id: number, data: CountryInfo) {
+  return request({
+    url: `/v1/countries/${id}`,
+    method: 'put',
+    data
+  })
+}
+
+// 删除国家
+export function deleteCountry(id: number) {
+  return request({
+    url: `/v1/countries/${id}`,
+    method: 'delete'
+  })
+}
+
+// 启用/禁用国家
+export function toggleCountryStatus(id: number, status: number) {
+  return request({
+    url: `/v1/countries/${id}/toggle-status`,
+    method: 'post',
+    params: { status }
+  })
+}

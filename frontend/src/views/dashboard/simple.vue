@@ -89,10 +89,6 @@ import {
   FallOutlined,
   FileOutlined,
   UserAddOutlined,
-<<<<<<< HEAD
-=======
-  FileAddOutlined,
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
   ApartmentOutlined
 } from '@ant-design/icons-vue'
 import { getDashboardStats, getDashboardCharts } from '@/api/dashboard'

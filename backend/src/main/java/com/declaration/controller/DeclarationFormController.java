@@ -48,24 +48,14 @@ import java.util.stream.Collectors;
 public class DeclarationFormController {
 
     private final DeclarationFormService declarationFormService;
-<<<<<<< HEAD
     private final HistoryService historyService;
-=======
-    private final RuntimeService runtimeService;
-    private final HistoryService historyService;
-    private final JdbcTemplate jdbcTemplate;
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
     private final DeclarationProductService declarationProductService;
     private final DeclarationCartonService declarationCartonService;
     private final DeclarationCartonProductService declarationCartonProductService;
     private final ExcelExportService excelExportService;
     private final DeclarationAttachmentService attachmentService;
     private final DeclarationRemittanceService remittanceService;
-<<<<<<< HEAD
     private final ProcessInstanceService processInstanceService;
-=======
-    private final com.declaration.service.ProcessInstanceService processInstanceService;
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
     private final DeclarationDraftService declarationDraftService;
     private final TaskService flowableTaskService;
     private final ObjectMapper objectMapper;
@@ -101,7 +91,6 @@ public class DeclarationFormController {
         remittanceService.saveOrUpdate(remittance);
         
         try {
-<<<<<<< HEAD
             // 自动生成水单记录导出文件（Service 内部已处理保存/替换逻辑）
             excelExportService.generateAndSaveRemittanceReport(remittance, form);
         } catch (Exception e) {
@@ -311,214 +300,72 @@ public class DeclarationFormController {
             
             // Service 内部已处理保存/替换逻辑，直接调用即可
             excelExportService.generateAndSaveExportDocuments(form);
-            log.info("申报单 {} 单据重新生成成功", form.getFormNo());
+            log.info("申报单 {} 标准单证重新生成成功", form.getFormNo());
             
-            return Result.success("单据重新生成成功");
+            return Result.success("标准单证重新生成成功");
         } catch (Exception e) {
             log.error("重新生成单据失败", e);
             return Result.fail("单据生成失败: " + e.getMessage());
-=======
-            // 自动生成水单记录导出文件
-            DeclarationAttachment attachment = excelExportService.generateAndSaveRemittanceReport(remittance, form);
-            if (attachment != null) {
-                attachmentService.save(attachment);
-            }
-        } catch (Exception e) {
-            log.warn("生成水单导出文件失败（不影响水单数据保存）: {}", e.getMessage());
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
         }
         
-        return Result.success();
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     * 替换申报单附件
-     */
-    @PostMapping("/{id}/attachments/{attachmentId}/replace")
-    @Operation(summary = "替换申报单附件")
-    @RequiresPermissions("business:declaration:edit")
-    public Result<DeclarationAttachment> replaceAttachment(
-            @Parameter(description = "申报单ID") @PathVariable Long id,
-            @Parameter(description = "附件ID") @PathVariable Long attachmentId,
-            @RequestParam("file") MultipartFile file) {
-        
-        try {
-            // 验证申报单是否存在
-            DeclarationForm form = declarationFormService.getById(id);
-            if (form == null) {
-                return Result.fail("申报单不存在");
-            }
-            
-            // 验证附件是否存在
-            DeclarationAttachment oldAttachment = attachmentService.getById(attachmentId);
-            if (oldAttachment == null) {
-                return Result.fail("附件不存在");
-            }
-            
-            // 验证附件属于该申报单
-            if (!oldAttachment.getFormId().equals(id)) {
-                return Result.fail("附件不属于该申报单");
-            }
-            
-            // 校验文件格式必须一致
-            String originalFileName = oldAttachment.getFileName();
-            String newFileName = file.getOriginalFilename();
-            if (originalFileName != null && newFileName != null) {
-                String originalExt = getFileExtension(originalFileName);
-                String newExt = getFileExtension(newFileName);
-                if (!originalExt.equalsIgnoreCase(newExt)) {
-                    return Result.fail("文件格式必须与原文件一致 (原格式: " + originalExt + ")");
-                }
-            }
-            
-            // 上传新文件
-            DeclarationAttachment newAttachment = attachmentService.uploadFile(file, oldAttachment.getFileType());
-            if (newAttachment == null) {
-                return Result.fail("文件上传失败");
-            }
-            
-            // 更新附件关联关系
-            newAttachment.setFormId(id);
-            newAttachment.setId(oldAttachment.getId()); // 保持原ID，实现替换而不是新增
-            newAttachment.setCreateTime(oldAttachment.getCreateTime()); // 保持原始创建时间
-            
-            // 更新数据库记录
-            boolean updated = attachmentService.updateById(newAttachment);
-            if (!updated) {
-                return Result.fail("附件替换失败");
-            }
-            
-            log.info("申报单 {} 的附件 {} 替换成功", id, attachmentId);
-            return Result.success(newAttachment);
-            
-        } catch (Exception e) {
-            log.error("替换附件失败", e);
-            return Result.fail("替换附件失败: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * 获取申报单附件列表
-     */
-    @GetMapping("/{id}/attachments")
-    @Operation(summary = "获取申报单附件列表")
-    @RequiresPermissions("business:declaration:view")
-    public Result<List<DeclarationAttachment>> getAttachments(
-            @Parameter(description = "申报单ID") @PathVariable Long id) {
-        
-        LambdaQueryWrapper<DeclarationAttachment> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(DeclarationAttachment::getFormId, id);
-        wrapper.orderByDesc(DeclarationAttachment::getCreateTime);
-        
-        List<DeclarationAttachment> attachments = attachmentService.list(wrapper);
-        return Result.success(attachments);
-    }
-    public Result<DeclarationRemittance> getRemittance(@PathVariable Long remittanceId) {
-        DeclarationRemittance remittance = remittanceService.getById(remittanceId);
-        if (remittance == null) {
-            return Result.fail("水单不存在");
-        }
-        return Result.success(remittance);
-    }
-
-    /**
-     * 更新水单信息
-     */
-    @PutMapping("/remittance/{remittanceId}")
-    @Operation(summary = "更新水单信息")
-    @RequiresPermissions("business:declaration:edit")
-    public Result<Void> updateRemittance(
-            @PathVariable Long remittanceId,
-            @RequestBody DeclarationRemittance remittance) {
-        
-        DeclarationRemittance existing = remittanceService.getById(remittanceId);
-        if (existing == null) {
-            return Result.fail("水单不存在");
-        }
-        
-        // 保持原有的formId不变
-        remittance.setId(remittanceId);
-        remittance.setFormId(existing.getFormId());
-        remittanceService.updateById(remittance);
-        
-        return Result.success();
-    }
-
-    /**
-     * 删除水单信息
-     */
-    @DeleteMapping("/remittance/{remittanceId}")
-    @Operation(summary = "删除水单信息")
-    @RequiresPermissions("business:declaration:delete")
-    public Result<Void> deleteRemittance(@PathVariable Long remittanceId) {
-        DeclarationRemittance remittance = remittanceService.getById(remittanceId);
-        if (remittance == null) {
-            return Result.fail("水单不存在");
-        }
-        
-        remittanceService.removeById(remittanceId);
-        return Result.success();
-    }
-
-    @PostMapping("/{id}/audit")
-    @Operation(summary = "审核申报单")
+    @PostMapping("/{id}/regenerate-all-documents")
+    @Operation(summary = "重新生成全套单据")
     @RequiresPermissions("business:declaration:audit")
-    public Result<String> auditDeclaration(
-            @Parameter(description = "申报单ID") @PathVariable Long id,
-            @RequestBody Map<String, Object> auditData) {
+    public Result<String> regenerateAllDocuments(@Parameter(description = "申报单ID") @PathVariable Long id) {
         try {
             DeclarationForm form = declarationFormService.getFullDeclarationForm(id);
             if (form == null) {
                 return Result.fail("申报单不存在");
             }
-
-            Object resultObj = auditData.get("result"); // 1-通过, 2-驳回
-            boolean isApproved = resultObj != null && ("1".equals(resultObj.toString()) || Boolean.TRUE.equals(resultObj));
-
-            List<Task> activeTasks = flowableTaskService.createTaskQuery()
-                    .processInstanceBusinessKey(String.valueOf(id))
-                    .list();
-
-            if (activeTasks == null || activeTasks.isEmpty()) {
-                // 深度诊断：检查流程实例是否存在或已结束
-                HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
-                        .processInstanceBusinessKey(String.valueOf(id))
-                        .singleResult();
-                
-                String diagnostic = "找不到待办任务。";
-                if (hpi != null) {
-                    if (hpi.getEndTime() != null) {
-                        diagnostic += " 该流程已于 " + hpi.getEndTime() + " 结束 (EndActivity=" + hpi.getEndActivityId() + ")。";
-                    } else {
-                        diagnostic += " 流程实例存在 (ID=" + hpi.getId() + ") 但当前节点不是 UserTask。";
-                    }
-                } else {
-                    diagnostic += " 未在系统中找到该业务 Key 的任何流程记录。";
-                }
-                
-                log.warn("业务Key={}审核失败: {}", id, diagnostic);
-                return Result.fail(diagnostic);
-            }
-
-            Task activeTask = activeTasks.get(0);
-            if (activeTasks.size() > 1) {
-                log.warn("业务Key={}有多个任务，默认处理: {}", id, activeTask.getId());
-            }
-
-            Map<String, Object> variables = new HashMap<>();
-            variables.put("approved", isApproved);
-            flowableTaskService.complete(activeTask.getId(), variables);
-
-            return Result.success("审核成功");
+            
+            // 生成全套单证（包含 standard 和 alltemple 两种模板）
+//            excelExportService.generateAndSaveExportDocuments(form);
+            excelExportService.generateAndSaveAllTempleExportDocuments(form);
+            log.info("申报单 {} 全套单证重新生成成功", form.getFormNo());
+            
+            return Result.success("全套单证重新生成成功");
         } catch (Exception e) {
-            log.error("审核申报单失败", e);
-            return Result.fail("审核失败内部异常: " + e.getMessage() + " | 原因: " + (e.getCause() != null ? e.getCause().getMessage() : "无"));
+            log.error("重新生成全套单据失败", e);
+            return Result.fail("全套单据生成失败: " + e.getMessage());
         }
     }
 
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
+    @PostMapping("/{id}/regenerate-remittance-report")
+    @Operation(summary = "重新生成水单报告")
+    @RequiresPermissions("business:declaration:audit")
+    public Result<String> regenerateRemittanceReport(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @Parameter(description = "水单类型 1-定金 2-尾款") @RequestParam Integer type) {
+        try {
+            DeclarationForm form = declarationFormService.getFullDeclarationForm(id);
+            if (form == null) {
+                return Result.fail("申报单不存在");
+            }
+            
+            // 查找对应类型的水单记录
+            LambdaQueryWrapper<DeclarationRemittance> query = new LambdaQueryWrapper<>();
+            query.eq(DeclarationRemittance::getFormId, id)
+                 .eq(DeclarationRemittance::getRemittanceType, type);
+            
+            DeclarationRemittance remittance = remittanceService.getOne(query);
+            if (remittance == null) {
+                return Result.fail("未找到对应的水单记录");
+            }
+            
+            // 重新生成水单报告
+            excelExportService.generateAndSaveRemittanceReport(remittance, form);
+            String typeName = type == 1 ? "定金" : "尾款";
+            log.info("申报单 {} {}水单重新生成成功", form.getFormNo(), typeName);
+            
+            return Result.success(typeName + "水单重新生成成功");
+        } catch (Exception e) {
+            log.error("重新生成水单报告失败", e);
+            return Result.fail("水单报告生成失败: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/{id}/submit-audit")
     @Operation(summary = "提交到下一步审核")
     @RequiresPermissions("business:declaration:submit")
@@ -593,21 +440,10 @@ public class DeclarationFormController {
                 queryWrapper.eq(DeclarationForm::getStatus, status);
             }
             
-<<<<<<< HEAD
             // 组织级数据权限隔离：有审核权限可查看所有数据
             boolean hasApprovePermission = StpUtil.hasPermission("business:declaration:audit");
             System.out.println(hasApprovePermission);
             System.out.println(userId);
-=======
-            // 组织级数据权限隔离（参考TaxRefundController实现）
-            boolean hasApprovePermission = StpUtil.hasPermission("business:declaration:approval")
-                || StpUtil.hasPermission("business:declaration:first-audit")
-                || StpUtil.hasPermission("business:declaration:deposit-audit")
-                || StpUtil.hasPermission("business:declaration:balance-audit")
-                || StpUtil.hasPermission("business:declaration:pickup-audit")
-                || StpUtil.hasPermission("business:declaration:audit");
-            
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             // 管理员(userId=1)或有审批权限的用户可以查看所有数据
             if (userId != 1L && !hasApprovePermission) {
                 // 普通用户只能查看自己创建的或本组织的数据
@@ -834,16 +670,8 @@ public class DeclarationFormController {
             try {
                 DeclarationForm fullForm = declarationFormService.getFullDeclarationForm(id);
                 if (fullForm != null) {
-<<<<<<< HEAD
                     excelExportService.generateAndSaveExportDocuments(fullForm);
                     log.info("申报单 {} 提交时自动生成全套单证成功", fullForm.getFormNo());
-=======
-                    DeclarationAttachment attachment = excelExportService.generateAndSaveExportDocuments(fullForm);
-                    if (attachment != null) {
-                        attachmentService.save(attachment);
-                        log.info("申报单 {} 提交时自动生成全套单证成功", fullForm.getFormNo());
-                    }
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
                 }
             } catch (Exception e) {
                 log.error("申报单 {} 提交时自动生成导出文件失败", form.getFormNo(), e);

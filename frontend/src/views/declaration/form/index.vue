@@ -728,7 +728,8 @@ import {
   deleteAttachment
 } from '@/api/business/declaration'
 import { getProductTypes } from '@/api/system/product'
-import { getTransportModes } from '@/api/system/config'
+import { getEnabledTransportModes } from '@/api/system/transportMode'
+import { getEnabledCountries } from '@/api/system'
 
 // 文件预览 URL 生成函数
 const FILE_DOWNLOAD_URL = '/api/v1/files/download'
@@ -1003,11 +1004,11 @@ const countryOptions = ref<any[]>([])
 // 加载运输方式选项
 const loadTransportModes = async () => {
   try {
-    const response = await getTransportModes()
+    const response = await getEnabledTransportModes()
     if (response.data.code === 200 && response.data.data.length > 0) {
       transportModeOptions.value = response.data.data.map((item: any) => ({
-        label: item.label,
-        value: item.value
+        label: item.chineseName || item.name,
+        value: item.code || item.name
       }))
       console.log('加载运输方式成功:', transportModeOptions.value)
     }
@@ -1026,21 +1027,45 @@ const loadTransportModes = async () => {
 // 加载国家选项
 const loadCountries = async () => {
   try {
-    // 这里应该调用实际的国家API
-    // const response = await getEnabledCountries()
-    // 模拟数据
-    countryOptions.value = [
-      { label: '中国(CHN)', value: 'CHN' },
-      { label: '美国(USA)', value: 'USA' },
-      { label: '英国(GBR)', value: 'GBR' },
-      { label: '德国(DEU)', value: 'DEU' },
-      { label: '法国(FRA)', value: 'FRA' },
-      { label: '日本(JPN)', value: 'JPN' },
-      { label: '韩国(KOR)', value: 'KOR' }
-    ]
+    const response = await getEnabledCountries()
+    if (response.data.code === 200 && response.data.data.length > 0) {
+      countryOptions.value = response.data.data.map((item: any) => ({
+        label: item.englishName,  // 显示英文全拼
+        value: item.countryCode,   // 使用国家代码作为值
+        englishName: item.englishName  // 保存英文全名用于提交时转换
+      }))
+      console.log('加载国家数据成功:', countryOptions.value)
+    } else {
+      // 如果API失败，使用默认数据
+      countryOptions.value = [
+        { label: 'China', value: 'CHN', englishName: 'China' },
+        { label: 'United States', value: 'USA', englishName: 'United States' },
+        { label: 'United Kingdom', value: 'GBR', englishName: 'United Kingdom' },
+        { label: 'Germany', value: 'DEU', englishName: 'Germany' },
+        { label: 'France', value: 'FRA', englishName: 'France' },
+        { label: 'Japan', value: 'JPN', englishName: 'Japan' },
+        { label: 'South Korea', value: 'KOR', englishName: 'South Korea' }
+      ]
+    }
   } catch (error) {
     console.error('加载国家数据失败:', error)
+    // 使用默认数据作为后备
+    countryOptions.value = [
+      { label: 'China', value: 'CHN', englishName: 'China' },
+      { label: 'United States', value: 'USA', englishName: 'United States' },
+      { label: 'United Kingdom', value: 'GBR', englishName: 'United Kingdom' },
+      { label: 'Germany', value: 'DEU', englishName: 'Germany' },
+      { label: 'France', value: 'FRA', englishName: 'France' },
+      { label: 'Japan', value: 'JPN', englishName: 'Japan' },
+      { label: 'South Korea', value: 'KOR', englishName: 'South Korea' }
+    ]
   }
+}
+
+// 根据国家代码获取英文全名
+const getCountryEnglishName = (countryCode: string): string => {
+  const country = countryOptions.value.find(item => item.value === countryCode);
+  return country ? country.englishName : countryCode;
 }
 
 // 加载HS商品类型数据
@@ -1514,6 +1539,8 @@ const handleSubmit = async () => {
     // 构造提交数据
     const submitData = {
       ...formData,
+      // 关键修复：将国家代码转换为英文全名
+      destinationCountry: formData.destinationCountry ? getCountryEnglishName(formData.destinationCountry) : '',
       totalQuantity: totals.value.totalQuantity,
       totalGrossWeight: totals.value.totalGrossWeight,
       totalNetWeight: totals.value.totalNetWeight,

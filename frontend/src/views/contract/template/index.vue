@@ -320,9 +320,14 @@ const handleUpload = async (options: any, templateId: number) => {
 }
 
 const handleDownload = (record: any) => {
-  // 直接通过FileController或者专门的下载接口进行下载
-  // 后端并没有直接给ContractTemplate的下载接口，但可以用FileController
-  window.open(`${(import.meta as any).env.VITE_APP_BASE_API}/v1/files/download?path=${record.filePath}`, '_blank')
+  // 使用统一的下载方式
+  if (record.id) {
+    // 如果是合同生成记录，使用合同下载接口
+    window.open(`${(import.meta as any).env.VITE_APP_BASE_API}/v1/contract/download/${record.id}`, '_blank')
+  } else if (record.filePath) {
+    // 如果是模板文件，使用文件下载接口
+    window.open(`${(import.meta as any).env.VITE_APP_BASE_API}/v1/files/download?path=${record.filePath}`, '_blank')
+  }
 }
 
 // 辅助方法

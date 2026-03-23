@@ -11,8 +11,8 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/lead_declaration?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8
-    username: lead
-    password: lead_declaration
+    username: root
+    password: 6678722mm
     hikari:
       connection-timeout: 30000
       idle-timeout: 600000

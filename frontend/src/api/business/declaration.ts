@@ -341,7 +341,6 @@ export function getDeclarationAttachments(formId: number) {
     url: `/v1/declarations/${formId}/attachments`,
     method: 'get'
   })
-<<<<<<< HEAD
 }
 
 // 重新生成单据
@@ -350,6 +349,21 @@ export function regenerateDocuments(id: number) {
     url: `/v1/declarations/${id}/regenerate-documents`,
     method: 'post'
   })
-=======
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
+}
+
+// 重新生成全套单据
+export function regenerateAllDocuments(id: number) {
+  return request({
+    url: `/v1/declarations/${id}/regenerate-all-documents`,
+    method: 'post'
+  })
+}
+
+// 重新生成水单报告
+export function regenerateRemittanceReport(id: number, type: number) {
+  return request({
+    url: `/v1/declarations/${id}/regenerate-remittance-report`,
+    method: 'post',
+    params: { type }
+  })
 }

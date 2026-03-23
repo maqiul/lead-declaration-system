@@ -40,9 +40,9 @@
         rowKey="id"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'declarationFormId'">
-            <a-button type="link" size="small" @click="viewDeclarationDetail(record.declarationFormId)">
-              #{{ record.declarationFormId }}
+          <template v-if="column.key === 'declarationFormCode'">
+            <a-button type="link" size="small" @click="viewDeclarationDetail(record.declarationFormCode)">
+              {{ record.declarationFormCode }}
             </a-button>
           </template>
           
@@ -96,9 +96,9 @@ const pagination = reactive({
 
 const columns = [
   { title: '合同编号', dataIndex: 'contractNo', key: 'contractNo' },
-  { title: '申报单', key: 'declarationFormId', width: 120 },
-  { title: '模板ID', dataIndex: 'templateId', key: 'templateId', width: 100 },
-  { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
+  { title: '申报单编号', dataIndex: 'declarationFormCode', key: 'declarationFormCode', width: 150 },
+  { title: '合同模板', dataIndex: 'templateName', key: 'templateName' },
+  { title: '文件名', dataIndex: 'generatedFileName', key: 'generatedFileName' },
   { title: '大小', key: 'fileSize', width: 100 },
   { title: '生成时间', dataIndex: 'generatedTime', key: 'generatedTime', width: 180 },
   { title: '操作', key: 'action', width: 180, fixed: 'right' as const }

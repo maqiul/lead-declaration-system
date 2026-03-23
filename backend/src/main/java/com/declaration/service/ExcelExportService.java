@@ -27,4 +27,10 @@ public interface ExcelExportService {
      * 为申报单生成全套单证(基于alltemple_template.xlsx)并保存
      */
     DeclarationAttachment generateAndSaveAllTempleExportDocuments(DeclarationForm form) throws java.io.IOException;
+
+    /**
+     * 获取发票模板路径（供 Controller 层调用）
+     * @return 模板文件绝对路径，未找到返回 null
+     */
+    String getInvoiceTemplatePath();
 }

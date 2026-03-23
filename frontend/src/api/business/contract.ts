@@ -60,11 +60,24 @@ export function getGenerations(params: any) {
 }
 
 /**
+ * 根据申报单ID获取相关合同
+ */
+export function getContractsByDeclaration(declarationFormId: number) {
+  return request({
+    url: `/v1/contract/by-declaration/${declarationFormId}`,
+    method: 'get'
+  })
+}
+
+/**
  * 下载合同文件
  */
 export function downloadContract(id: number) {
+  // 使用完整的API基础路径构造下载URL
+  const downloadUrl = `/api/v1/contract/download/${id}`;
+  
   // 直接跳转下载
-  window.open(`${(import.meta as any).env.VITE_APP_BASE_API}/v1/contract/download/${id}`, '_blank')
+  window.open(downloadUrl, '_blank');
 }
 
 /**
@@ -74,5 +87,19 @@ export function deleteContract(id: number) {
   return request({
     url: `/v1/contract/generation/${id}`,
     method: 'delete'
+  })
+}
+
+/**
+ * 替换合同文件
+ */
+export function replaceContractFile(id: number, data: FormData) {
+  return request({
+    url: `/v1/contract/generation/${id}/replace`,
+    method: 'post',
+    data,
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
   })
 }

@@ -103,6 +103,18 @@ export const asyncRoutes: RouteRecordRaw[] = [
         name: 'Country',
         component: () => import('@/views/system/country/index.vue'),
         meta: { title: '国家信息', icon: 'GlobalOutlined' }
+      },
+      {
+        path: 'transport-mode',
+        name: 'TransportMode',
+        component: () => import('@/views/system/transport-mode/index.vue'),
+        meta: { title: '运输方式', icon: 'CarOutlined', permission: 'system:transport:list' }
+      },
+      {
+        path: 'currency',
+        name: 'Currency',
+        component: () => import('@/views/system/currency/index.vue'),
+        meta: { title: '货币管理', icon: 'MoneyCollectOutlined', permission: 'system:currency:list' }
       }
     ]
   },

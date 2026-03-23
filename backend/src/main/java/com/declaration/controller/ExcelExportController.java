@@ -10,9 +10,10 @@ import org.apache.fesod.sheet.write.metadata.fill.FillConfig;
 
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.beans.factory.annotation.Autowired;
 
-import java.io.File;
+import com.declaration.service.ExcelExportService;
+
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
@@ -29,6 +30,9 @@ import java.util.Locale;
 @RequestMapping("/excel")
 public class ExcelExportController {
 
+    @Autowired
+    private ExcelExportService excelExportService;
+
     /**
      * 导出商业发票和装箱单
      */
@@ -41,8 +45,8 @@ public class ExcelExportController {
             System.out.println("箱子数据: " + requestData.get("cartons"));
             System.out.println("产品数据: " + requestData.get("products"));
             
-            // 使用Fesod的模板填充功能
-            String templatePath = getTemplatePath();
+            // 使用Service层获取模板路径
+            String templatePath = excelExportService.getInvoiceTemplatePath();
             if (templatePath == null) {
                 throw new RuntimeException("模板文件不存在");
             }
@@ -95,30 +99,6 @@ public class ExcelExportController {
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             response.getWriter().write("{\"code\":500,\"msg\":\"导出失败: " + e.getMessage() + "\"}");
         }
-    }
-    
-    /**
-     * 获取模板路径
-     */
-    private String getTemplatePath() {
-        // 尝试从classpath获取模板
-        ClassPathResource resource = new ClassPathResource("templates/temple.xlsx");
-        if (resource.exists()) {
-            try {
-                return resource.getFile().getAbsolutePath();
-            } catch (IOException e) {
-                System.err.println("获取模板文件路径失败: " + e.getMessage());
-            }
-        }
-        
-        // 尝试从文件系统获取模板
-        File templateFile = new File("templates/temple.xlsx");
-        if (templateFile.exists()) {
-            return templateFile.getAbsolutePath();
-        }
-        
-        System.err.println("模板文件不存在");
-        return null;
     }
     
     /**

@@ -2,18 +2,9 @@ package com.declaration.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.declaration.dao.ContractTemplateDao;
-import com.declaration.entity.ContractGeneration;
-import com.declaration.entity.ContractTemplate;
-import com.declaration.entity.DeclarationForm;
-import com.declaration.service.ContractGenerateService;
-import com.declaration.service.ContractGenerationService;
-<<<<<<< HEAD
-import com.declaration.service.ContractTemplateService;
-import com.declaration.service.DeclarationFormService;
-import com.declaration.service.SystemConfigService;
-=======
-import com.declaration.service.DeclarationFormService;
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
+import com.declaration.dao.BankAccountConfigDao;
+import com.declaration.entity.*;
+import com.declaration.service.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
@@ -32,6 +23,7 @@ import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -50,13 +42,12 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
 
     private final ContractTemplateDao contractTemplateDao;
     private final ContractGenerationService contractGenerationService;
-<<<<<<< HEAD
     private final ContractTemplateService contractTemplateService;
     private final DeclarationFormService declarationFormService;
     private final SystemConfigService systemConfigService;
-=======
-    private final DeclarationFormService declarationFormService;
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
+    private final BankAccountConfigService bankAccountConfigService;
+    private final BankAccountConfigDao bankAccountConfigDao;
+    private final ProductTypeConfigService productTypeConfigService;
 
     @Value("${file.upload.contract-path:/uploads/contracts}")
     private String contractUploadPath;
@@ -81,29 +72,19 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
                 return null;
             }
 
-<<<<<<< HEAD
             // 2. 从数据库配置获取模板文件路径(优先)
             String dynamicTemplatePath = systemConfigService.getConfigValue("file.upload.template-path", templateUploadPath);
             // 3. 从数据库配置获取合同生成路径(优先)
             String dynamicContractPath = systemConfigService.getConfigValue("file.upload.contract-path", contractUploadPath);
 
             // 4. 获取申报单信息
-            DeclarationForm declarationForm = declarationFormService.getById(declarationFormId);
+            DeclarationForm declarationForm = declarationFormService.getFullDeclarationForm(declarationFormId);
             if (declarationForm == null) {
                 log.warn("申报单 ID={} 不存在，跳过合同生成", declarationFormId);
                 return null;
             }
 
             // 5. 构建模板数据(合并外部传入的数据和申报单数据)
-=======
-            // 2. 查询申报单详情
-            DeclarationForm declarationForm = declarationFormService.getById(declarationFormId);
-            if (declarationForm == null) {
-                throw new RuntimeException("申报单不存在");
-            }
-
-            // 3. 构建模板数据（合并外部传入的数据和申报单数据）
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             Map<String, Object> templateData = new HashMap<>();
             if (dataMap != null) {
                 templateData.putAll(dataMap);
@@ -112,21 +93,83 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             // 自动填充申报单核心字段
             templateData.put("formNo", declarationForm.getFormNo() != null ? declarationForm.getFormNo() : "");
             templateData.put("declarationDate", declarationForm.getDeclarationDate() != null ? declarationForm.getDeclarationDate().toString() : "");
+            
+            // 合同日期相关
+            LocalDate contractDateObj = declarationForm.getDeclarationDate() != null ? 
+                declarationForm.getDeclarationDate() : LocalDate.now();
+            String contractDate = contractDateObj.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+            String contractDateCn = contractDateObj.format(DateTimeFormatter.ofPattern("yyyy年MM月dd日"));
+            String contractDateEn = contractDateObj.format(DateTimeFormatter.ofPattern("MM/dd/yyyy"));
+            
+            templateData.put("contractDate", contractDate);
+            templateData.put("contractDateCn", contractDateCn);
+            templateData.put("contractDateEn", contractDateEn);
+            
+            // 公司信息
             templateData.put("shipperCompany", declarationForm.getShipperCompany() != null ? declarationForm.getShipperCompany() : "");
+            templateData.put("shipperCompanyCn", declarationForm.getShipperCompany() != null ? declarationForm.getShipperCompany()+"公司" : "");
             templateData.put("shipperAddress", declarationForm.getShipperAddress() != null ? declarationForm.getShipperAddress() : "");
             templateData.put("consigneeCompany", declarationForm.getConsigneeCompany() != null ? declarationForm.getConsigneeCompany() : "");
+            templateData.put("consigneeCompanyCn",declarationForm.getConsigneeCompany()!=null?declarationForm.getConsigneeCompany()+"公司" : "");
             templateData.put("consigneeAddress", declarationForm.getConsigneeAddress() != null ? declarationForm.getConsigneeAddress() : "");
+            
+            // 地址信息（兼容模板中的字段名）
+            templateData.put("shipperCompanyAddress", declarationForm.getShipperAddress() != null ? declarationForm.getShipperAddress() : "");
+            templateData.put("consigneeCompanyAddress", declarationForm.getConsigneeAddress() != null ? declarationForm.getConsigneeAddress() : "");
+
+
             templateData.put("invoiceNo", declarationForm.getInvoiceNo() != null ? declarationForm.getInvoiceNo() : "");
-            templateData.put("totalAmount", declarationForm.getTotalAmount() != null ? declarationForm.getTotalAmount().toString() : "0");
-            templateData.put("totalQuantity", declarationForm.getTotalQuantity() != null ? declarationForm.getTotalQuantity().toString() : "0");
-            templateData.put("totalCartons", declarationForm.getTotalCartons() != null ? declarationForm.getTotalCartons().toString() : "0");
-            templateData.put("totalGrossWeight", declarationForm.getTotalGrossWeight() != null ? declarationForm.getTotalGrossWeight().toString() : "0");
-            templateData.put("totalNetWeight", declarationForm.getTotalNetWeight() != null ? declarationForm.getTotalNetWeight().toString() : "0");
-            templateData.put("totalVolume", declarationForm.getTotalVolume() != null ? declarationForm.getTotalVolume().toString() : "0");
-            templateData.put("currency", declarationForm.getCurrency() != null ? declarationForm.getCurrency() : "");
-            templateData.put("transportMode", declarationForm.getTransportMode() != null ? declarationForm.getTransportMode() : "");
-            templateData.put("departureCity", declarationForm.getDepartureCity() != null ? declarationForm.getDepartureCity() : "");
-            templateData.put("destinationCountry", declarationForm.getDestinationCountry() != null ? declarationForm.getDestinationCountry() : "");
+            
+            // 产品信息
+            String productNameEn = "";
+            String productNameCn = "";
+            String quantity = "0";
+            String quantityUnit = "个";
+            
+            // 获取第一个产品作为主要产品信息
+            if (declarationForm.getProducts() != null && !declarationForm.getProducts().isEmpty()) {
+                DeclarationProduct mainProduct = declarationForm.getProducts().get(0);
+                productNameEn = mainProduct.getProductName() != null ? mainProduct.getProductName() : "";
+                ProductTypeConfig productTypeConfig = productTypeConfigService.getByHsCode(mainProduct.getHsCode());
+                productNameCn = productTypeConfig.getChineseName() != null ? mainProduct.getProductName() : "";
+                quantity = mainProduct.getQuantity() != null ? mainProduct.getQuantity().toString() : "0";
+                quantityUnit =  "个";
+            }
+            
+            templateData.put("productNameEn", productNameEn);
+            templateData.put("productNameCn", productNameCn);
+            templateData.put("quantity", quantity);
+            templateData.put("quantityUnit", quantityUnit);
+            
+            // 金额信息
+            String totalAmount = declarationForm.getTotalAmount() != null ? 
+                declarationForm.getTotalAmount().toString() : "0";
+            String currency = declarationForm.getCurrency() != null ? declarationForm.getCurrency() : "USD";
+            
+            templateData.put("totalAmount", totalAmount);
+            templateData.put("currency", currency);
+            
+            // 货币中文名称
+            templateData.put("currencyCn", getCurrencyChineseName(currency));
+            templateData.put("currencyCn2", getCurrencyChineseSuffix(currency));
+            
+            // 商务条款（默认值，可通过dataMap覆盖）
+            templateData.put("paymentDays", "30");  // 默认30天付款期
+            templateData.put("paymentPercent", "100"); // 默认100%付款
+            templateData.put("deliveryDays", "15"); // 默认15天交货期
+            
+            // 银行账户信息
+            BankAccountConfig bankAccount = getDefaultBankAccount(currency);
+            templateData.put("sellerName", bankAccount != null ? 
+                (bankAccount.getAccountHolder() != null ? bankAccount.getAccountHolder() : 
+                 (declarationForm.getShipperCompany() != null ? declarationForm.getShipperCompany() : "")) : 
+                (declarationForm.getShipperCompany() != null ? declarationForm.getShipperCompany() : ""));
+            templateData.put("bankAccount", bankAccount != null ? 
+                (bankAccount.getAccountNumber() != null ? bankAccount.getAccountNumber() : "") : "");
+            templateData.put("bankName", bankAccount != null ? 
+                (bankAccount.getBankName() != null ? bankAccount.getBankName() : "") : "");
+            templateData.put("swiftCode", bankAccount != null ? 
+                (bankAccount.getSwiftCode() != null ? bankAccount.getSwiftCode() : "") : "");
             
             // 生成日期
             templateData.put("generatedDate", LocalDate.now().toString());
@@ -134,27 +177,19 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             // 4. 生成合同编号
             String contractNo = generateContractNumber(template.getTemplateType());
 
-<<<<<<< HEAD
             // 5. 构造模板文件路径(使用完整配置路径,不再拼接用户目录)
             Path templatePath = Paths.get(dynamicTemplatePath, template.getFileName());
-=======
-            // 5. 构造模板文件路径
-            Path templatePath = Paths.get(System.getProperty("user.dir"), template.getFilePath());
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             if (!Files.exists(templatePath)) {
                 log.warn("模板文件不存在: {}，跳过合同生成", templatePath);
                 return null;
             }
 
-<<<<<<< HEAD
             // 6. 生成输出文件路径(使用完整配置路径,不再拼接用户目录)
+            // 创建以申报号命名的子目录
+            String formNoDir = declarationForm.getFormNo();
+            Path formDirPath = Paths.get(dynamicContractPath, formNoDir);
             String fileName = contractNo + "_" + System.currentTimeMillis() + ".docx";
-            Path outputPath = Paths.get(dynamicContractPath, fileName);
-=======
-            // 6. 生成输出文件路径
-            String fileName = contractNo + "_" + System.currentTimeMillis() + ".docx";
-            Path outputPath = Paths.get(System.getProperty("user.dir"), contractUploadPath, fileName);
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
+            Path outputPath = Paths.get(formDirPath.toString(), fileName);
 
             // 确保输出目录存在
             Files.createDirectories(outputPath.getParent());
@@ -172,7 +207,8 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             generation.setDeclarationFormId(declarationFormId);
             generation.setTemplateId(templateId);
             generation.setGeneratedFileName(fileName);
-            generation.setGeneratedFilePath(outputPath.toString());
+            // 保存相对路径: 申报号/文件名
+            generation.setGeneratedFilePath(formNoDir + "/" + fileName);
             generation.setFileSize(fileSize);
             generation.setGeneratedBy(generatedBy);
             generation.setGeneratedTime(LocalDateTime.now());
@@ -190,13 +226,9 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
     }
 
     @Override
-<<<<<<< HEAD
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRED, rollbackFor = Exception.class)
     public String uploadTemplateFile(MultipartFile file, Long templateId) {
         String savedFilePath = null;
-=======
-    public String uploadTemplateFile(MultipartFile file, Long templateId) {
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
         try {
             if (file.isEmpty()) {
                 throw new RuntimeException("上传文件不能为空");
@@ -212,21 +244,15 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             String extension = originalFilename.substring(originalFilename.lastIndexOf("."));
             String fileName = UUID.randomUUID().toString().replaceAll("-", "") + extension;
 
-<<<<<<< HEAD
             // 从数据库配置获取模板文件路径(优先)
             String dynamicTemplatePath = systemConfigService.getConfigValue("file.upload.template-path", templateUploadPath);
 
             // 构造保存路径(使用完整配置路径,不再拼接用户目录)
             Path savePath = Paths.get(dynamicTemplatePath, fileName);
-=======
-            // 构造保存路径
-            Path savePath = Paths.get(System.getProperty("user.dir"), templateUploadPath, fileName);
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             Files.createDirectories(savePath.getParent());
 
             // 保存文件
             file.transferTo(savePath);
-<<<<<<< HEAD
             savedFilePath = savePath.toString();
             
             // 更新模板的文件信息
@@ -255,14 +281,6 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
                     log.warn("回滚时删除文件失败: {}", deleteException.getMessage());
                 }
             }
-=======
-
-            log.info("模板文件上传成功: {}, 大小: {} bytes", fileName, file.getSize());
-            return savePath.toString();
-
-        } catch (Exception e) {
-            log.error("模板文件上传失败", e);
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
             throw new RuntimeException("模板文件上传失败: " + e.getMessage());
         }
     }
@@ -274,9 +292,16 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             throw new RuntimeException("合同记录不存在");
         }
 
-        File file = new File(generation.getGeneratedFilePath());
+        // 从数据库配置获取合同生成路径
+        String dynamicContractPath = systemConfigService.getConfigValue("file.upload.contract-path", contractUploadPath);
+        
+        // 构造完整文件路径 (合同路径 + 申报号目录 + 文件名)
+        Path fullPath = Paths.get(dynamicContractPath, generation.getGeneratedFilePath());
+        System.out.println(fullPath);
+        File file = fullPath.toFile();
+        
         if (!file.exists()) {
-            throw new RuntimeException("合同文件不存在");
+            throw new RuntimeException("合同文件不存在: " + file.getAbsolutePath());
         }
 
         return file;
@@ -302,6 +327,56 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
         } catch (Exception e) {
             log.error("合同编号生成失败", e);
             throw new RuntimeException("合同编号生成失败");
+        }
+    }
+    
+    /**
+     * 获取货币中文名称
+     */
+    private String getCurrencyChineseName(String currencyCode) {
+        switch (currencyCode.toUpperCase()) {
+            case "USD": return "美元";
+            case "EUR": return "欧元";
+            case "GBP": return "英镑";
+            case "JPY": return "日元";
+            case "CNY": 
+            case "RMB": return "人民币";
+            default: return currencyCode;
+        }
+    }
+    
+    /**
+     * 获取货币中文后缀
+     */
+    private String getCurrencyChineseSuffix(String currencyCode) {
+        switch (currencyCode.toUpperCase()) {
+            case "USD": return "圆整";
+            case "EUR": return "整";
+            case "GBP": return "整";
+            case "JPY": return "整";
+            case "CNY": 
+            case "RMB": return "整";
+            default: return "整";
+        }
+    }
+    
+    /**
+     * 获取默认银行账户信息
+     */
+    private BankAccountConfig getDefaultBankAccount(String currency) {
+        try {
+            LambdaQueryWrapper<BankAccountConfig> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(BankAccountConfig::getStatus, 1)
+                   .eq(BankAccountConfig::getIsDefault, 1);
+            
+            if (currency != null && !currency.isEmpty()) {
+                wrapper.eq(BankAccountConfig::getCurrency, currency.toUpperCase());
+            }
+            
+            return bankAccountConfigService.getOne(wrapper);
+        } catch (Exception e) {
+            log.warn("获取默认银行账户失败: {}", e.getMessage());
+            return null;
         }
     }
 }

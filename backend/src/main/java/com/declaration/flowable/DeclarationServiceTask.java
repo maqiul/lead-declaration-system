@@ -24,7 +24,6 @@ public class DeclarationServiceTask implements JavaDelegate {
 
     private final DeclarationFormService declarationFormService;
     private final ExcelExportService excelExportService;
-    private final DeclarationAttachmentService attachmentService;
     private final ContractGenerateService contractGenerateService;
     private final BankAccountConfigService bankAccountConfigService;
 
@@ -60,16 +59,14 @@ public class DeclarationServiceTask implements JavaDelegate {
     private void generateAndSaveExport(DeclarationForm form) {
         try {
             // Generate using standard temple.xlsx
-            DeclarationAttachment attachment1 = excelExportService.generateAndSaveExportDocuments(form);
-            if (attachment1 != null) {
-                attachmentService.save(attachment1);
-            }
+            // 注意：generateAndSaveExportDocuments 内部已经处理了保存逻辑
+            excelExportService.generateAndSaveExportDocuments(form);
             
             // Generate using alltemple_template.xlsx
-            DeclarationAttachment attachment2 = excelExportService.generateAndSaveAllTempleExportDocuments(form);
-            if (attachment2 != null) {
-                attachmentService.save(attachment2);
-            }
+            // 注意：generateAndSaveAllTempleExportDocuments 内部已经处理了保存逻辑
+            excelExportService.generateAndSaveAllTempleExportDocuments(form);
+            
+            log.info("申报单 {} 全套单证生成完成", form.getFormNo());
         } catch (Exception e) {
             log.error("申报单 {} 自动生成导出文件失败", form.getFormNo(), e);
         }

@@ -1,14 +1,20 @@
 package com.declaration.service.impl;
 
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.declaration.entity.CountryInfo;
 import com.declaration.entity.DeclarationAttachment;
 import com.declaration.entity.DeclarationCarton;
 import com.declaration.entity.DeclarationCartonProduct;
 import com.declaration.entity.DeclarationForm;
 import com.declaration.entity.DeclarationProduct;
 import com.declaration.entity.ExportDataRequest;
+import com.declaration.entity.ProductTypeConfig;
+import com.declaration.service.CountryInfoService;
 import com.declaration.service.DeclarationAttachmentService;
 import com.declaration.service.ExcelExportService;
+import com.declaration.service.ProductTypeConfigService;
 import com.declaration.service.SystemConfigService;
 import org.apache.fesod.sheet.ExcelWriter;
 import org.apache.fesod.sheet.FesodSheet;
@@ -26,7 +32,6 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.Locale;
 
 import cn.hutool.core.util.IdUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +44,11 @@ import org.apache.fesod.sheet.write.merge.OnceAbsoluteMergeStrategy;
 @Service
 public class ExcelExportServiceImpl implements ExcelExportService {
 
+    // 模板文件名常量
+    private static final String TEMPLATE_INVOICE = "temple.xlsx";
+    private static final String TEMPLATE_REMITTANCE = "remittance_template.xlsx";
+    private static final String TEMPLATE_ALLTEMPLE = "alltemple_template.xlsx";
+
     @Value("${file.upload-path:uploads/exports/}")
     private String uploadPath;
 
@@ -47,6 +57,12 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
     @Autowired
     private SystemConfigService systemConfigService;
+
+    @Autowired
+    private CountryInfoService countryInfoService;
+
+    @Autowired
+    private ProductTypeConfigService productTypeConfigService;
 
     @Override
     public DeclarationAttachment generateAndSaveExportDocuments(DeclarationForm form) throws IOException {
@@ -61,8 +77,15 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             dir.mkdirs();
         }
 
+        // 创建以申报号命名的子目录
+        String formNoDir = form.getFormNo();
+        File formDir = new File(uploadPath, formNoDir);
+        if (!formDir.exists()) {
+            formDir.mkdirs();
+        }
+        
         String fileName = "Declaration_" + form.getFormNo() + "_" + IdUtil.simpleUUID() + ".xlsx";
-        String filePath = Paths.get(uploadPath, fileName).toString();
+        String filePath = Paths.get(formDir.getAbsolutePath(), fileName).toString();
         File targetFile = new File(filePath);
 
         // 准备数据
@@ -106,7 +129,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         DeclarationAttachment attachment = new DeclarationAttachment();
         attachment.setFormId(form.getId());
         attachment.setFileName("全套出口单证_" + form.getFormNo() + ".xlsx");
-        attachment.setFileUrl("/api/v1/files/download?path=" + fileName);
+        attachment.setFileUrl("/api/v1/files/download?path=" + formNoDir + "/" + fileName);
         attachment.setFileType("FullDocuments");
         attachment.setCreateTime(LocalDateTime.now());
         
@@ -130,26 +153,58 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         }
     }
 
-    private String getTemplatePath() {
-        // 从数据库配置获取模板文件路径(优先)
-        String dynamicTemplatePath = systemConfigService.getConfigValue("file.upload.template-path", "/uploads/templates");
-        System.out.println(dynamicTemplatePath);
-        // 优先检查配置的路径(使用完整路径,不再拼接用户目录)
-        File configTemplateFile = new File(dynamicTemplatePath, "temple.xlsx");
-        if (configTemplateFile.exists()) {
-            return configTemplateFile.getAbsolutePath();
-        }
-        
-        // 回退到默认路径
-        ClassPathResource resource = new ClassPathResource("templates/temple.xlsx");
-        if (resource.exists()) {
-            try {
-                return resource.getFile().getAbsolutePath();
-            } catch (IOException e) {
+    /**
+     * 通用模板路径解析（三层回退机制）
+     * 1. 优先从 SystemConfigService 获取数据库配置路径
+     * 2. 其次尝试 ClassPath 资源加载
+     * 3. 最后 fallback 到本地文件系统路径
+     *
+     * @param templateFileName 模板文件名
+     * @return 模板文件绝对路径，未找到返回 null
+     */
+    private String resolveTemplatePath(String templateFileName) {
+        // 第一层：从数据库配置获取模板目录路径
+        try {
+            String configuredDir = systemConfigService.getConfigValue("file.upload.template-path", "/uploads/templates");
+            File configTemplateFile = new File(configuredDir, templateFileName);
+            if (configTemplateFile.exists()) {
+                log.info("模板文件从配置路径加载: {}", configTemplateFile.getAbsolutePath());
+                return configTemplateFile.getAbsolutePath();
             }
+        } catch (Exception e) {
+            log.warn("从配置获取模板路径失败，尝试ClassPath加载: {}", e.getMessage());
         }
-        File templateFile = new File("templates/temple.xlsx");
-        return templateFile.exists() ? templateFile.getAbsolutePath() : null;
+
+        // 第二层：ClassPath 资源加载
+        try {
+            ClassPathResource resource = new ClassPathResource("templates/" + templateFileName);
+            if (resource.exists()) {
+                String path = resource.getFile().getAbsolutePath();
+                log.info("模板文件从ClassPath加载: {}", path);
+                return path;
+            }
+        } catch (IOException e) {
+            log.warn("从ClassPath获取模板路径失败，尝试本地文件加载: {}", e.getMessage());
+        }
+
+        // 第三层：本地文件系统路径
+        File templateFile = new File("templates/" + templateFileName);
+        if (templateFile.exists()) {
+            log.info("模板文件从本地文件加载: {}", templateFile.getAbsolutePath());
+            return templateFile.getAbsolutePath();
+        }
+
+        log.error("模板文件未找到: {}", templateFileName);
+        return null;
+    }
+
+    private String getTemplatePath() {
+        return resolveTemplatePath(TEMPLATE_INVOICE);
+    }
+
+    @Override
+    public String getInvoiceTemplatePath() {
+        return resolveTemplatePath(TEMPLATE_INVOICE);
     }
 
     private Map<String, Object> prepareFillData(DeclarationForm form) {
@@ -348,16 +403,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
      * 获取水单模板路径
      */
     private String getRemittanceTemplatePath() {
-        ClassPathResource resource = new ClassPathResource("templates/remittance_template.xlsx");
-        if (resource.exists()) {
-            try {
-                return resource.getFile().getAbsolutePath();
-            } catch (IOException e) {
-                // 忽略异常，尝试其他方式
-            }
-        }
-        File templateFile = new File("templates/remittance_template.xlsx");
-        return templateFile.exists() ? templateFile.getAbsolutePath() : null;
+        return resolveTemplatePath(TEMPLATE_REMITTANCE);
     }
     
     /**
@@ -517,10 +563,17 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         if (!dir.exists()) {
             dir.mkdirs();
         }
+        
+        // 创建以申报号命名的子目录
+        String formNoDir = form.getFormNo();
+        File formDir = new File(uploadPath, formNoDir);
+        if (!formDir.exists()) {
+            formDir.mkdirs();
+        }
 
         String typeName = remittance.getRemittanceType() == 1 ? "定金" : "尾款";
         String fileName = "Remittance_" + typeName + "_" + form.getFormNo() + "_" + IdUtil.simpleUUID() + ".xlsx";
-        String filePath = Paths.get(uploadPath, fileName).toString();
+        String filePath = Paths.get(formDir.getAbsolutePath(), fileName).toString();
         File targetFile = new File(filePath);
 
         // 准备水单数据
@@ -540,7 +593,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         DeclarationAttachment attachment = new DeclarationAttachment();
         attachment.setFormId(form.getId());
         attachment.setFileName(typeName + "水单_" + form.getFormNo() + ".xlsx");
-        attachment.setFileUrl("/api/v1/files/download?path=" + fileName);
+        attachment.setFileUrl("/api/v1/files/download?path=" + formNoDir + "/" + fileName);
         attachment.setFileType(fileType);
         attachment.setCreateTime(LocalDateTime.now());
         
@@ -573,16 +626,26 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
         File dir = new File(uploadPath);
         if (!dir.exists()) dir.mkdirs();
+        
+        // 创建以申报号命名的子目录
+        String formNoDir = form.getFormNo();
+        File formDir = new File(uploadPath, formNoDir);
+        if (!formDir.exists()) {
+            formDir.mkdirs();
+        }
 
         String fileName = "AllTemple_" + form.getFormNo() + "_" + IdUtil.simpleUUID() + ".xlsx";
-        String filePath = Paths.get(uploadPath, fileName).toString();
+        String filePath = Paths.get(formDir.getAbsolutePath(), fileName).toString();
         File targetFile = new File(filePath);
 
         Map<String, Object> fillData = prepareAllTempleFillData(form);
+        System.out.println("数据:"+JSONObject.from(fillData).toJSONString());
         // Fesod uses list wrapper map for items list filling
         List<Map<String, Object>> productListData = createAllTempleProductListData(form);
-        Map<String, Object> listWrap = new HashMap<>();
-        listWrap.put("items", productListData);
+        System.out.println(productListData.get(0));
+//        System.out.println(JSON.parseArray(productListData.toString()));
+        // Map<String, Object> listWrap = new HashMap<>();
+        // listWrap.put("items", productListData);
         
         // 计算装箱单的合并策略
         // alltemple_template.xlsx: 装箱单在Sheet 3（index=3），数据从第9行开始（0-indexed row=8）
@@ -605,7 +668,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                     FillConfig fillConfig = FillConfig.builder().forceNewRow(false).build();
                     writer.fill(fillData, sheet);
                     // Fill list data for {items.xx} placeholders
-                    writer.fill(listWrap, fillConfig, sheet);
+                    writer.fill(productListData, fillConfig, sheet);
                 }
                 writer.finish();
             }
@@ -614,7 +677,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         DeclarationAttachment attachment = new DeclarationAttachment();
         attachment.setFormId(form.getId());
         attachment.setFileName("全套报关单证_" + form.getFormNo() + ".xlsx");
-        attachment.setFileUrl("/api/v1/files/download?path=" + fileName);
+        attachment.setFileUrl("/api/v1/files/download?path=" + formNoDir + "/" + fileName);
         attachment.setFileType("AllDocuments");
         attachment.setCreateTime(LocalDateTime.now());
         
@@ -639,35 +702,21 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     }
 
     private String getAllTempleTemplatePath() {
-        ClassPathResource resource = new ClassPathResource("templates/alltemple_template.xlsx");
-        if (resource.exists()) {
-            try { return resource.getFile().getAbsolutePath(); } catch (IOException e) {}
-        }
-        File templateFile = new File("templates/alltemple_template.xlsx");
-        return templateFile.exists() ? templateFile.getAbsolutePath() : null;
+        return resolveTemplatePath(TEMPLATE_ALLTEMPLE);
     }
 
     private Map<String, Object> prepareAllTempleFillData(DeclarationForm form) {
         Map<String, Object> data = new HashMap<>();
         data.put("preEntryNo", "");
-        data.put("customsNo", "");
-        data.put("shipperCompanyCode", form.getShipperCompany());
-        data.put("shipperCompanyName", form.getShipperCompany());
+        data.put("shipperCompany", form.getShipperCompany());
         data.put("exportCustoms", form.getDepartureCity());
         // 格式化导出日期和申报日期为英文格式
-        if (form.getDeclarationDate() != null) {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM. dd, yyyy", Locale.ENGLISH);
-            String formattedDate = form.getDeclarationDate().format(formatter);
-            data.put("exportDate", formattedDate);
-            data.put("declarationDate", formattedDate);
-        } else {
-            data.put("exportDate", "");
-            data.put("declarationDate", "");
-        }
+
+        data.put("exportDate", "");
+        data.put("declarationDate", "");
+
         data.put("recordNo", "");
-        data.put("shipperUniformCode", "");
-        data.put("consigneeCompanyName", form.getConsigneeCompany());
-        data.put("transportMode", form.getTransportMode());
+        data.put("consigneeCompany", form.getConsigneeCompany());
         data.put("transportNameAndVoyage", "");
         data.put("billOfLadingNo", "");
         data.put("manufacturer", form.getShipperCompany());
@@ -675,14 +724,29 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         data.put("exemptionNature", "一般征税");
         data.put("licenseNo", "");
         data.put("contractNo", form.getInvoiceNo());
-        data.put("tradeCountry", form.getDestinationCountry());
-        data.put("destinationCountry", form.getDestinationCountry());
-        data.put("portOfDestination", "");
-        data.put("portOfDeparture", form.getDepartureCity());
+        
+        // 国家信息处理（安全方式）
+        String destinationCountryDisplay = form.getDestinationCountry();
+        try {
+            CountryInfo tradeCountry = countryInfoService.getCountryInfoByEnglishName(form.getDestinationCountry());
+            if (tradeCountry != null) {
+                destinationCountryDisplay = tradeCountry.getChineseName();
+            }
+        } catch (Exception e) {
+            log.warn("获取国家信息失败，使用原始值: {}", form.getDestinationCountry());
+        }
+        
+        data.put("tradeCountry", destinationCountryDisplay);
+        data.put("destinationCountry", destinationCountryDisplay);
+        data.put("portOfDestination", destinationCountryDisplay);
+        data.put("portOfDeparture", "");
         data.put("packageType", "纸箱");
         data.put("totalCartons", calculateTotalCartons(form));
         data.put("totalGrossWeight", calculateTotalGrossWeight(form));
         data.put("totalNetWeight", calculateTotalNetWeight(form));
+        data.put("totalQuantity", calculateTotalQuantity(form));
+        data.put("totalVolume", calculateTotalVolume(form));
+        data.put("totalAmount", form.getTotalAmount());
         data.put("tradeTerm", "FOB");
         data.put("freight", "");
         data.put("premium", "");
@@ -690,10 +754,11 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         data.put("attachment1", "合同");
         data.put("attachment2", "发票，装箱单");
         data.put("marksAndRemarks", "N/M");
-        
-        data.put("issuerCompanyName", form.getShipperCompany());
-        data.put("issuerCompanyAddress", form.getShipperAddress());
-        data.put("consigneeCompanyAddress", form.getConsigneeAddress());
+        data.put("currency", form.getCurrency());
+        data.put("CompanyName", form.getShipperCompany());
+        data.put("shipperAddress",form.getShipperAddress());
+        data.put("CompanyAddress", form.getShipperAddress());
+        data.put("consigneeAddress", form.getConsigneeAddress());
         data.put("invoiceNo", form.getInvoiceNo());
         data.put("packingListNo", form.getInvoiceNo());
         // 格式化发票日期和装箱单日期为英文格式
@@ -706,16 +771,17 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             data.put("invoiceDate", "");
             data.put("packingListDate", "");
         }
-        data.put("transportModeEng", "BY " + (form.getTransportMode() != null ? form.getTransportMode() : "TRUCK"));
+        data.put("transportMode", (form.getTransportMode() != null ? form.getTransportMode() : "TRUCK"));
         data.put("paymentTerms", "T/T");
         data.put("portOfDepartureEng", form.getDepartureCity());
-        data.put("destinationCountryEng", form.getDestinationCountry());
-        data.put("packageTypeEng", "CARTONS");
+        data.put("destinationRegion",form.getDestinationCountry());
+//        data.put("destinationCountry", form.getDestinationCountry());
+        data.put("packageType", "CARTONS");
         
         if (form.getTotalAmount() != null) {
-            data.put("totalAmountEng", convertAmountToWords(form.getTotalAmount().doubleValue()));
+            data.put("totalAmountWords", convertAmountToWords(form.getTotalAmount().doubleValue()));
         } else {
-            data.put("totalAmountEng", "");
+            data.put("totalAmountWords", "");
         }
         
         return data;
@@ -752,19 +818,24 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             for (com.declaration.entity.DeclarationProduct p : sortedProducts) {
                 Map<String, Object> item = new HashMap<>();
                 item.put("no", no++);
+                ProductTypeConfig productTypeConfig = productTypeConfigService.getByHsCode(p.getHsCode());
                 item.put("hsCode", p.getHsCode());
-                item.put("name", p.getProductName());
-                item.put("nameEng", p.getProductName());
+                item.put("productName", p.getProductName());
+
+                item.put("nameCh", productTypeConfig != null ? productTypeConfig.getChineseName() : "");
                 item.put("quantityStr", p.getQuantity() + " " + p.getUnit());
                 item.put("quantity", p.getQuantity());
                 item.put("unitPrice", p.getUnitPrice());
-                item.put("totalPrice", p.getAmount());
+                item.put("unit", "PCS");
+                item.put("amount", p.getAmount());
                 item.put("currency", form.getCurrency());
-                item.put("currencyEng", form.getCurrency());
-                item.put("originCountry", "中国");
-                item.put("destinationCountry", form.getDestinationCountry());
-                item.put("sourceRegion", form.getDepartureCity());
-                item.put("exemptionType", "照章征税");
+                // item.put("currencyEng", form.getCurrency());
+                item.put("originCountry", "中国(CHN)");
+                CountryInfo originCountry = countryInfoService.getCountryInfoByEnglishName(form.getDestinationCountry());
+                String destinationCountry = originCountry != null ? originCountry.getChineseName() + " (" + originCountry.getCountryCode() + ")" : form.getDestinationCountry();
+                item.put("destinationCountry", destinationCountry);
+                item.put("sourceRegion", "宁波其他（33029）");
+                item.put("exemptionType", "照章征税（1）");
                 item.put("statQuantity", p.getQuantity() + " " + p.getUnit());
                 
                 item.put("purpose", "");
@@ -798,6 +869,8 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                 item.put("grossWeight", p.getGrossWeight());
                 item.put("netWeight", p.getNetWeight());
                 item.put("volume", p.getVolume());
+                item.put("cbm","CBM");
+                item.put("wgt","KGS");
                 
                 if (p.getElementValues() != null) {
                     for (com.declaration.entity.DeclarationElementValue ev : p.getElementValues()) {

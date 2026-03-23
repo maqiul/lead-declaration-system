@@ -19,10 +19,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-<<<<<<< HEAD
 import java.util.Collection;
-=======
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;

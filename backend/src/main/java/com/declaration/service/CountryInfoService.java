@@ -10,4 +10,7 @@ import com.declaration.entity.CountryInfo;
  * @since 2026-03-17
  */
 public interface CountryInfoService extends IService<CountryInfo> {
+    CountryInfo getCountryInfoByCode(String code);
+    CountryInfo getCountryInfoByName(String name);
+    CountryInfo getCountryInfoByEnglishName(String englishName);
 }

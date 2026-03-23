@@ -410,7 +410,6 @@ public class TaxRefundController {
             
             if (newStatus != null) {
                 application.setStatus(newStatus);
-<<<<<<< HEAD
                 
                 // 获取当前登录用户信息
                 Long currentUserId = StpUtil.getLoginIdAsLong();
@@ -438,18 +437,6 @@ public class TaxRefundController {
                     application.setRejectReason(opinion);
                 }
                 
-=======
-                // 简化处理：只记录审核意见
-                if (isApproved) {
-                    if ("financeReview".equals(taskDefinitionKey)) {
-                        application.setFirstReviewOpinion(opinion);
-                    } else if ("financeFinalReview".equals(taskDefinitionKey)) {
-                        application.setFinalReviewOpinion(opinion);
-                    }
-                } else {
-                    application.setRejectReason(opinion);
-                }
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
                 taxRefundApplicationService.updateById(application);
                 log.info("业务状态已更新为: {}", newStatus);
             } else {
@@ -503,10 +490,6 @@ public class TaxRefundController {
      */
     @PostMapping("/{id}/attach-files")
     @Operation(summary = "关联文件到退税申请")
-<<<<<<< HEAD
-=======
-    @RequiresPermissions("business:tax-refund:upload")
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
     public Result<Boolean> attachFilesToApplication(
             @Parameter(description = "申请ID") @PathVariable Long id,
             @Parameter(description = "文件URL列表") @RequestBody List<String> fileUrls) {

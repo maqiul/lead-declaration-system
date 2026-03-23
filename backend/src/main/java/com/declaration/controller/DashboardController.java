@@ -2,13 +2,9 @@ package com.declaration.controller;
 
 import com.declaration.common.Result;
 import com.declaration.entity.DeclarationForm;
-<<<<<<< HEAD
 import com.declaration.entity.TaxRefundApplication;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.TaxRefundApplicationService;
-=======
-import com.declaration.service.DeclarationFormService;
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
 import com.declaration.service.TaskService;
 import com.declaration.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,10 +31,7 @@ import java.util.Map;
 public class DashboardController {
 
     private final DeclarationFormService declarationFormService;
-<<<<<<< HEAD
     private final TaxRefundApplicationService taxRefundApplicationService;
-=======
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
     private final TaskService taskService;
     private final UserService userService;
 
@@ -80,7 +73,6 @@ public class DashboardController {
         List<String> processNames = new ArrayList<>();
         List<Long> processCounts = new ArrayList<>();
         
-<<<<<<< HEAD
         // 出口申报流程（排除草稿）
         long declarationCount = declarationFormService.lambdaQuery()
                 .ne(DeclarationForm::getStatus, 0).count();
@@ -93,22 +85,12 @@ public class DashboardController {
         processNames.add("退税申请");
         processCounts.add(taxRefundCount);
         
-=======
-        // 真实查询：我们目前只有出口退税申报一种主力流程
-        long declarationCount = declarationFormService.lambdaQuery()
-                .ne(DeclarationForm::getStatus, 0).count();
-                
-        processNames.add("出口退税审批");
-        processCounts.add(declarationCount);
-        
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
         Map<String, Object> barChart = new HashMap<>();
         barChart.put("categories", processNames);
         barChart.put("seriesData", processCounts);
         chartsData.put("processChart", barChart);
         
         
-<<<<<<< HEAD
         // --- 待办任务分布（合并两种流程统计）---
         Map<String, Object> pieChart = new HashMap<>();
         
@@ -129,14 +111,6 @@ public class DashboardController {
                 .eq(DeclarationForm::getStatus, 8).count()
                 + taxRefundApplicationService.lambdaQuery()
                 .in(TaxRefundApplication::getStatus, Arrays.asList(7, 8)).count();
-=======
-        // --- 待办任务分布 ---
-        Map<String, Object> pieChart = new HashMap<>();
-        // 从真实单据状态提取分布情况
-        long pendingAudit = declarationFormService.lambdaQuery().in(DeclarationForm::getStatus, Arrays.asList(1, 3, 5, 7)).count();
-        long processing = declarationFormService.lambdaQuery().in(DeclarationForm::getStatus, Arrays.asList(2, 4, 6)).count();
-        long completed = declarationFormService.lambdaQuery().eq(DeclarationForm::getStatus, 8).count();
->>>>>>> 974d00a7096735aae9219cfa167a551b72278b5f
         
         List<Map<String, Object>> pieData = new ArrayList<>();
         pieData.add(createPieItem(pendingAudit, "等待审核"));
