@@ -33,6 +33,16 @@ public class DeclarationProduct {
     private String productName;
 
     /**
+     * 产品中文名
+     */
+    private String productChineseName;
+
+    /**
+     * 产品英文名
+     */
+    private String productEnglishName;
+
+    /**
      * HS编码
      */
     private String hsCode;

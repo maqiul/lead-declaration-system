@@ -69,10 +69,24 @@ public class DeclarationForm {
     private String departureCity;
 
     /**
+     * 出发城市中文名
+     */
+    private String departureCityChinese;
+
+    /**
+     * 出发城市英文名
+     */
+    private String departureCityEnglish;
+
+    /**
      * 目的国
      */
     private String destinationCountry;
 
+    /**
+     * 贸易国
+     */
+    private String tradeCountry;
 
     /**
      * 币种
@@ -181,8 +195,20 @@ public class DeclarationForm {
     private List<DeclarationRemittance> remittances;
 
     /**
+     * 提货单列表（非数据库字段）
+     */
+    @TableField(exist = false)
+    private List<DeliveryOrder> deliveryOrders;
+
+    /**
      * 申请人名称（非数据库字段，用于列表显示）
      */
     @TableField(exist = false)
     private String applicantName;
+
+    /**
+     * 是否待财务补充上传（非数据库字段，通过流程引擎动态判断）
+     */
+    @TableField(exist = false)
+    private Boolean financeUploadPending;
 }

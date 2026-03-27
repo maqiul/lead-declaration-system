@@ -25,7 +25,8 @@ INSERT INTO sys_menu (id, menu_name, menu_code, parent_id, menu_type, path, comp
 (200, '出口申报', 'declaration', 0, 1, '/declaration', 'Layout', NULL, 'FileProtectOutlined', 3, 0, 0, 1, 1, 0, NOW(), NOW()),
 (300, '税务退费', 'tax-refund', 0, 1, '/tax-refund', 'Layout', NULL, 'DollarOutlined', 4, 0, 0, 1, 1, 0, NOW(), NOW()),
 (400, '工作流', 'workflow', 0, 1, '/workflow', 'Layout', NULL, 'BranchesOutlined', 5, 0, 0, 1, 1, 0, NOW(), NOW()),
-(500, '合同管理', 'contract', 0, 1, '/contract', 'Layout', NULL, 'FileTextOutlined', 6, 0, 0, 1, 1, 0, NOW(), NOW());
+(500, '合同管理', 'contract', 0, 1, '/contract', 'Layout', NULL, 'FileTextOutlined', 6, 0, 0, 1, 1, 0, NOW(), NOW()),
+(600, '城市管理', 'city-management', 0, 1, '/city-management', 'Layout', NULL, 'EnvironmentOutlined', 7, 0, 0, 1, 1, 0, NOW(), NOW());
 
 -- ========================================
 -- 第三步：插入二级菜单（menu_type=2）
@@ -88,6 +89,10 @@ INSERT INTO sys_menu (id, menu_name, menu_code, parent_id, menu_type, path, comp
 INSERT INTO sys_menu (id, menu_name, menu_code, parent_id, menu_type, path, component, permission, icon, sort, is_external, is_cache, is_show, status, deleted, create_time, update_time) VALUES
 (501, '模板管理', 'contract-template', 500, 2, 'template', '@/views/contract/template/index.vue', 'business:contract:template', 'FileAddOutlined', 1, 0, 0, 1, 1, 0, NOW(), NOW()),
 (502, '合同列表', 'contract-generation', 500, 2, 'generation', '@/views/contract/generation/index.vue', 'business:contract:generation', 'HistoryOutlined', 2, 0, 0, 1, 1, 0, NOW(), NOW());
+
+-- 城市管理下的菜单 (parent_id=600)
+INSERT INTO sys_menu (id, menu_name, menu_code, parent_id, menu_type, path, component, permission, icon, sort, is_external, is_cache, is_show, status, deleted, create_time, update_time) VALUES
+(601, '城市信息', 'city-info', 600, 2, 'city-info', '@/views/system/city-info/index.vue', 'system:city-info:list', 'EnvironmentOutlined', 1, 0, 0, 1, 1, 0, NOW(), NOW());
 
 -- ========================================
 -- 第四步：插入三级按钮权限（menu_type=3）

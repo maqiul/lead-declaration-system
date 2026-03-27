@@ -32,7 +32,7 @@
           </a-select>
         </a-col>
         <a-col :span="6">
-          <a-button type="primary" @click="loadHistory">查询</a-button>
+          <a-button type="primary" @click="loadHistory" v-permission="['business:declaration:list']">查询</a-button>
         </a-col>
       </a-row>
     </a-card>
@@ -58,9 +58,9 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="viewDetail(record.id)">查看详情</a-button>
-              <a-button type="link" size="small" @click="editForm(record.id)">编辑</a-button>
-              <a-button type="link" size="small" @click="exportForm(record.id)">导出</a-button>
+              <a-button type="link" size="small" @click="viewDetail(record.id)" v-permission="['business:declaration:query']">查看详情</a-button>
+              <a-button type="link" size="small" @click="editForm(record.id)" v-permission="['business:declaration:edit']">编辑</a-button>
+              <a-button type="link" size="small" @click="exportForm(record.id)" v-permission="['business:declaration:export']">导出</a-button>
             </a-space>
           </template>
         </template>
@@ -317,61 +317,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 列表页面样式 - 与系统管理页面统一 */
-:deep(.ant-card) {
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
-}
-
-:deep(.ant-card-body) {
-  padding: 24px;
-}
-
-:deep(.ant-card-head) {
-  border-bottom: 1px solid #e8e8e8;
-  border-radius: 8px 8px 0 0;
-}
-
-:deep(.ant-card-head-title) {
-  font-weight: 600;
-  font-size: 16px;
-}
-
-/* 表格样式 - 与系统管理完全一致 */
-:deep(.ant-table) {
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-:deep(.ant-table-thead > tr > th) {
-  background-color: #fafafa;
-  font-weight: 600;
-  color: #333;
-}
-
-:deep(.ant-table-cell) {
-  border-bottom: 1px solid #f0f0f0;
-}
-
-/* 主按钮样式 - 与系统管理完全一致 */
-:deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-}
-
-:deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
-
-/* 搜索卡片样式 */
-:deep(.ant-card.search-card) {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
-  border: none;
-}
-
+/* 页面特有样式已由全局 index.less 覆盖 */
 .declaration-history {
   height: 100%;
   overflow-x: hidden;

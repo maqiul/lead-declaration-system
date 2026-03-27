@@ -25,11 +25,11 @@ public class OperationLogServiceImpl extends ServiceImpl<OperationLogMapper, Ope
 
     @Async
     @Override
-    public void saveOperationLog(OperationLog log) {
+    public void saveOperationLog(OperationLog logs) {
         try {
-            this.save(log);
-            log.info("操作日志记录成功: 用户={}, 操作={}, 业务={}", 
-                     log.getUsername(), log.getOperationType(), log.getBusinessType());
+            this.save(logs);
+            log.info("操作日志记录成功: 用户={}, 操作={}, 业务={}",
+                    logs.getUsername(), logs.getOperationType(), logs.getBusinessType());
         } catch (Exception e) {
             log.error("操作日志记录失败: {}", e.getMessage(), e);
         }

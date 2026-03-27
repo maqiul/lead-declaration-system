@@ -44,7 +44,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
     @Override
     public IPage<Role> getRolePage(PageParam pageParam, Role role) {
         LambdaQueryWrapper<Role> queryWrapper = new LambdaQueryWrapper<>();
-        
+
         // 添加查询条件
         if (role != null) {
             if (role.getRoleName() != null && !role.getRoleName().isEmpty()) {
@@ -57,9 +57,17 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
                 queryWrapper.eq(Role::getStatus, role.getStatus());
             }
         }
-        
+
+        try {
+            if (!cn.dev33.satoken.stp.StpUtil.hasRole("ADMIN")) {
+                queryWrapper.notIn(Role::getRoleCode, "ADMIN", "ADMIN");
+            }
+        } catch (Exception e) {
+            log.warn("检查当前用户角色状态异常", e);
+        }
+
         queryWrapper.orderByDesc(Role::getCreateTime);
-        
+
         // 分页查询
         Page<Role> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
         return this.page(page, queryWrapper);
@@ -78,8 +86,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
         if (result) {
             // 清除相关用户的权限缓存
             List<UserRole> userRoles = userRoleDao.selectList(
-                new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, role.getId())
-            );
+                    new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, role.getId()));
             if (CollUtil.isNotEmpty(userRoles)) {
                 userRoles.forEach(ur -> permissionService.clearUserPermissionCache(ur.getUserId()));
             }
@@ -95,7 +102,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
         if (userCount > 0) {
             throw new RuntimeException("该角色已被用户使用，无法删除");
         }
-        
+
         boolean result = this.removeById(id);
         if (result) {
             // 删除角色菜单关联
@@ -107,17 +114,16 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
     @Override
     public List<Role> getUserRoles(Long userId) {
         List<UserRole> userRoles = userRoleDao.selectList(
-            new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId)
-        );
-        
+                new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
+
         if (CollUtil.isEmpty(userRoles)) {
             return CollUtil.newArrayList();
         }
-        
+
         List<Long> roleIds = userRoles.stream()
-            .map(UserRole::getRoleId)
-            .collect(Collectors.toList());
-        
+                .map(UserRole::getRoleId)
+                .collect(Collectors.toList());
+
         return this.listByIds(roleIds);
     }
 
@@ -126,7 +132,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
     public boolean assignRoleToUser(Long userId, List<Long> roleIds) {
         // 删除原有角色关联
         userRoleDao.delete(new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
-        
+
         // 添加新角色关联
         if (CollUtil.isNotEmpty(roleIds)) {
             for (Long roleId : roleIds) {
@@ -136,22 +142,21 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
                 userRoleDao.insert(userRole);
             }
         }
-        
+
         // 清除用户权限缓存
         permissionService.clearUserPermissionCache(userId);
-        
+
         return true;
     }
 
     @Override
     public List<Long> getRoleMenuIds(Long roleId) {
         List<RoleMenu> roleMenus = roleMenuDao.selectList(
-            new LambdaQueryWrapper<RoleMenu>().eq(RoleMenu::getRoleId, roleId)
-        );
-        
+                new LambdaQueryWrapper<RoleMenu>().eq(RoleMenu::getRoleId, roleId));
+
         return roleMenus.stream()
-            .map(RoleMenu::getMenuId)
-            .collect(Collectors.toList());
+                .map(RoleMenu::getMenuId)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -161,10 +166,10 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
         if (roleId == null) {
             throw new IllegalArgumentException("角色ID不能为空");
         }
-        
+
         // 删除原有菜单关联
         roleMenuDao.delete(new LambdaQueryWrapper<RoleMenu>().eq(RoleMenu::getRoleId, roleId));
-        
+
         // 添加新菜单关联
         if (CollUtil.isNotEmpty(menuIds)) {
             for (Long menuId : menuIds) {
@@ -172,22 +177,21 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
                     log.warn("跳过空的菜单ID");
                     continue;
                 }
-                
+
                 RoleMenu roleMenu = new RoleMenu();
                 roleMenu.setRoleId(roleId);
                 roleMenu.setMenuId(menuId);
                 roleMenuDao.insert(roleMenu);
             }
         }
-        
+
         // 清除所有拥有此角色的用户的权限缓存
         List<UserRole> userRoles = userRoleDao.selectList(
-            new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, roleId)
-        );
+                new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, roleId));
         if (CollUtil.isNotEmpty(userRoles)) {
             userRoles.forEach(ur -> permissionService.clearUserPermissionCache(ur.getUserId()));
         }
-        
+
         return true;
     }
 
@@ -199,33 +203,32 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
         if (role == null || !("admin".equals(role.getRoleCode()) || "ADMIN".equals(role.getRoleCode()))) {
             throw new RuntimeException("只能为管理员角色分配全部权限");
         }
-        
+
         // 获取所有启用的菜单
         List<Menu> allMenus = menuService.list(
-            new LambdaQueryWrapper<Menu>()
-                .eq(Menu::getStatus, 1)
-                .orderByAsc(Menu::getSort)
-        );
-        
+                new LambdaQueryWrapper<Menu>()
+                        .eq(Menu::getStatus, 1)
+                        .orderByAsc(Menu::getSort));
+
         if (CollUtil.isEmpty(allMenus)) {
             log.warn("没有找到启用的菜单");
             return true;
         }
-        
+
         // 提取所有菜单ID
         List<Long> allMenuIds = allMenus.stream()
-            .map(Menu::getId)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toList());
-        
+                .map(Menu::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
         if (CollUtil.isEmpty(allMenuIds)) {
             log.warn("没有有效的菜单ID");
             return true;
         }
-        
+
         // 删除原有菜单关联
         roleMenuDao.delete(new LambdaQueryWrapper<RoleMenu>().eq(RoleMenu::getRoleId, roleId));
-        
+
         // 添加所有菜单关联
         for (Long menuId : allMenuIds) {
             RoleMenu roleMenu = new RoleMenu();
@@ -233,15 +236,14 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
             roleMenu.setMenuId(menuId);
             roleMenuDao.insert(roleMenu);
         }
-        
+
         // 清除所有拥有此角色的用户的权限缓存
         List<UserRole> userRoles = userRoleDao.selectList(
-            new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, roleId)
-        );
+                new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, roleId));
         if (CollUtil.isNotEmpty(userRoles)) {
             userRoles.forEach(ur -> permissionService.clearUserPermissionCache(ur.getUserId()));
         }
-        
+
         log.info("为管理员角色[{}]分配了{}个菜单权限", role.getRoleName(), allMenuIds.size());
         return true;
     }

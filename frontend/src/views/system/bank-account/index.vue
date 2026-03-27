@@ -1,13 +1,13 @@
 <template>
-  <div class="bank-account-management">
+  <div class="bank-account-management px-6 py-6 bg-white min-h-full">
     <!-- 搜索区域 -->
-    <a-card class="search-card">
-      <a-form :model="searchForm" layout="inline">
+    <a-card class="ui-card mb-4" :bordered="false">
+      <a-form :model="searchForm" layout="inline" class="flex flex-wrap gap-4">
         <a-form-item label="关键词">
-          <a-input v-model:value="searchForm.keyword" placeholder="账户名称/银行名称/账户持有人/账号" />
+          <a-input v-model:value="searchForm.keyword" placeholder="账户名称/银行名称/账户持有人/账号" allow-clear class="ui-input" />
         </a-form-item>
         <a-form-item label="币种">
-          <a-select v-model:value="searchForm.currency" placeholder="请选择币种" allowClear style="width: 120px">
+          <a-select v-model:value="searchForm.currency" placeholder="请选择币种" allowClear style="width: 140px" class="ui-select">
             <a-select-option value="USD">USD</a-select-option>
             <a-select-option value="EUR">EUR</a-select-option>
             <a-select-option value="CNY">CNY</a-select-option>
@@ -16,26 +16,34 @@
           </a-select>
         </a-form-item>
         <a-form-item label="状态">
-          <a-select v-model:value="searchForm.status" placeholder="请选择状态" allowClear style="width: 100px">
+          <a-select v-model:value="searchForm.status" placeholder="请选择状态" allowClear style="width: 140px" class="ui-select">
             <a-select-option :value="1">启用</a-select-option>
             <a-select-option :value="0">禁用</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">搜索</a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch" class="ui-btn-primary">
+              <template #icon><SearchOutlined /></template>
+              查询
+            </a-button>
+            <a-button @click="handleReset" class="ui-btn-secondary">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
 
     <!-- 操作按钮区域 -->
-    <a-card class="operation-card">
+    <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="openAddModal">
+        <a-button type="primary" @click="openAddModal" v-permission="['system:bank-account:add']" class="ui-btn-cta">
           <template #icon><PlusOutlined /></template>
           新增银行账户
         </a-button>
-        <a-button @click="loadBankAccountList">
+        <a-button @click="loadBankAccountList" class="ui-btn-secondary">
           <template #icon><ReloadOutlined /></template>
           刷新
         </a-button>
@@ -43,7 +51,7 @@
     </a-card>
 
     <!-- 表格区域 -->
-    <a-card>
+    <a-card class="ui-card" :bordered="false">
       <a-table
         :dataSource="bankAccountList"
         :columns="columns"
@@ -51,16 +59,17 @@
         :pagination="pagination"
         @change="handleTableChange"
         rowKey="id"
+        class="ui-table"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
-            <a-tag :color="record.status === 1 ? 'green' : 'red'">
+            <a-tag :color="record.status === 1 ? 'success' : 'error'" class="ui-tag">
               {{ record.status === 1 ? '启用' : '禁用' }}
             </a-tag>
           </template>
           
           <template v-else-if="column.key === 'isDefault'">
-            <a-tag v-if="record.isDefault === 1" color="blue">默认</a-tag>
+            <a-tag v-if="record.isDefault === 1" color="blue" class="ui-tag">默认</a-tag>
             <span v-else>-</span>
           </template>
           
@@ -71,12 +80,14 @@
           
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="openEditModal(record as BankAccountConfig)">编辑</a-button>
+              <a-button type="link" size="small" @click="openEditModal(record as BankAccountConfig)" v-permission="['system:bank-account:update']" class="font-medium text-blue-600">编辑</a-button>
               <a-button 
                 v-if="record.isDefault !== 1" 
                 type="link" 
                 size="small" 
                 @click="setDefault(record as BankAccountConfig)"
+                v-permission="['system:bank-account:update']"
+                class="font-medium text-blue-600"
               >
                 设为默认
               </a-button>
@@ -88,6 +99,8 @@
                   type="link" 
                   size="small" 
                   :danger="record.status === 1"
+                  v-permission="['system:bank-account:update']"
+                  class="font-medium"
                 >
                   {{ record.status === 1 ? '禁用' : '启用' }}
                 </a-button>
@@ -96,7 +109,7 @@
                 title="确定要删除吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger>删除</a-button>
+                <a-button type="link" size="small" danger v-permission="['system:bank-account:delete']" class="font-medium">删除</a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -197,6 +210,18 @@
           />
         </a-form-item>
 
+        <a-form-item label="手续费率" name="serviceFeeRate">
+          <a-input-number
+            v-model:value="formData.serviceFeeRate"
+            :min="0"
+            :max="1"
+            :step="0.001"
+            :precision="4"
+            placeholder="如 0.001 表示千分之一"
+            style="width: 100%"
+          />
+        </a-form-item>
+
         <a-form-item label="排序" name="sort">
           <a-input-number
             v-model:value="formData.sort"
@@ -237,7 +262,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
 import request from '@/utils/request'
 
@@ -257,6 +282,7 @@ interface BankAccountConfig {
   isDefault: number
   status: number
   sort: number
+  serviceFeeRate: number
   remarks: string
   createTime?: string
 }
@@ -351,9 +377,9 @@ const columns = [
   },
   {
     title: '银行账号',
+    dataIndex: 'accountNumber',
     key: 'accountNumber',
-    width: 180,
-    slots: { customRender: 'accountNumber' }
+    width: 180
   },
   {
     title: '账户持有人',
@@ -376,14 +402,18 @@ const columns = [
   {
     title: '默认',
     key: 'isDefault',
-    width: 80,
-    slots: { customRender: 'isDefault' }
+    width: 80
   },
   {
     title: '状态',
     key: 'status',
-    width: 80,
-    slots: { customRender: 'status' }
+    width: 80
+  },
+  {
+    title: '手续费率',
+    dataIndex: 'serviceFeeRate',
+    key: 'serviceFeeRate',
+    width: 100
   },
   {
     title: '排序',
@@ -400,8 +430,8 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 220,
-    slots: { customRender: 'action' }
+    fixed: 'right' as const,
+    width: 220
   }
 ]
 
@@ -426,6 +456,7 @@ const formData = reactive({
   isDefault: false,
   status: 1,
   sort: 0,
+  serviceFeeRate: 0,
   remarks: ''
 })
 
@@ -524,6 +555,7 @@ const openEditModal = (record: BankAccountConfig) => {
   formData.isDefault = record.isDefault === 1
   formData.status = record.status
   formData.sort = record.sort
+  formData.serviceFeeRate = record.serviceFeeRate || 0
   formData.remarks = record.remarks
   modalVisible.value = true
 }
@@ -549,6 +581,7 @@ const resetForm = () => {
   formData.isDefault = false
   formData.status = 1
   formData.sort = 0
+  formData.serviceFeeRate = 0
   formData.remarks = ''
   formRef.value?.resetFields()
 }
@@ -574,6 +607,7 @@ const handleSave = async () => {
       isDefault: formData.isDefault ? 1 : 0,
       status: formData.status,
       sort: formData.sort,
+      serviceFeeRate: formData.serviceFeeRate,
       remarks: formData.remarks
     }
     
@@ -650,15 +684,5 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.bank-account-management {
-  padding: 20px;
-}
-
-.search-card {
-  margin-bottom: 16px;
-}
-
-.operation-card {
-  margin-bottom: 16px;
-}
+/* 页面特有样式已由全局 index.less 覆盖 */
 </style>

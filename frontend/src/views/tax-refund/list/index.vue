@@ -21,8 +21,10 @@
           <a-input v-model:value="searchForm.initiatorName" placeholder="搜索申请人" />
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="loadData">搜索</a-button>
-          <a-button style="margin-left: 8px" @click="resetSearch">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="loadData" v-permission="['business:tax-refund:list']">搜索</a-button>
+            <a-button @click="resetSearch" v-permission="['business:tax-refund:list']">重置</a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
@@ -30,11 +32,11 @@
     <!-- 操作栏卡片 -->
     <a-card class="operation-card">
       <a-space>
-        <a-button type="primary" @click="handleCreate">
+        <a-button type="primary" @click="handleCreate" v-permission="['business:tax-refund:add']">
           <template #icon><PlusOutlined /></template>
           新建申请
         </a-button>
-        <a-button @click="handleBatchDelete" :disabled="selectedRowKeys.length === 0">
+        <a-button @click="handleBatchDelete" :disabled="selectedRowKeys.length === 0" v-permission="['business:tax-refund:delete']">
           <template #icon><DeleteOutlined /></template>
           批量删除
         </a-button>
@@ -73,15 +75,15 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record)">查看</a-button>
-              <a-button v-if="record.status === 0" type="link" size="small" @click="handleEdit(record)">编辑</a-button>
-              <a-button v-if="record.status === 0" type="link" size="small" @click="handleSubmit(record)">提交</a-button>
+              <a-button type="link" size="small" @click="handleView(record)" v-permission="['business:tax-refund:detail']">查看</a-button>
+              <a-button v-if="record.status === 0" type="link" size="small" @click="handleEdit(record)" v-permission="['business:tax-refund:edit']">编辑</a-button>
+              <a-button v-if="record.status === 0" type="link" size="small" @click="handleSubmit(record)" v-permission="['business:tax-refund:submit']">提交</a-button>
               <a-button 
                 v-if="[2, 6].includes(record.status)" 
                 type="link" 
                 size="small" 
                 @click="handleAudit(record)"
-                v-permission="['system:tax-refund:approve']"
+                v-permission="['business:tax-refund:approve']"
               >
                 审核
               </a-button>
@@ -90,7 +92,7 @@
                 title="确定要删除这个申请吗？"
                 @confirm="handleDelete(record)"
               >
-                <a-button type="link" size="small" danger>删除</a-button>
+                <a-button type="link" size="small" danger v-permission="['business:tax-refund:delete']">删除</a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -325,112 +327,147 @@ onActivated(() => {
 </script>
 
 <style scoped>
-/* 列表页面样式 - 与 declaration/manage 完全一致 */
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
+
 .tax-refund-list {
-  height: 100%;
-  overflow-x: hidden;
+  padding: 24px;
+  background: white;
+  min-height: 100%;
+  font-family: 'Source Sans 3', sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6, .ant-table-thead > tr > th {
+  font-family: 'Lexend', sans-serif !important;
 }
 
 :deep(.ant-card) {
-  border-radius: 16px;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(79, 70, 229, 0.04);
-  border: 1px solid rgba(226, 232, 240, 0.6);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); /* shadow-sm */
+  border: 1px solid #E2E8F0;
+  transition: all 250ms ease;
+  background: white;
 }
 
-:deep(.ant-card-body) {
-  padding: 20px;
+:deep(.ant-card:hover) {
+  box-shadow: 0 10px 15px rgba(0,0,0,0.1); /* shadow-md */
+  transform: translateY(-2px);
 }
 
-:deep(.ant-card-head) {
-  border-bottom: 1px solid #f1f5f9;
-  border-radius: 16px 16px 0 0;
-  background: #f8fafc;
+.search-card, .operation-card {
+  margin-bottom: 24px;
 }
 
-:deep(.ant-card-head-title) {
+/* 按钮高级化 */
+:deep(.ant-btn-primary) {
+  background: #2563EB !important;
+  color: white !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  transition: all 200ms ease !important;
+  border: none !important;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+  height: 38px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.ant-btn-primary:hover) {
+  background: #1E40AF !important;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 15px rgba(0,0,0,0.1) !important;
+}
+
+:deep(.ant-btn:not(.ant-btn-primary):not(.ant-btn-link)) {
+  background-color: transparent !important;
+  color: #2563EB !important;
+  border: 1px solid #2563EB !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  transition: all 200ms ease !important;
+  height: 38px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.ant-btn:not(.ant-btn-primary):not(.ant-btn-link):hover) {
+  background-color: #FAFBFC !important;
+  transform: translateY(-1px);
+}
+
+/* 操作列链接按钮 */
+:deep(.ant-btn-link) {
+  height: auto;
+  padding: 4px 8px;
   font-weight: 600;
-  font-size: 15px;
-  color: #1e293b;
+  color: #2563EB;
+  transition: all 200ms ease;
+  border-radius: 6px;
 }
 
-/* 搜索卡片 & 操作按钮卡片样式 */
-:deep(.ant-card.search-card),
-:deep(.ant-card.operation-card) {
-  margin-bottom: 16px;
-  border: 1px solid rgba(226, 232, 240, 0.6);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+:deep(.ant-btn-link:not([disabled]):hover) {
+  background-color: #EFF6FF;
 }
 
-/* 表格样式 */
+:deep(.ant-btn-link.ant-btn-dangerous) {
+  color: #ef4444;
+}
+
+:deep(.ant-btn-link.ant-btn-dangerous:not([disabled]):hover) {
+  background-color: #fef2f2;
+}
+
+/* 表格视觉优化 */
 :deep(.ant-table) {
   border-radius: 12px;
   overflow: hidden;
 }
 
 :deep(.ant-table-thead > tr > th) {
-  background-color: #f8fafc !important;
+  background-color: #FAFBFC !important;
   font-weight: 600;
-  color: #475569;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid #f1f5f9;
+  color: #1E40AF;
+  font-size: 14px;
+  border-bottom: 2px solid #E2E8F0;
 }
 
 :deep(.ant-table-row:hover > td) {
-  background-color: #f8faff !important;
-}
-
-/* 主按钮样式 */
-:deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-  border: none;
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
-  border-radius: 10px;
-}
-
-:deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
-  transform: translateY(-1px);
+  background-color: #F8FAFC !important;
 }
 
 .application-link {
-  color: #4f46e5;
-  font-weight: 500;
+  color: #2563EB;
+  font-weight: 600;
   text-decoration: none;
-  transition: color 0.2s;
+  transition: all 200ms ease;
 }
 
 .application-link:hover {
-  color: #7c3aed;
+  color: #1E40AF;
   text-decoration: underline;
-}
-
-.status-tag {
-  font-weight: 500;
-  border-radius: 6px;
 }
 
 .amount-text {
   font-weight: 600;
-  color: #4f46e5;
+  color: #2563EB;
 }
 
 .date-text {
-  color: #64748b;
+  color: #475569;
   font-size: 13px;
 }
 
-/* 响应式调整 */
-@media (max-width: 768px) {
-  :deep(.ant-card-body) {
-    padding: 16px;
-  }
+/* Form inputs & Selects */
+:deep(.ant-input), :deep(.ant-select-selector), :deep(.ant-input-affix-wrapper) {
+  border-radius: 8px !important;
+  border: 1px solid #E2E8F0;
+  transition: all 200ms ease;
+}
 
-  :deep(.ant-form-item) {
-    margin-bottom: 12px;
-  }
+:deep(.ant-input:focus), :deep(.ant-select-focused .ant-select-selector) {
+  border-color: #2563EB !important;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.2) !important;
 }
 </style>

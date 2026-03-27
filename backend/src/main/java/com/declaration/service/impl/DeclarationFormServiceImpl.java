@@ -1,8 +1,10 @@
 package com.declaration.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.declaration.dao.DeclarationFormDao;
 import com.declaration.dao.DeclarationProductDao;
+import com.declaration.dao.DeliveryOrderDao;
 import com.declaration.dto.DeclarationStatisticsDTO;
 import com.declaration.entity.DeclarationForm;
 import com.declaration.entity.DeclarationProduct;
@@ -11,6 +13,8 @@ import com.declaration.entity.DeclarationCartonProduct;
 import com.declaration.entity.DeclarationElementValue;
 import com.declaration.entity.DeclarationRemittance;
 import com.declaration.entity.DeclarationAttachment;
+import com.declaration.entity.DeliveryOrder;
+import com.declaration.entity.OperationLog;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.DeclarationProductService;
 import com.declaration.service.DeclarationCartonService;
@@ -18,13 +22,16 @@ import com.declaration.service.DeclarationCartonProductService;
 import com.declaration.service.DeclarationElementValueService;
 import com.declaration.service.DeclarationRemittanceService;
 import com.declaration.service.DeclarationAttachmentService;
+import com.declaration.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import cn.dev33.satoken.stp.StpUtil;
+import com.declaration.utils.OrganizationUtils;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -51,6 +58,8 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     private final DeclarationRemittanceService remittanceService;
     private final DeclarationAttachmentService attachmentService;
     private final DeclarationProductDao declarationProductDao;
+    private final DeliveryOrderDao deliveryOrderDao;
+    private final OperationLogService operationLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -172,6 +181,21 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
         try {
             if (form.getId() == null) {
                 return false;
+            }
+            
+            // 验证组织权限，确保用户只能修改自己组织的数据
+            DeclarationForm existingForm = this.getById(form.getId());
+            if (existingForm != null && existingForm.getOrgId() != null) {
+                Long currentOrgId = OrganizationUtils.getCurrentUserOrgId();
+                if (currentOrgId != null && !existingForm.getOrgId().equals(currentOrgId)) {
+                    log.warn("用户尝试修改不属于其组织的申报单: {}", form.getId());
+                    return false;
+                }
+            }
+            
+            // 确保不更新组织ID字段，保持原有的组织ID
+            if (existingForm != null && existingForm.getOrgId() != null) {
+                form.setOrgId(existingForm.getOrgId());
             }
 
             // 1. 更新主表
@@ -318,6 +342,13 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                     .orderByDesc(DeclarationAttachment::getCreateTime)
                     .list();
             form.setAttachments(attachments);
+
+            // 查询提货单信息
+            LambdaQueryWrapper<DeliveryOrder> deliveryOrderQuery = new LambdaQueryWrapper<>();
+            deliveryOrderQuery.eq(DeliveryOrder::getFormId, id)
+                    .orderByDesc(DeliveryOrder::getCreatedAt);
+            List<DeliveryOrder> deliveryOrders = deliveryOrderDao.selectList(deliveryOrderQuery);
+            form.setDeliveryOrders(deliveryOrders);
         }
         return form;
     }
@@ -372,14 +403,18 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
         }
         
         // 4. 按状态统计
+        // 状态定义（任务驱动流程）：
+        // 0 - 草稿, 1 - 待初审, 2 - 处理中（并行任务进行中）, 8 - 已完成
+        // 注：状态3/4/5已移除，并行阶段主状态始终为2
         List<DeclarationStatisticsDTO.StatusStat> statusStats = new ArrayList<>();
         Map<Integer, String> statusNameMap = new HashMap<>();
         statusNameMap.put(0, "草稿");
-        statusNameMap.put(1, "已提交");
-        statusNameMap.put(2, "已审核");
-        statusNameMap.put(3, "已完成");
+        statusNameMap.put(1, "待初审");
+        statusNameMap.put(2, "处理中");
+        statusNameMap.put(8, "已完成");
         
-        for (int status = 1; status <= 3; status++) {
+        int[] statuses = {1, 2, 8};
+        for (int status : statuses) {
             final int s = status;
             List<DeclarationForm> statusForms = this.lambdaQuery()
                     .eq(DeclarationForm::getStatus, s)
@@ -465,5 +500,155 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
         dto.setDestinationStats(destinationStats);
         
         return dto;
+    }
+
+    // ================== 提货单相关方法实现 ==================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean saveDeliveryOrder(DeliveryOrder deliveryOrder) {
+        try {
+            if (deliveryOrder.getStatus() == null) {
+                deliveryOrder.setStatus(0); // 默认待审核状态
+            }
+            if (deliveryOrder.getCreatedBy() == null && StpUtil.isLogin()) {
+                deliveryOrder.setCreatedBy(StpUtil.getLoginIdAsLong());
+            }
+            deliveryOrder.setCreatedAt(LocalDateTime.now());
+            deliveryOrder.setUpdatedAt(LocalDateTime.now());
+            
+            int result = deliveryOrderDao.insert(deliveryOrder);
+            log.info("保存提货单成功, ID: {}", deliveryOrder.getId());
+            return result > 0;
+        } catch (Exception e) {
+            log.error("保存提货单失败", e);
+            throw new RuntimeException("保存提货单失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public List<DeliveryOrder> getDeliveryOrdersByFormId(Long formId) {
+        LambdaQueryWrapper<DeliveryOrder> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(DeliveryOrder::getFormId, formId)
+                .orderByDesc(DeliveryOrder::getCreatedAt);
+        return deliveryOrderDao.selectList(queryWrapper);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateDeliveryOrder(DeliveryOrder deliveryOrder) {
+        try {
+            deliveryOrder.setUpdatedAt(LocalDateTime.now());
+            int result = deliveryOrderDao.updateById(deliveryOrder);
+            log.info("更新提货单成功, ID: {}", deliveryOrder.getId());
+            return result > 0;
+        } catch (Exception e) {
+            log.error("更新提货单失败", e);
+            throw new RuntimeException("更新提货单失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean deleteDeliveryOrder(Long id) {
+        try {
+            int result = deliveryOrderDao.deleteById(id);
+            log.info("删除提货单成功, ID: {}", id);
+            return result > 0;
+        } catch (Exception e) {
+            log.error("删除提货单失败", e);
+            throw new RuntimeException("删除提货单失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public DeliveryOrder getDeliveryOrderById(Long id) {
+        return deliveryOrderDao.selectById(id);
+    }
+
+    // ================== 审核相关方法实现 ==================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean auditRemittance(Long id, boolean approved, String remark) {
+        try {
+            DeclarationRemittance remittance = remittanceService.getById(id);
+            if (remittance == null) {
+                throw new RuntimeException("水单不存在");
+            }
+            
+            remittance.setStatus(approved ? 1 : 2); // 1-已审核 2-已驳回
+            remittance.setAuditRemark(remark);
+            if (StpUtil.isLogin()) {
+                remittance.setAuditBy(StpUtil.getLoginIdAsLong());
+            }
+            remittance.setAuditTime(LocalDateTime.now());
+            
+            boolean result = remittanceService.updateById(remittance);
+            
+            // 记录操作日志
+            recordAuditLog("水单审核", "AUDIT", approved ? "审核通过" : "审核驳回", 
+                    "水单ID: " + id + ", 结果: " + (approved ? "通过" : "驳回") + ", 备注: " + remark);
+            
+            log.info("审核水单成功, ID: {}, approved: {}", id, approved);
+            return result;
+        } catch (Exception e) {
+            log.error("审核水单失败", e);
+            throw new RuntimeException("审核水单失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean auditDeliveryOrder(Long id, boolean approved, String remark) {
+        try {
+            DeliveryOrder deliveryOrder = deliveryOrderDao.selectById(id);
+            if (deliveryOrder == null) {
+                throw new RuntimeException("提货单不存在");
+            }
+            
+            deliveryOrder.setStatus(approved ? 1 : 2); // 1-已审核 2-已驳回
+            deliveryOrder.setAuditRemark(remark);
+            if (StpUtil.isLogin()) {
+                deliveryOrder.setAuditBy(StpUtil.getLoginIdAsLong());
+            }
+            deliveryOrder.setAuditTime(LocalDateTime.now());
+            deliveryOrder.setUpdatedAt(LocalDateTime.now());
+            
+            int result = deliveryOrderDao.updateById(deliveryOrder);
+            
+            // 记录操作日志
+            recordAuditLog("提货单审核", "AUDIT", approved ? "审核通过" : "审核驳回", 
+                    "提货单ID: " + id + ", 结果: " + (approved ? "通过" : "驳回") + ", 备注: " + remark);
+            
+            log.info("审核提货单成功, ID: {}, approved: {}", id, approved);
+            return result > 0;
+        } catch (Exception e) {
+            log.error("审核提货单失败", e);
+            throw new RuntimeException("审核提货单失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 记录审核操作日志
+     */
+    private void recordAuditLog(String businessType, String operationType, String method, String params) {
+        try {
+            OperationLog log = new OperationLog();
+            if (StpUtil.isLogin()) {
+                log.setUserId(StpUtil.getLoginIdAsLong());
+            }
+            log.setBusinessType(businessType);
+            log.setOperationType(operationType);
+            log.setMethod(method);
+            log.setRequestParams(params);
+            log.setStatus(0); // 成功
+            log.setCreateTime(LocalDateTime.now());
+            
+            operationLogService.saveOperationLog(log);
+        } catch (Exception e) {
+            // 日志记录失败不影响主流程
+            DeclarationFormServiceImpl.log.warn("记录审核日志失败: {}", e.getMessage());
+        }
     }
 }

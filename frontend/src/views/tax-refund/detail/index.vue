@@ -552,47 +552,46 @@ onMounted(() => {
 }
 
 :deep(.ant-card-head) {
-  background: #f8fafc;
-  border-bottom: 1px solid #f1f5f9;
+  background: #FAFBFC;
+  border-bottom: 1px solid #E2E8F0;
   min-height: 48px;
 }
 
 :deep(.ant-card-head-title) {
   font-size: 15px;
   font-weight: 700;
-  color: #1e293b;
+  color: #1E40AF;
 }
 
-/* 主按钮样式 */
+/* 主按钮样式已通过全局CSS优化 */
 :deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  border: none;
-  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.25);
-  border-radius: 10px;
+  background: #2563EB !important;
+  border-radius: 8px !important;
 }
 
 :deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
-  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.35);
+  background: #1D4ED8 !important;
   transform: translateY(-1px);
 }
 
 .info-card, .attachment-card, .review-card {
   margin-bottom: 24px;
-  border-radius: 16px;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(15, 23, 42, 0.04);
-  border: 1px solid rgba(226, 232, 240, 0.6);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border: 1px solid #E2E8F0;
+  background: white;
 }
 
 :deep(.ant-descriptions-item-label) {
   font-weight: 600;
-  background-color: #f8fafc;
+  background-color: #FAFBFC !important;
+  color: #1E40AF;
 }
 
 .amount-highlight {
   font-weight: 700;
-  color: #1e40af;
+  color: #2563EB;
   font-size: 16px;
 }
 

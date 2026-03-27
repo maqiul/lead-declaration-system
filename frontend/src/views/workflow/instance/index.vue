@@ -18,8 +18,10 @@
           </a-select>
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">搜索</a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch" v-permission="['workflow:instance:list']">搜索</a-button>
+            <a-button @click="handleReset" v-permission="['workflow:instance:list']">重置</a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
@@ -43,12 +45,13 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record as ProcessInstance)">查看</a-button>
+              <a-button type="link" size="small" @click="handleView(record as ProcessInstance)" v-permission="['workflow:instance:list']">查看</a-button>
               <a-button 
                 v-if="record.status === 0" 
                 type="link" 
                 size="small" 
                 @click="handleSuspend(record.id)"
+                v-permission="['workflow:instance:suspend']"
               >
                 挂起
               </a-button>
@@ -57,6 +60,7 @@
                 type="link" 
                 size="small" 
                 @click="handleActivate(record.id)"
+                v-permission="['workflow:instance:activate']"
               >
                 激活
               </a-button>
@@ -65,7 +69,7 @@
                 title="确定要终止这个流程实例吗？"
                 @confirm="handleTerminate(record.id)"
               >
-                <a-button type="link" size="small" danger>终止</a-button>
+                <a-button type="link" size="small" danger v-permission="['workflow:instance:terminate']">终止</a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -86,7 +90,12 @@
             <a-descriptions-item label="流程实例ID">{{ currentInstance?.instanceId }}</a-descriptions-item>
             <a-descriptions-item label="流程名称">{{ currentInstance?.processName }}</a-descriptions-item>
             <a-descriptions-item label="流程KEY">{{ currentInstance?.processKey }}</a-descriptions-item>
-            <a-descriptions-item label="业务KEY">{{ currentInstance?.businessKey }}</a-descriptions-item>
+            <a-descriptions-item label="业务KEY">
+              <a-button type="link" size="small" @click="handleViewBusiness(currentInstance?.businessKey)" v-if="currentInstance?.businessKey">
+                {{ currentInstance?.businessKey }}
+              </a-button>
+              <span v-else>-</span>
+            </a-descriptions-item>
             <a-descriptions-item label="发起人">{{ currentInstance?.starterName }}</a-descriptions-item>
             <a-descriptions-item label="当前节点">{{ currentInstance?.currentActivityName }}</a-descriptions-item>
             <a-descriptions-item label="状态">
@@ -133,8 +142,11 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { getRunningProcessInstances, suspendProcessInstance, activateProcessInstance, terminateProcessInstance, getTasksByProcessInstance } from '@/api/workflow'
+
+const router = useRouter()
 
 // 类型定义
 interface ProcessInstance {
@@ -285,7 +297,9 @@ const loadData = async () => {
     
     const response = await getRunningProcessInstances(params)
     if (response.data?.code === 200) {
-      tableData.value = response.data.data.records
+      // 增加数组安全性检查
+      const records = response.data.data?.records
+      tableData.value = Array.isArray(records) ? records : []
       pagination.total = Number(response.data.data.total) || 0
     } else {
       message.error(response.data?.message || '加载数据失败')
@@ -303,7 +317,8 @@ const loadTaskData = async (instanceId: string) => {
   try {
     const response = await getTasksByProcessInstance(instanceId)
     if (response.data?.code === 200) {
-      const tasks = response.data.data || []
+      // 增加数组安全性检查
+      const tasks = Array.isArray(response.data.data) ? response.data.data : []
       taskData.value = tasks.map((task: any) => ({
         taskId: task.taskId || task.id,
         taskName: task.taskName || task.activityName || task.name,
@@ -340,6 +355,15 @@ const handleView = (record: ProcessInstance) => {
   loadTaskData(record.instanceId)
   detailVisible.value = true
   activeTab.value = 'basic'
+}
+
+const handleViewBusiness = (businessKey: string | undefined) => {
+  if (businessKey) {
+    router.push({
+      path: '/declaration/manage',
+      query: { action: 'view', id: businessKey }
+    })
+  }
 }
 
 const handleSuspend = async (instanceId: string) => {
@@ -398,60 +422,19 @@ onMounted(() => {
 
 <style scoped>
 .process-instance {
-  padding: 0;
+  padding: 24px;
   background: transparent;
   min-height: 100%;
-  box-sizing: border-box;
-  overflow-x: hidden;
-}
-
-.search-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
 }
 
 .process-diagram {
   height: 400px;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
+  border: 1px solid #f1f5f9;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-:deep(.ant-card) {
-  border-radius: 8px;
-}
-
-:deep(.ant-card-body) {
-  padding: 24px;
-}
-
-:deep(.ant-table) {
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-:deep(.ant-table-thead > tr > th) {
-  background-color: #fafafa;
-  font-weight: 600;
-}
-
-:deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-}
-
-:deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
-
-:deep(.ant-tabs) {
-  background: white;
-  border-radius: 8px;
-  padding: 16px;
+  background: #f8fafc;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 </style>

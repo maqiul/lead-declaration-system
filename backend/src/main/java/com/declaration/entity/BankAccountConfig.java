@@ -2,6 +2,7 @@ package com.declaration.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -89,6 +90,11 @@ public class BankAccountConfig {
      * 备注
      */
     private String remarks;
+
+    /**
+     * 手续费率（如 0.001 表示千分之一）
+     */
+    private BigDecimal serviceFeeRate;
 
     /**
      * 创建时间

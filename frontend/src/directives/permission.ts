@@ -10,15 +10,15 @@ export function checkPermission(value: string[]): boolean {
   if (!value || value.length === 0) {
     return false
   }
-  
+
   try {
     const userStore = useUserStore()
     const { permissions } = userStore
-    
+
     if (!permissions || permissions.length === 0) {
       return false
     }
-    
+
     return permissions.some(permission => value.includes(permission))
   } catch (error) {
     console.warn('权限检查失败:', error)
@@ -35,15 +35,15 @@ export function checkRole(value: string[]): boolean {
   if (!value || value.length === 0) {
     return false
   }
-  
+
   try {
     const userStore = useUserStore()
     const { roles } = userStore
-    
+
     if (!roles || roles.length === 0) {
       return false
     }
-    
+
     return roles.some(role => value.includes(role))
   } catch (error) {
     console.warn('角色检查失败:', error)
@@ -57,10 +57,10 @@ export function checkRole(value: string[]): boolean {
 export const permission = {
   mounted(el: HTMLElement, binding: any) {
     const { value } = binding
-    
+
     if (value && value instanceof Array && value.length > 0) {
       const hasPermission = checkPermission(value)
-      
+
       if (!hasPermission) {
         el.parentNode && el.parentNode.removeChild(el)
       }
@@ -76,10 +76,10 @@ export const permission = {
 export const role = {
   mounted(el: HTMLElement, binding: any) {
     const { value } = binding
-    
+
     if (value && value instanceof Array && value.length > 0) {
       const hasRole = checkRole(value)
-      
+
       if (!hasRole) {
         el.parentNode && el.parentNode.removeChild(el)
       }

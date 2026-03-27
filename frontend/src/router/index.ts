@@ -115,6 +115,12 @@ export const asyncRoutes: RouteRecordRaw[] = [
         name: 'Currency',
         component: () => import('@/views/system/currency/index.vue'),
         meta: { title: '货币管理', icon: 'MoneyCollectOutlined', permission: 'system:currency:list' }
+      },
+      {
+        path: 'city-info',
+        name: 'CityInfo',
+        component: () => import('@/views/system/city-info/index.vue'),
+        meta: { title: '城市管理', icon: 'EnvironmentOutlined', permission: 'system:city-info:list' }
       }
     ]
   },
@@ -194,6 +200,12 @@ export const asyncRoutes: RouteRecordRaw[] = [
         name: 'DeclarationManage',
         component: () => import('@/views/declaration/manage/index.vue'),
         meta: { title: '申报管理', icon: 'ContainerOutlined' }
+      },
+      {
+        path: 'finance',
+        name: 'DeclarationFinance',
+        component: () => import('@/views/declaration/finance/index.vue'),
+        meta: { title: '财务单证', icon: 'PayCircleOutlined', permission: 'business:declaration:financeSupplement' }
       },
       {
         path: 'form',

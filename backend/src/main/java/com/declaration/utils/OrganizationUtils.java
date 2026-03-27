@@ -2,7 +2,9 @@ package com.declaration.utils;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.declaration.entity.Organization;
+import com.declaration.entity.User;
 import com.declaration.service.OrganizationService;
+import com.declaration.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -15,8 +17,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class OrganizationUtils {
 
+    private static UserService userService;
     private static OrganizationService organizationService;
 
+    @Autowired
+    public void setUserService(UserService userService) {
+        OrganizationUtils.userService = userService;
+    }
+    
     @Autowired
     public void setOrganizationService(OrganizationService organizationService) {
         OrganizationUtils.organizationService = organizationService;
@@ -45,7 +53,13 @@ public class OrganizationUtils {
 
             // 如果Session中没有，尝试从用户信息中获取
             Long userId = StpUtil.getLoginIdAsLong();
-            // 这里可以根据实际需求从UserService或其他地方获取用户所属组织
+            if (userService != null) {
+                User user = userService.getById(userId);
+                if (user != null && user.getOrgId() != null) {
+                    log.debug("从用户信息中获取组织ID: {} 为用户 {}", user.getOrgId(), userId);
+                    return user.getOrgId();
+                }
+            }
             
             log.debug("用户 {} 未设置组织ID", userId);
             return null;

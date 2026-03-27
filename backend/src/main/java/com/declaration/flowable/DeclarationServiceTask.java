@@ -44,31 +44,48 @@ public class DeclarationServiceTask implements JavaDelegate {
             // 必须加载完整表单，包含产品以用于生成合同和单证
             DeclarationForm form = declarationFormService.getFullDeclarationForm(formId);
             if (form == null) return;
+            if("genContractTaskSmall".equals(currentActivityId)){
+                log.info("正在为申报单 {} 生成预录入单.", form.getFormNo());
+                generateAndSaveExport(form);
 
+            }
             // 根据活动节点执行不同逻辑
             if ("genContractTask".equals(currentActivityId)) {
-                log.info("正在为申报单 {} 生成全套单证和合同...", form.getFormNo());
+                log.info("正在为申报单 {} 生成海关申报单", form.getFormNo());
+                generateAndSaveAllTempleExport(form);
+//                generateContractOnApproval(form, formId);
+            }
+            // 新增：处理生成预录入单任务
+            if ("genPreEntryTask".equals(currentActivityId)) {
+                log.info("正在为申报单 {} 生成预录入单", form.getFormNo());
                 generateAndSaveExport(form);
-                generateContractOnApproval(form, formId);
             }
         } catch (NumberFormatException e) {
             log.error("服务任务业务Key解析失败: {}", businessKey);
         }
     }
-
     private void generateAndSaveExport(DeclarationForm form) {
         try {
             // Generate using standard temple.xlsx
             // 注意：generateAndSaveExportDocuments 内部已经处理了保存逻辑
             excelExportService.generateAndSaveExportDocuments(form);
+
+
+            log.info("申报单 {} 预录入生成完成", form.getFormNo());
+        } catch (Exception e) {
+            log.error("申报单 {} 预录入自动生成导出文件失败", form.getFormNo(), e);
+        }
+    }
+    private void generateAndSaveAllTempleExport(DeclarationForm form) {
+        try {
             
             // Generate using alltemple_template.xlsx
             // 注意：generateAndSaveAllTempleExportDocuments 内部已经处理了保存逻辑
             excelExportService.generateAndSaveAllTempleExportDocuments(form);
             
-            log.info("申报单 {} 全套单证生成完成", form.getFormNo());
+            log.info("申报单 {} 海关单生成完成", form.getFormNo());
         } catch (Exception e) {
-            log.error("申报单 {} 自动生成导出文件失败", form.getFormNo(), e);
+            log.error("申报单 {} 海关单自动生成导出文件失败", form.getFormNo(), e);
         }
     }
 

@@ -113,10 +113,11 @@ export interface ProcessInstance {
 }
 
 // 获取我的流程实例
-export function getMyProcessInstances() {
+export function getMyProcessInstances(params?: { pageNum?: number; pageSize?: number; processName?: string }) {
   return request({
     url: '/workflow/instances/my',
-    method: 'get'
+    method: 'get',
+    params
   })
 }
 
@@ -197,26 +198,29 @@ export interface TaskInstance {
 }
 
 // 获取我的待办任务
-export function getMyAssignedTasks() {
+export function getMyAssignedTasks(params?: { pageNum?: number; pageSize?: number; taskName?: string; processName?: string }) {
   return request({
     url: '/workflow/tasks/assigned',
-    method: 'get'
+    method: 'get',
+    params
   })
 }
 
 // 获取我的候选任务
-export function getMyCandidateTasks() {
+export function getMyCandidateTasks(params?: { pageNum?: number; pageSize?: number; taskName?: string; processName?: string }) {
   return request({
     url: '/workflow/tasks/candidate',
-    method: 'get'
+    method: 'get',
+    params
   })
 }
 
 // 获取我的已完成任务
-export function getMyCompletedTasks() {
+export function getMyCompletedTasks(params?: { pageNum?: number; pageSize?: number; taskName?: string; processName?: string }) {
   return request({
     url: '/workflow/tasks/completed',
-    method: 'get'
+    method: 'get',
+    params
   })
 }
 
@@ -275,10 +279,11 @@ export function getMonitorStats() {
   })
 }
 
-export function getAllActiveTasks() {
+export function getAllActiveTasks(params?: { pageNum?: number; pageSize?: number; taskName?: string; processName?: string }) {
   return request({
     url: '/workflow/monitor/tasks',
-    method: 'get'
+    method: 'get',
+    params
   })
 }
 

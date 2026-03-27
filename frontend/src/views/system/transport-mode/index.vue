@@ -1,40 +1,48 @@
 <template>
-  <div class="transport-mode-management">
+  <div class="transport-mode-management px-6 py-6 bg-slate-50 min-h-full">
     <!-- 搜索区域 -->
-    <a-card class="search-card">
-      <a-form :model="searchForm" layout="inline">
+    <a-card class="ui-card mb-4" :bordered="false">
+      <a-form :model="searchForm" layout="inline" class="flex flex-wrap gap-4">
         <a-form-item label="关键词">
-          <a-input v-model:value="searchForm.keyword" placeholder="代码/英文名称/中文名称" />
+          <a-input v-model:value="searchForm.keyword" placeholder="代码/英文名称/中文名称" allow-clear class="ui-input" />
         </a-form-item>
         <a-form-item label="状态">
-          <a-select v-model:value="searchForm.status" placeholder="请选择状态" allowClear style="width: 100px">
+          <a-select v-model:value="searchForm.status" placeholder="请选择状态" allow-clear style="width: 140px" class="ui-select">
             <a-select-option :value="1">启用</a-select-option>
             <a-select-option :value="0">禁用</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">搜索</a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch" class="ui-btn-primary">
+              <template #icon><search-outlined /></template>
+              查询
+            </a-button>
+            <a-button @click="handleReset" class="ui-btn-secondary">
+              <template #icon><reload-outlined /></template>
+              重置
+            </a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
 
     <!-- 操作按钮区域 -->
-    <a-card class="operation-card">
+    <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="openAddModal">
-          <template #icon><PlusOutlined /></template>
+        <a-button type="primary" @click="openAddModal" v-permission="['system:transport:add']" class="ui-btn-cta">
+          <template #icon><plus-outlined /></template>
           新增运输方式
         </a-button>
-        <a-button @click="loadTransportModeList">
-          <template #icon><ReloadOutlined /></template>
+        <a-button @click="loadTransportModeList" class="ui-btn-secondary">
+          <template #icon><reload-outlined /></template>
           刷新
         </a-button>
       </a-space>
     </a-card>
 
     <!-- 表格区域 -->
-    <a-card>
+    <a-card class="ui-card" :bordered="false">
       <a-table
         :dataSource="transportModeList"
         :columns="columns"
@@ -42,67 +50,85 @@
         :pagination="pagination"
         @change="handleTableChange"
         rowKey="id"
-      />
+        class="ui-table"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'status'">
+            <a-tag :color="record.status === 1 ? 'success' : 'error'" class="ui-tag">
+              {{ record.status === 1 ? '启用' : '禁用' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click="openEditModal(record as TransportMode)" v-permission="['system:transport:edit']" class="text-blue-600 font-medium">编辑</a-button>
+              <a-popconfirm
+                title="确定要切换状态吗？"
+                @confirm="toggleStatus(record as TransportMode)"
+              >
+                <a-button type="link" size="small" :danger="record.status === 1" class="font-medium">
+                  {{ record.status === 1 ? '禁用' : '启用' }}
+                </a-button>
+              </a-popconfirm>
+              <a-popconfirm
+                title="确定要删除吗？"
+                @confirm="handleDelete(record.id!)"
+              >
+                <a-button type="link" size="small" danger v-permission="['system:transport:delete']" class="font-medium">删除</a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
     </a-card>
 
     <!-- 编辑弹窗 -->
     <a-modal
-      v-model:visible="modalVisible"
+      v-model:open="modalVisible"
       :title="editingId ? '编辑运输方式' : '新增运输方式'"
       @ok="handleSave"
       @cancel="closeModal"
       :confirm-loading="saving"
       width="600px"
+      destroyOnClose
     >
       <a-form
         ref="formRef"
         :model="formData"
         :rules="formRules"
-        :label-col="{ span: 6 }"
-        :wrapper-col="{ span: 16 }"
+        layout="vertical"
       >
-        <a-form-item label="英文名称" name="name">
-          <a-input
-            v-model:value="formData.name"
-            placeholder="请输入英文名称"
-          />
-        </a-form-item>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="英文名称" name="name">
+              <a-input v-model:value="formData.name" placeholder="请输入英文名称" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="中文名称" name="chineseName">
+              <a-input v-model:value="formData.chineseName" placeholder="请输入中文名称" />
+            </a-form-item>
+          </a-col>
+        </a-row>
 
-        <a-form-item label="中文名称" name="chineseName">
-          <a-input
-            v-model:value="formData.chineseName"
-            placeholder="请输入中文名称"
-          />
-        </a-form-item>
-
-        <a-form-item label="代码" name="code">
-          <a-input
-            v-model:value="formData.code"
-            placeholder="请输入代码"
-            :maxlength="20"
-          />
-        </a-form-item>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="代码" name="code">
+              <a-input v-model:value="formData.code" placeholder="请输入代码" :maxlength="20" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="排序" name="sort">
+              <a-input-number v-model:value="formData.sort" :min="0" :max="999" class="w-full" />
+            </a-form-item>
+          </a-col>
+        </a-row>
 
         <a-form-item label="描述" name="description">
-          <a-textarea
-            v-model:value="formData.description"
-            placeholder="请输入描述"
-            :rows="3"
-            :maxlength="500"
-          />
-        </a-form-item>
-
-        <a-form-item label="排序" name="sort">
-          <a-input-number
-            v-model:value="formData.sort"
-            :min="0"
-            :max="999"
-            placeholder="请输入排序值"
-          />
+          <a-textarea v-model:value="formData.description" placeholder="请输入描述" :rows="3" :maxlength="500" />
         </a-form-item>
 
         <a-form-item label="状态" name="status">
-          <a-radio-group v-model:value="formData.status">
+          <a-radio-group v-model:value="formData.status" button-style="solid">
             <a-radio :value="1">启用</a-radio>
             <a-radio :value="0">禁用</a-radio>
           </a-radio-group>
@@ -113,10 +139,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, h } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
+import type { RuleObject } from 'ant-design-vue/es/form/interface'
 import {
   getTransportModeList,
   addTransportMode,
@@ -143,7 +170,7 @@ const pagination = reactive({
   total: 0,
   showSizeChanger: true,
   showQuickJumper: true,
-  showTotal: (total: number) => `共 ${total} 条记录`
+  showTotal: (total: number) => `共 ${total} 条`
 })
 
 // 表格列配置
@@ -173,21 +200,10 @@ const columns = [
     width: 100
   },
   {
-    title: '描述',
-    dataIndex: 'description',
-    key: 'description',
-    width: 200,
-    ellipsis: true
-  },
-  {
     title: '状态',
+    dataIndex: 'status',
     key: 'status',
-    width: 80,
-    customRender: ({ record }: { record: TransportMode }) => {
-      return h('a-tag', { 
-        color: record.status === 1 ? 'green' : 'red'
-      }, record.status === 1 ? '启用' : '禁用')
-    }
+    width: 100
   },
   {
     title: '创建时间',
@@ -198,36 +214,8 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 180,
-    customRender: ({ record }: { record: TransportMode }) => {
-      return h('a-space', {}, [
-        h('a-button', {
-          type: 'link',
-          size: 'small',
-          onClick: () => openEditModal(record)
-        }, '编辑'),
-        h('a-popconfirm', {
-          title: '确定要切换状态吗？',
-          onConfirm: () => toggleStatus(record)
-        }, {
-          default: () => h('a-button', {
-            type: 'link',
-            size: 'small',
-            danger: record.status === 1
-          }, record.status === 1 ? '禁用' : '启用')
-        }),
-        h('a-popconfirm', {
-          title: '确定要删除吗？',
-          onConfirm: () => handleDelete(record.id!)
-        }, {
-          default: () => h('a-button', {
-            type: 'link',
-            size: 'small',
-            danger: true
-          }, '删除')
-        })
-      ])
-    }
+    fixed: 'right' as const,
+    width: 200
   }
 ]
 
@@ -248,10 +236,10 @@ const formData = reactive({
 })
 
 // 表单验证规则
-const formRules = {
-  name: [
-    { required: true, message: '请输入英文名称' }
-  ]
+const formRules: Record<string, RuleObject | RuleObject[]> = {
+  name: [{ required: true, message: '请输入英文名称', trigger: 'blur' }],
+  chineseName: [{ required: true, message: '请输入中文名称', trigger: 'blur' }],
+  code: [{ required: true, message: '请输入代码', trigger: 'blur' }]
 }
 
 // 加载运输方式列表
@@ -268,8 +256,6 @@ const loadTransportModeList = async () => {
     if (response.data?.code === 200) {
       transportModeList.value = response.data.data.records || []
       pagination.total = response.data.data.total || 0
-    } else {
-      message.error(response.data?.message || '加载失败')
     }
   } catch (error) {
     message.error('加载失败')
@@ -288,8 +274,7 @@ const handleSearch = () => {
 const handleReset = () => {
   searchForm.keyword = ''
   searchForm.status = undefined
-  pagination.current = 1
-  loadTransportModeList()
+  handleSearch()
 }
 
 // 表格分页变化
@@ -302,85 +287,63 @@ const handleTableChange = (pag: TablePaginationConfig) => {
 // 打开新增弹窗
 const openAddModal = () => {
   editingId.value = null
-  resetForm()
+  Object.assign(formData, {
+    name: '',
+    chineseName: '',
+    code: '',
+    description: '',
+    sort: 0,
+    status: 1
+  })
   modalVisible.value = true
 }
 
 // 打开编辑弹窗
 const openEditModal = (record: TransportMode) => {
-  editingId.value = record.id || null
-  formData.name = record.name
-  formData.chineseName = record.chineseName
-  formData.code = record.code
-  formData.description = record.description
-  formData.sort = record.sort
-  formData.status = record.status
+  editingId.value = record.id ? (typeof record.id === 'string' ? parseInt(record.id, 10) : record.id) : null
+  Object.assign(formData, { ...record })
   modalVisible.value = true
 }
 
 // 关闭弹窗
 const closeModal = () => {
   modalVisible.value = false
-  resetForm()
-}
-
-// 重置表单
-const resetForm = () => {
-  formData.name = ''
-  formData.chineseName = ''
-  formData.code = ''
-  formData.description = ''
-  formData.sort = 0
-  formData.status = 1
-  formRef.value?.resetFields()
 }
 
 // 保存运输方式
 const handleSave = async () => {
   try {
     await formRef.value?.validate()
-    
     saving.value = true
-    
-    const data = {
-      name: formData.name,
-      chineseName: formData.chineseName,
-      code: formData.code,
-      description: formData.description,
-      sort: formData.sort,
-      status: formData.status
-    }
     
     let response
     if (editingId.value) {
-      response = await updateTransportMode(editingId.value, data as TransportMode)
+      const id = typeof editingId.value === 'string' ? parseInt(editingId.value, 10) : editingId.value;
+      response = await updateTransportMode(id, formData as any)
     } else {
-      response = await addTransportMode(data as TransportMode)
+      response = await addTransportMode(formData as any)
     }
     
     if (response.data?.code === 200) {
-      message.success(editingId.value ? '更新成功' : '新增成功')
+      message.success('操作成功')
       closeModal()
       loadTransportModeList()
-    } else {
-      message.error(response.data?.message || (editingId.value ? '更新失败' : '新增失败'))
     }
   } catch (error) {
-    message.error('保存失败')
+    // 验证失败
   } finally {
     saving.value = false
   }
 }
 
 // 删除运输方式
-const handleDelete = async (id: number) => {
+const handleDelete = async (id: number | string) => {
   try {
-    const response = await deleteTransportMode(id)
+    const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
+    const response = await deleteTransportMode(numericId)
     if (response.data?.code === 200) {
       message.success('删除成功')
       loadTransportModeList()
-    } else {
-      message.error(response.data?.message || '删除失败')
     }
   } catch (error) {
     message.error('删除失败')
@@ -390,12 +353,11 @@ const handleDelete = async (id: number) => {
 // 切换状态
 const toggleStatus = async (record: TransportMode) => {
   try {
-    const response = await toggleTransportModeStatus(record.id!)
+    const id = record.id ? (typeof record.id === 'string' ? parseInt(record.id, 10) : record.id) : 0;
+    const response = await toggleTransportModeStatus(id)
     if (response.data?.code === 200) {
-      message.success('操作成功')
+      message.success('状态更新成功')
       loadTransportModeList()
-    } else {
-      message.error(response.data?.message || '操作失败')
     }
   } catch (error) {
     message.error('操作失败')
@@ -408,15 +370,5 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.transport-mode-management {
-  padding: 20px;
-}
-
-.search-card {
-  margin-bottom: 16px;
-}
-
-.operation-card {
-  margin-bottom: 16px;
-}
+/* 页面特有样式已由全局 index.less 覆盖 */
 </style>

@@ -14,11 +14,13 @@
           </a-select>
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">
-            <template #icon><SearchOutlined /></template>
-            搜索
-          </a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch">
+              <template #icon><SearchOutlined /></template>
+              搜索
+            </a-button>
+            <a-button @click="handleReset">重置</a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
@@ -28,7 +30,8 @@
       <a-space>
         <a-button v-permission="['business:contract:template:add']" type="primary" @click="openAddModal">
           <template #icon><PlusOutlined /></template>
-          新增模板       </a-button>
+          新增模板
+        </a-button>
         <a-button @click="loadTemplateList">
           <template #icon><ReloadOutlined /></template>
           刷新
@@ -353,10 +356,9 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 页面特有样式已由全局 index.less 覆盖 */
 .contract-template-management {
   padding: 24px;
 }
-.search-card, .operation-card {
-  margin-bottom: 24px;
-}
 </style>
+

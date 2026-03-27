@@ -84,7 +84,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             formDir.mkdirs();
         }
         
-        String fileName = "Declaration_" + form.getFormNo() + "_" + IdUtil.simpleUUID() + ".xlsx";
+        String fileName = "预录入表单_" + form.getFormNo() + "_" + IdUtil.simpleUUID() + ".xlsx";
         String filePath = Paths.get(formDir.getAbsolutePath(), fileName).toString();
         File targetFile = new File(filePath);
 
@@ -128,7 +128,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         // 构建附件对象
         DeclarationAttachment attachment = new DeclarationAttachment();
         attachment.setFormId(form.getId());
-        attachment.setFileName("全套出口单证_" + form.getFormNo() + ".xlsx");
+        attachment.setFileName("预录入表单_" + form.getFormNo() + ".xlsx");
         attachment.setFileUrl("/api/v1/files/download?path=" + formNoDir + "/" + fileName);
         attachment.setFileType("FullDocuments");
         attachment.setCreateTime(LocalDateTime.now());
@@ -237,6 +237,10 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         fillData.put("totalNetWeight", calculateTotalNetWeight(form));
         fillData.put("totalVolume", calculateTotalVolume(form));
         fillData.put("totalQuantity", calculateTotalQuantity(form));
+        fillData.put("contonEN", getCaronsType(form).get("contonEN"));
+        fillData.put("contonCH", getCaronsType(form).get("contonCH"));
+        fillData.put("departureCityEnglish",form.getDepartureCityEnglish());
+//        fillData.put("contonEN",)
         return fillData;
     }
     
@@ -326,6 +330,23 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         }
         return form.getTotalQuantity() != null ? form.getTotalQuantity() : 0;
     }
+   private Map<String,String> getCaronsType(DeclarationForm form){
+// 优先从箱子列表累加
+       if (form.getCartons() != null && !form.getCartons().isEmpty()) {
+           DeclarationCarton carton = form.getCartons().get(0);
+           String contonCH = carton.getTypeChinese();
+           String contonEN = carton.getTypeEnglish();
+           HashMap<String,String> map = new HashMap<>();
+           map.put("contonCH", contonCH);
+           map.put("contonEN", contonEN);
+           return map;
+       }
+       HashMap<String, String> map2 = new HashMap<String, String>(2);
+       map2.put("contonEN", "CARTONS");
+       map2.put("contonCH", "纸箱");
+//        return "CARTONS";
+       return map2;
+   }
 
     private List<ExportDataRequest.ProductInfo> createProductListData(DeclarationForm form) {
         List<ExportDataRequest.ProductInfo> productList = new ArrayList<>();
@@ -349,7 +370,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         if (form.getProducts() != null) {
             form.getProducts().forEach(p -> {
                 ExportDataRequest.ProductInfo info = new ExportDataRequest.ProductInfo();
-                info.setProductName(p.getProductName());
+                info.setProductName(p.getProductEnglishName());
                 info.setHsCode(p.getHsCode());
                 info.setQuantity(p.getQuantity());
                 info.setUnit(p.getUnit());
@@ -374,6 +395,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                         info.setCartonNo(carton.getCartonNo());
                         info.setCartonQuantity(carton.getQuantity());
                         info.setCartonVolume(carton.getVolume());
+                        info.setCartonType(carton.getTypeEnglish());
                     }
                 }
                 
@@ -676,7 +698,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
         DeclarationAttachment attachment = new DeclarationAttachment();
         attachment.setFormId(form.getId());
-        attachment.setFileName("全套报关单证_" + form.getFormNo() + ".xlsx");
+        attachment.setFileName("报关表单_" + form.getFormNo() + ".xlsx");
         attachment.setFileUrl("/api/v1/files/download?path=" + formNoDir + "/" + fileName);
         attachment.setFileType("AllDocuments");
         attachment.setCreateTime(LocalDateTime.now());
@@ -735,12 +757,22 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         } catch (Exception e) {
             log.warn("获取国家信息失败，使用原始值: {}", form.getDestinationCountry());
         }
+        String tradeCountryDisplay = form.getTradeCountry();
+        try {
+            CountryInfo countryInfo = countryInfoService.getCountryInfoByEnglishName(form.getTradeCountry());
+            if (countryInfo!=null){
+                tradeCountryDisplay = countryInfo.getChineseName();
+            }
+        }catch (Exception e){
+            log.warn("获取贸易国信息失败");
+        }
         
-        data.put("tradeCountry", destinationCountryDisplay);
+        data.put("tradeCountry", tradeCountryDisplay);
         data.put("destinationCountry", destinationCountryDisplay);
         data.put("portOfDestination", destinationCountryDisplay);
         data.put("portOfDeparture", "");
-        data.put("packageType", "纸箱");
+        data.put("packageType", getCaronsType(form).get("contonCH"));
+        data.put("contonEN", getCaronsType(form).get("contonEN"));
         data.put("totalCartons", calculateTotalCartons(form));
         data.put("totalGrossWeight", calculateTotalGrossWeight(form));
         data.put("totalNetWeight", calculateTotalNetWeight(form));
@@ -761,6 +793,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         data.put("consigneeAddress", form.getConsigneeAddress());
         data.put("invoiceNo", form.getInvoiceNo());
         data.put("packingListNo", form.getInvoiceNo());
+//        data.put(destinationCountryDisplay, tradeCountryDisplay);
         // 格式化发票日期和装箱单日期为英文格式
         if (form.getDeclarationDate() != null) {
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM. dd, yyyy", Locale.ENGLISH);
@@ -775,8 +808,9 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         data.put("paymentTerms", "T/T");
         data.put("portOfDepartureEng", form.getDepartureCity());
         data.put("destinationRegion",form.getDestinationCountry());
+        data.put("departureCityEnglish", form.getDepartureCityEnglish());
 //        data.put("destinationCountry", form.getDestinationCountry());
-        data.put("packageType", "CARTONS");
+//        data.put("packageType", "CARTONS");
         
         if (form.getTotalAmount() != null) {
             data.put("totalAmountWords", convertAmountToWords(form.getTotalAmount().doubleValue()));
@@ -820,9 +854,9 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                 item.put("no", no++);
                 ProductTypeConfig productTypeConfig = productTypeConfigService.getByHsCode(p.getHsCode());
                 item.put("hsCode", p.getHsCode());
-                item.put("productName", p.getProductName());
+                item.put("productName", p.getProductEnglishName());
 
-                item.put("nameCh", productTypeConfig != null ? productTypeConfig.getChineseName() : "");
+                item.put("nameCh", p.getProductChineseName());
                 item.put("quantityStr", p.getQuantity() + " " + p.getUnit());
                 item.put("quantity", p.getQuantity());
                 item.put("unitPrice", p.getUnitPrice());
@@ -846,6 +880,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                 item.put("exportPreference", "不确定");
                 
                 item.put("unitEng", "PCS");
+                item.put("contonEN", getCaronsType(form).get("contonEN"));
                 
                 // 获取关联的箱子信息
                 Long cartonId = productToCartonMap.get(p.getId());
@@ -1003,4 +1038,6 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         log.info("生成 {} 个合并策略(AllTemple)", strategies.size());
         return strategies;
     }
+
+
 }

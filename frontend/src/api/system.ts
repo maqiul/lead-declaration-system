@@ -323,7 +323,7 @@ export function uploadAvatar(data: FormData) {
 
 // 国家信息相关API
 export interface CountryInfo {
-  id?: number
+  id?: number | string
   countryCode: string
   chineseName: string
   englishName: string

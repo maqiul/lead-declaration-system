@@ -1,25 +1,25 @@
-/* UI-UX Pro Max 规范 - 企业SaaS系统全局样式 */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+/* UI-UX Pro Max 规范 - 企业SaaS系统全局样式 (Minimalism & Swiss Style) */
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* 品牌色彩系统 */
-  --primary-color: #7C3AED;           /* 主色 - 紫色 */
-  --primary-hover: #6D28D9;          /* 主色悬停 */
-  --primary-light: #DDD6FE;          /* 主色浅色 */
-  --secondary-color: #A78BFA;        /* 辅助色 - 淡紫色 */
-  --secondary-light: #EDE9FE;        /* 辅助色浅色 */
-  --cta-color: #F97316;              /* CTA色 - 橙色 */
+  /* 品牌色彩系统 (基于 MASTER.md - 专业蓝 & 物流橙) */
+  --primary-color: #2563EB;           /* 主色 - 追踪蓝 */
+  --primary-hover: #1D4ED8;          /* 主色悬停 */
+  --primary-light: #FFFFFF;          /* 主色浅色/背景 - 修改为白色 */
+  --secondary-color: #3B82F6;        /* 辅助色 - 天空蓝 */
+  --secondary-light: #F1F5F9;        /* 辅助色浅色 - 稍微深一点点用于区分 */
+  --cta-color: #F97316;              /* CTA色 - 物流橙 */
   --cta-hover: #EA580C;              /* CTA悬停 */
   
-  /* 中性色 */
+  /* 中性色 (Swiss Style - 高对比度) */
   --bg-primary: #FFFFFF;             /* 主背景 */
-  --bg-secondary: #FAF5FF;           /* 次背景 */
-  --bg-tertiary: #F3F4F6;            /* 第三背景 */
-  --text-primary: #1F2937;           /* 主文字 */
-  --text-secondary: #4B5563;         /* 次文字 */
-  --text-tertiary: #6B7280;          /* 第三文字 */
-  --border-color: #E5E7EB;           /* 边框色 */
-  --border-light: #F3F4F6;           /* 浅边框 */
+  --bg-secondary: #FFFFFF;           /* 次背景 - 修改为白色 */
+  --bg-tertiary: #FAFBFC;            /* 第三背景 - 极浅灰用于微弱区分 */
+  --text-primary: #1E40AF;           /* 主文字 (蓝色调强调) */
+  --text-secondary: #334155;         /* 次文字 (更深的 Slate-700 提高对比度) */
+  --text-tertiary: #64748B;          /* 第三文字 (Slate-500) */
+  --border-color: #E2E8F0;           /* 边框色 (Slate-200) */
+  --border-light: #F1F5F9;           /* 浅边框 */
   
   /* 状态色 */
   --success-color: #10B981;
@@ -28,45 +28,48 @@
   --info-color: #3B82F6;
   
   /* 尺寸系统 */
-  --border-radius-sm: 6px;
-  --border-radius-md: 12px;
-  --border-radius-lg: 16px;
+  --border-radius-sm: 4px;           /* 极简风格偏向更锐利的圆角 */
+  --border-radius-md: 8px;           /* 标准圆角 */
+  --border-radius-lg: 12px;
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
-  --spacing-xxl: 48px;
   
-  /* 阴影系统 */
+  /* 阴影系统 (更轻薄的阴影) */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(124, 58, 237, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 10px 15px -3px rgba(37, 99, 235, 0.1); /* 带有主色暗示的阴影 */
   
   /* 动效 */
-  --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: all 0.15s cubic-bezier(0, 0, 0.2, 1);
+  --transition-normal: all 0.25s cubic-bezier(0, 0, 0.2, 1);
 }
 
 /* 全局字体设置 */
 * {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6, .ui-title {
+  font-family: 'Lexend', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 body {
   background-color: var(--bg-secondary);
-  color: var(--text-primary);
-  font-feature-settings: "liga" 1, "kern" 1;
+  color: var(--text-secondary);
+  font-feature-settings: "cv11" 1, "cv01" 1, "ss01" 1;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-/* 卡片组件优化 */
+/* 卡片组件优化 - 极简瑞士风格 */
 .ui-card {
   border-radius: var(--border-radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-color);
   transition: var(--transition-normal);
   background: var(--bg-primary);
@@ -74,19 +77,23 @@ body {
 }
 
 .ui-card:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--secondary-light);
 }
 
 .ui-card-header {
-  background: linear-gradient(135deg, var(--primary-light) 0%, var(--secondary-light) 100%);
-  border-bottom: 2px solid var(--border-color);
-  padding: var(--spacing-lg);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-md) var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .ui-card-title {
+  font-family: 'Lexend', sans-serif;
   font-weight: 600;
-  font-size: 18px;
+  font-size: 16px;
   color: var(--text-primary);
   margin: 0;
 }
@@ -95,203 +102,198 @@ body {
   padding: var(--spacing-lg);
 }
 
-/* 按钮样式 */
+/* 按钮样式 - 极简扁平化 */
 .ui-btn-primary {
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-  border: none;
+  background-color: var(--primary-color);
+  border: 1px solid var(--primary-color);
   color: white;
   border-radius: var(--border-radius-sm);
-  padding: 8px 16px;
+  padding: 8px 20px;
   font-weight: 500;
   transition: var(--transition-normal);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .ui-btn-primary:hover {
-  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary-color) 100%);
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+.ui-btn-cta {
+  background-color: var(--cta-color);
+  border: 1px solid var(--cta-color);
+  color: white;
+  border-radius: var(--border-radius-sm);
+  padding: 8px 20px;
+  font-weight: 600;
+  transition: var(--transition-normal);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  line-height: 1;
+  box-shadow: 0 2px 4px rgba(249, 115, 22, 0.2);
+}
+
+.ui-btn-cta .anticon, 
+.ui-btn-primary .anticon, 
+.ui-btn-secondary .anticon {
+  vertical-align: middle !important;
+  margin-top: -1px;
+}
+
+.ui-btn-cta:hover {
+  background-color: var(--cta-hover);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 6px 16px rgba(249, 115, 22, 0.3);
 }
 
 .ui-btn-secondary {
-  background: var(--bg-primary);
+  background: white;
   border: 1px solid var(--border-color);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   border-radius: var(--border-radius-sm);
-  padding: 8px 16px;
+  padding: 8px 20px;
   font-weight: 500;
   transition: var(--transition-normal);
   cursor: pointer;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px;
+  line-height: 1 !important;
 }
+
 
 .ui-btn-secondary:hover {
   border-color: var(--primary-color);
   color: var(--primary-color);
+  background: var(--primary-light);
+}
+
+/* 数据看板组件 */
+.ui-stat-card {
+  padding: var(--spacing-lg);
+  background: white;
+  border-radius: var(--border-radius-md);
+  border-left: 4px solid var(--primary-color);
   box-shadow: var(--shadow-sm);
 }
 
-.ui-btn-cta {
-  background: var(--cta-color);
-  border: none;
-  color: white;
-  border-radius: var(--border-radius-sm);
-  padding: 8px 16px;
-  font-weight: 500;
-  transition: var(--transition-normal);
-  cursor: pointer;
+.ui-stat-label {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
 }
 
-.ui-btn-cta:hover {
-  background: var(--cta-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
-}
-
-/* 表格样式 */
-.ui-table {
-  border-radius: var(--border-radius-md);
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
-}
-
-.ui-table-header {
-  background-color: var(--bg-tertiary);
-  font-weight: 600;
+.ui-stat-value {
+  font-family: 'Lexend', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
-.ui-table-row:hover {
-  background-color: var(--secondary-light);
-}
-
-/* 表单元素 */
-.ui-input,
-.ui-select,
-.ui-textarea {
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  padding: 8px 12px;
-  transition: var(--transition-fast);
-  font-size: 14px;
-}
-
-.ui-input:focus,
-.ui-select:focus,
-.ui-textarea:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
-}
-
-/* 标签样式 */
-.ui-tag {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1;
-}
-
-.ui-tag-primary {
-  background-color: var(--primary-light);
-  color: var(--primary-color);
-}
-
-.ui-tag-success {
-  background-color: #D1FAE5;
-  color: var(--success-color);
-}
-
-.ui-tag-warning {
-  background-color: #FEF3C7;
-  color: var(--warning-color);
-}
-
-.ui-tag-error {
-  background-color: #FEE2E2;
-  color: var(--error-color);
-}
-
-/* 响应式断点 */
-@media (max-width: 768px) {
-  .ui-card-body {
-    padding: var(--spacing-md);
-  }
-  
-  .ui-card-title {
-    font-size: 16px;
-  }
-}
-
-@media (max-width: 480px) {
-  :root {
-    --spacing-lg: 16px;
-    --spacing-xl: 24px;
-  }
-  
-  .ui-card {
-    border-radius: var(--border-radius-sm);
-  }
-}
-
-/* 动画类 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-.slide-up-enter-active,
-.slide-up-leave-active {
-  transition: all 0.3s ease;
-}
-
-.slide-up-enter-from,
-.slide-up-leave-to {
-  opacity: 0;
-  transform: translateY(20px);
-}
-
-/* 工具类 */
-.cursor-pointer {
-  cursor: pointer;
-}
-
-.text-center {
-  text-align: center;
-}
-
-.flex-center {
+/* 工具类库 */
+.ui-flex-center {
   display: flex;
   align-items: center;
   justify-content: center;
 }
+.ui-flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cursor-pointer { cursor: pointer; }
+.text-primary { color: var(--primary-color); }
+.bg-subtle { background-color: var(--bg-secondary); }
+.rounded-sm { border-radius: var(--border-radius-sm); }
+.rounded-md { border-radius: var(--border-radius-md); }
 
-.gap-sm {
-  gap: var(--spacing-sm);
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.gap-md {
-  gap: var(--spacing-md);
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.gap-lg {
-  gap: var(--spacing-lg);
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
 }
 
-.mb-sm {
-  margin-bottom: var(--spacing-sm);
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
 }
 
-.mb-md {
-  margin-bottom: var(--spacing-md);
-}
-
-.mb-lg {
+/* ----------------------------------------------------------------
+   Premium Tabs - 胶囊式分段控制器 (Segmented Control)
+   ---------------------------------------------------------------- */
+.ant-tabs {
   margin-bottom: var(--spacing-lg);
+}
+
+.ant-tabs-nav {
+  background: var(--bg-tertiary) !important;
+  padding: 4px !important;
+  border-radius: var(--border-radius-lg) !important;
+  margin-bottom: var(--spacing-lg) !important;
+  border: 1px solid var(--border-color) !important;
+  display: inline-flex !important;
+}
+
+/* 隐藏 Ant Design 默认下划线 */
+.ant-tabs-nav::before,
+.ant-tabs-ink-bar {
+  display: none !important;
+}
+
+.ant-tabs-nav-list {
+  display: flex !important;
+  gap: 4px !important;
+}
+
+.ant-tabs-tab {
+  margin: 0 !important;
+  padding: 8px 24px !important;
+  border-radius: calc(var(--border-radius-lg) - 4px) !important;
+  transition: var(--transition-normal) !important;
+  border: 1px solid transparent !important;
+}
+
+.ant-tabs-tab-active {
+  background: white !important;
+  box-shadow: var(--shadow-md) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.ant-tabs-tab-btn {
+  font-family: 'Lexend', sans-serif !important;
+  font-size: 14px !important;
+  color: var(--text-tertiary) !important;
+  font-weight: 500 !important;
+}
+
+.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--primary-color) !important;
+  font-weight: 600 !important;
+}
+
+.ant-tabs-tab:hover:not(.ant-tabs-tab-active) .ant-tabs-tab-btn {
+  color: var(--primary-color) !important;
+}
+
+.ant-tabs-tab:hover:not(.ant-tabs-tab-active) {
+  background: rgba(255, 255, 255, 0.5) !important;
 }

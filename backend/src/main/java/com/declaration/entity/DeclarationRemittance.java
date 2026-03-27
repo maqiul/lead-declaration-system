@@ -70,6 +70,26 @@ public class DeclarationRemittance {
     private String photoUrl;
 
     /**
+     * 状态: 0-待审核 1-已审核 2-已驳回
+     */
+    private Integer status;
+
+    /**
+     * 审核备注
+     */
+    private String auditRemark;
+
+    /**
+     * 审核人ID
+     */
+    private Long auditBy;
+
+    /**
+     * 审核时间
+     */
+    private LocalDateTime auditTime;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

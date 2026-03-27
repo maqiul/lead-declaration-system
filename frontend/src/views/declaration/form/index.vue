@@ -1,6 +1,6 @@
 <template>
   <div class="declaration-form-page">
-    <a-card :title="isPaymentMode ? (formStatus === 2 ? '定金水单提交' : '尾款水单提交') : '出口申报表单'">
+    <a-card :title="(isPickupMode ? '提货单提交' : (isPaymentMode ? (route.query.type === 'balance' ? '尾款水单提交' : '定金水单提交') : '出口申报表单')) ">
       <template #extra>
         <a-space>
           <a-button @click="goBack">返回列表</a-button>
@@ -21,12 +21,46 @@
             >{{ getAuditActionText() }}驳回</a-button>
           </template>
           
-          <!-- 水单提交模式下的按钮 -->
-          <template v-else-if="isPaymentMode">
-            <a-button v-if="formStatus === 2" type="primary" @click="handleSubmitAudit('deposit')" :loading="submitting" v-permission="['business:declaration:payment']">提交定金审核</a-button>
-            <a-button v-if="formStatus === 4" type="primary" @click="handleSubmitAudit('balance')" :loading="submitting" v-permission="['business:declaration:payment']">提交尾款审核</a-button>
-            <a-button v-if="formStatus === 6" type="primary" @click="handleSubmitAudit('pickup')" :loading="submitting" :disabled="pickupAttachments.length === 0" v-permission="['business:declaration:pickup-submit']">提交提货单审核</a-button>
+          <!-- 水单提交模式下的按钮（非提货单模式才显示水单按钮） -->
+          <template v-else-if="isPaymentMode && !isPickupMode">
+            <!-- 定金水单提交按钮 -->
+            <a-button 
+              v-if="(formStatus === 2 || formStatus === 3) && route.query.type == 'deposit'" 
+              type="primary" 
+              @click="handleSubmitAudit('deposit')" 
+              :loading="submitting" 
+              v-permission="['business:declaration:payment']"
+            >
+              提交定金审核
+            </a-button>
+            
+            <!-- 尾款水单提交按钮：只有定金审核通过后才能提交 -->
+            <a-button 
+              v-if="(formStatus === 4 || formStatus === 5) && route.query.type === 'balance'" 
+              type="primary" 
+              @click="handleSubmitAudit('balance')" 
+              :loading="submitting" 
+              v-permission="['business:declaration:payment']"
+            >
+              提交尾款审核
+            </a-button>
           </template>
+          
+          <!-- 提货单提交模式下的按钮：状态6（待上传提货单）或状态7（提货单待审核）时显示 -->
+          <template v-else-if="isPaymentMode && isPickupMode">
+            <a-button 
+              v-if="(formStatus === 6 || formStatus === 7)" 
+              type="primary" 
+              @click="handleSubmitAudit('pickup')" 
+              :loading="submitting" 
+              :disabled="deliveryOrderList.length === 0 || !deliveryOrderList.some(order => order.status === 0)" 
+              v-permission="['business:declaration:payment']"
+            >
+              提交提货单审核
+            </a-button>
+            
+          </template>
+          
           
           <!-- 普通模式下的按钮 -->
           <template v-else>
@@ -35,34 +69,6 @@
             
             <!-- 只在草稿状态且非只读模式下显示提交按钮 -->
             <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" type="primary" @click="handleSubmit" :loading="submitting" v-permission="['business:declaration:submit']">提交申报</a-button>
-            
-            <!-- 提货单待传状态下显示提货单提交按钮 -->
-            <a-button 
-              v-if="formStatus === 6 && !isReadonly" 
-              type="primary" 
-              @click="handleSubmitAudit('pickup')" 
-              :loading="submitting" 
-              :disabled="pickupAttachments.length === 0"
-              v-permission="['business:declaration:pickup-submit']"
-            >
-              提交提货单审核 (附件: {{ pickupAttachments.length }}个)
-            </a-button>
-            
-            <!-- 提货单待审状态下显示审核按钮 -->
-            <template v-if="formStatus === 7 && !isReadonly">
-              <a-button 
-                type="primary" 
-                @click="handleApprove" 
-                :loading="submitting"
-                v-permission="['business:declaration:pickup-audit']"
-              >审核通过</a-button>
-              <a-button 
-                danger 
-                @click="handleReject" 
-                :loading="submitting"
-                v-permission="['business:declaration:pickup-audit']"
-              >审核驳回</a-button>
-            </template>
           </template>
         </a-space>
       </template>
@@ -111,23 +117,50 @@
         <a-row :gutter="16">
           <a-col :span="8">
             <a-form-item label="出发城市">
-              <a-input v-model:value="formData.departureCity" placeholder="例如：SHANGHAI, CHINA" :readonly="isFormReadonly" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="目的国">
-              <a-select 
-                v-model:value="formData.destinationCountry" 
-                :options="countryOptions"
-                placeholder="请选择目的国家" 
+              <a-select
+                v-model:value="formData.departureCity"
+                placeholder="请选择出发城市"
                 :disabled="isFormReadonly"
                 show-search
                 option-filter-prop="label"
                 style="width: 100%"
+                :options="cityOptions"
+                @change="onDepartureCityChange"
               />
             </a-form-item>
           </a-col>
           <a-col :span="8">
+            <a-form-item label="目的国">
+              <a-select
+                v-model:value="formData.destinationCountry"
+                :options="countryOptions"
+                placeholder="请输入或选择目的国家(支持中英文)" 
+                :disabled="isFormReadonly"
+                show-search
+                option-filter-prop="label"
+                style="width: 100%"
+                :filter-option="filterCountrySelectOption"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item label="贸易国">
+              <a-select
+                v-model:value="formData.tradeCountry"
+                :options="countryOptions"
+                placeholder="请输入或选择贸易国家(支持中英文)" 
+                :disabled="isFormReadonly"
+                show-search
+                option-filter-prop="label"
+                style="width: 100%"
+                :filter-option="filterCountrySelectOption"
+              />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        
+        <a-row :gutter="16">
+        <a-col :span="8">
             <a-form-item label="运输方式">
               <a-select 
                 v-model:value="formData.transportMode" 
@@ -138,10 +171,7 @@
               />
             </a-form-item>
           </a-col>
-        </a-row>
-        
-        <a-row :gutter="16">
-          <a-col :span="12">
+          <a-col :span="8">
             <a-form-item label="发票号">
               <a-input 
                 v-model:value="formData.invoiceNo" 
@@ -150,13 +180,17 @@
               />
             </a-form-item>
           </a-col>
-          <a-col :span="12">
+          <a-col :span="8">
             <a-form-item label="币种">
-                            <a-select v-model:value="formData.currency" style="width: 100%" :disabled="isFormReadonly">
-                <a-select-option value="USD">USD</a-select-option>
-                <a-select-option value="EUR">EUR</a-select-option>
-                <a-select-option value="CNY">CNY</a-select-option>
-              </a-select>
+              <a-select 
+                v-model:value="formData.currency" 
+                :options="currencyOptions"
+                placeholder="请选择币种" 
+                :disabled="isFormReadonly"
+                show-search
+                option-filter-prop="label"
+                style="width: 100%"
+              />
             </a-form-item>
           </a-col>
         </a-row>
@@ -180,12 +214,36 @@
         >
           <template #bodyCell="{ column, record, index }">
             <template v-if="column.key === 'productName'">
-              <a-input 
-                v-if="!isFormReadonly" 
-                v-model:value="record.productName" 
-                placeholder="产品名称"
+              <a-select
+                v-if="!isFormReadonly"
+                v-model:value="record.productName"
+                :options="productAutoCompleteOptionsWithCustom"
+                placeholder="请输入产品名称(支持中英文)"
+                style="width: 100%"
+                show-search
+                :filter-option="filterProductOption"
               />
               <span v-else>{{ record.productName }}</span>
+            </template>
+            
+            <template v-else-if="column.key === 'productChineseName'">
+              <a-input 
+                v-if="!isFormReadonly" 
+                v-model:value="record.productChineseName" 
+                placeholder="产品中文名"
+                @change="() => updateProductName(record)"
+              />
+              <span v-else>{{ record.productChineseName }}</span>
+            </template>
+            
+            <template v-else-if="column.key === 'productEnglishName'">
+              <a-input 
+                v-if="!isFormReadonly" 
+                v-model:value="record.productEnglishName" 
+                placeholder="产品英文名"
+                @change="() => updateProductName(record)"
+              />
+              <span v-else>{{ record.productEnglishName }}</span>
             </template>
             
             <template v-else-if="column.key === 'hsCode'">
@@ -211,7 +269,7 @@
                 v-if="!isFormReadonly"
                 v-model:value="record.quantity" 
                 :min="1"
-                @change="() => calculateAmount(record)"
+                @change="() => handleUnitPriceOrQuantityChange(record)"
                 style="width: 100%"
               />
               <span v-else>{{ record.quantity }}</span>
@@ -237,7 +295,7 @@
                 v-model:value="record.unitPrice" 
                 :min="0"
                 :step="0.01"
-                @change="() => calculateAmount(record)"
+                @change="() => handleUnitPriceOrQuantityChange(record)"
                 style="width: 100%"
               />
               <span v-else>{{ record.unitPrice }}</span>
@@ -278,7 +336,17 @@
             </template>
             
             <template v-else-if="column.key === 'amount'">
-              <span>{{ calculateAmount(record) }}</span>
+              <a-input-number 
+                v-if="!isFormReadonly"
+                v-model:value="record.amount" 
+                :min="0"
+                :step="0.01"
+                @change="() => {
+                  record._amountManuallySet = true;
+                }"
+                style="width: 100%"
+              />
+              <span v-else>{{ record.amount }}</span>
             </template>
             
             <template v-else-if="column.key === 'productPhoto'">
@@ -442,6 +510,28 @@
               <span v-else class="value-display">{{ record.cartonNo }}</span>
             </template>
             
+            <template v-else-if="column.key === 'typeChinese'">
+              <a-select
+                v-if="!isFormReadonly"
+                v-model:value="record.typeChinese"
+                @change="(value) => {
+                                record.typeChinese = value;
+                                if (value === '箱子') {
+                                  record.typeEnglish = 'CARTONS';
+                                } else if (value === '托盘') {
+                                  record.typeEnglish = 'PALLETS';
+                                }
+                              }"
+                style="width: 100%"
+                size="small"
+                placeholder="选择类型"
+              >
+                <a-select-option value="箱子">箱子</a-select-option>
+                <a-select-option value="托盘">托盘</a-select-option>
+              </a-select>
+              <span v-else class="value-display">{{ record.typeChinese }}</span>
+            </template>
+            
             <template v-else-if="column.key === 'quantity'">
               <a-input-number 
                 v-if="!isFormReadonly"
@@ -494,7 +584,7 @@
         </a-table>
       </a-card>
 
-      <!-- 定金水单 (初审通过后显示) -->
+      <!-- 定金水单 (初审通过后显示，提货单模式下只读展示) -->
       <a-card v-if="formStatus && formStatus >= 2" title="定金水单" size="small" class="section-card">
         <template #extra>
           <a-button v-if="isDepositEditable" type="primary" size="small" @click="handleAddRemittance(1)">
@@ -504,6 +594,7 @@
         </template>
 
         <a-table 
+          v-if="depositRemittanceList.length > 0"
           :dataSource="depositRemittanceList" 
           :columns="remittanceColumnsNoType" 
           :pagination="false"
@@ -538,7 +629,12 @@
             <template v-else-if="column.key === 'photoUrl'">
               <!-- 只读模式 -->
               <div v-if="!isDepositEditable" class="remittance-photo-cell">
-                <a-image v-if="record.photoUrl" :src="record.photoUrl" :width="48" :height="48" :preview="true" class="remittance-photo" />
+                <template v-if="record.photoUrl">
+                  <a-image :src="record.photoUrl" :width="48" :height="48" :preview="true" class="remittance-photo" />
+                  <a-button type="link" size="small" @click="handleDownloadRemittancePhoto(record)" style="padding: 0; margin-left: 4px;">
+                    <DownloadOutlined />
+                  </a-button>
+                </template>
                 <span v-else class="no-photo">无</span>
               </div>
               <!-- 可编辑模式 -->
@@ -563,6 +659,7 @@
                 </a-upload>
               </div>
             </template>
+
             <template v-else-if="column.key === 'action'">
               <a-space v-if="isDepositEditable">
                 <a-button type="link" size="small" @click="handleSaveRemittance(record)">{{ record.id ? '更新' : '保存' }}</a-button>
@@ -578,8 +675,8 @@
         <a-empty v-if="depositRemittanceList.length === 0" description="暂无定金水单" />
       </a-card>
 
-      <!-- 尾款水单 (定金审核通过后显示) -->
-      <a-card v-if="formStatus && formStatus >= 4" title="尾款水单" size="small" class="section-card">
+      <!-- 尾款水单 (定金水单审核通过后显示，提货单模式下只读展示，水单提交模式下也显示，审核模式下也显示) -->
+      <a-card v-if="formStatus && (formStatus >= 4 || isPaymentOnlyMode || isAudit)" title="尾款水单" size="small" class="section-card">
         <template #extra>
           <a-button v-if="isBalanceEditable" type="primary" size="small" @click="handleAddRemittance(2)">
             <template #icon><PlusOutlined /></template>
@@ -588,6 +685,7 @@
         </template>
 
         <a-table 
+          v-if="balanceRemittanceList.length > 0"
           :dataSource="balanceRemittanceList" 
           :columns="remittanceColumnsNoType" 
           :pagination="false"
@@ -622,7 +720,12 @@
             <template v-else-if="column.key === 'photoUrl'">
               <!-- 只读模式 -->
               <div v-if="!isBalanceEditable" class="remittance-photo-cell">
-                <a-image v-if="record.photoUrl" :src="record.photoUrl" :width="48" :height="48" :preview="true" class="remittance-photo" />
+                <template v-if="record.photoUrl">
+                  <a-image :src="record.photoUrl" :width="48" :height="48" :preview="true" class="remittance-photo" />
+                  <a-button type="link" size="small" @click="handleDownloadRemittancePhoto(record)" style="padding: 0; margin-left: 4px;">
+                    <DownloadOutlined />
+                  </a-button>
+                </template>
                 <span v-else class="no-photo">无</span>
               </div>
               <!-- 可编辑模式 -->
@@ -647,6 +750,7 @@
                 </a-upload>
               </div>
             </template>
+
             <template v-else-if="column.key === 'action'">
               <a-space v-if="isBalanceEditable">
                 <a-button type="link" size="small" @click="handleSaveRemittance(record)">{{ record.id ? '更新' : '保存' }}</a-button>
@@ -662,44 +766,459 @@
         <a-empty v-if="balanceRemittanceList.length === 0" description="暂无尾款水单" />
       </a-card>
 
-      <!-- 提货单附件 (尾款审核通过后显示) -->
-      <a-card v-if="formStatus && formStatus >= 6" title="提货单附件" size="small" class="section-card">
+      <!-- 提货单 (尾款审核通过后显示，在提货单上传模式下也显示，在审核模式下也显示) -->
+      <a-card v-if="(formStatus && formStatus >= 2 && balanceApproved && !isPaymentOnlyMode) || isPickupMode || isAudit" title="提货单" size="small" class="section-card">
         <template #extra>
-          <a-button v-if="!isReadonly && formStatus === 6" type="primary" size="small" @click="handleUploadPickup" v-permission="['business:declaration:pickup-submit']">
-            <template #icon><UploadOutlined /></template>
-            上传提货单
+          <a-button 
+            v-if="(formStatus === 2 || isPickupMode) && !isReadonly" 
+            type="primary" 
+            size="small" 
+            @click="showDeliveryOrderModal"
+            v-permission="['business:declaration:payment']"
+          >
+            <template #icon><PlusOutlined /></template>
+            新增提货单
           </a-button>
         </template>
         
         <a-table 
-          :dataSource="pickupAttachments" 
-          :columns="pickupColumns" 
+          v-if="deliveryOrderList.length > 0"
+          :dataSource="deliveryOrderList" 
+          :columns="deliveryOrderColumns" 
           :pagination="false"
           rowKey="id"
           size="small"
+          :loading="loadingDeliveryOrders"
         >
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'fileName'">
-              <a :href="getFilePreviewUrl(record.id)" target="_blank">{{ record.fileName }}</a>
+            <template v-if="column.key === 'deliveryDate'">
+              {{ record.deliveryDate ? dayjs(record.deliveryDate).format('YYYY-MM-DD') : '' }}
             </template>
-            <template v-else-if="column.key === 'fileType'">
-              <a-tag :color="getFileTagColor(record.fileType)">
-                {{ getFileTypeDisplay(record.fileType) }}
+            <template v-else-if="column.key === 'status'">
+              <a-tag :color="getDeliveryOrderStatusColor(record.status)">
+                {{ getDeliveryOrderStatusText(record.status) }}
               </a-tag>
             </template>
-            <template v-else-if="column.key === 'createTime'">
-              {{ record.createTime ? dayjs(record.createTime).format('YYYY-MM-DD HH:mm') : '' }}
+            <template v-else-if="column.key === 'fileName'">
+              <a v-if="record.fileUrl" :href="record.fileUrl" target="_blank">{{ record.fileName || '查看附件' }}</a>
+              <span v-else style="color: #999;">无附件</span>
             </template>
             <template v-else-if="column.key === 'action'">
               <a-space>
-                <a-button type="link" size="small" @click="handleDownloadFile(record)" v-permission="['business:declaration:download']">下载</a-button>
-                <a-button v-if="!isReadonly && formStatus === 6" type="link" size="small" danger @click="handleDeletePickup(record)" v-permission="['business:declaration:pickup-delete']">删除</a-button>
+                <a-button 
+                  v-if="record.fileUrl" 
+                  type="link" 
+                  size="small" 
+                  @click="handleDownloadDeliveryOrder(record)"
+                >
+                  下载
+                </a-button>
+                <a-button 
+                  v-if="(formStatus === 2 || isPickupMode) && !isReadonly && record.status === 0" 
+                  type="link" 
+                  size="small" 
+                  @click="handleEditDeliveryOrder(record)"
+                  v-permission="['business:declaration:payment']"
+                >
+                  编辑
+                </a-button>
+                <a-popconfirm
+                  v-if="(formStatus === 2 || isPickupMode) && !isReadonly && record.status === 0"
+                  title="确定要删除这条提货单吗？"
+                  @confirm="handleDeleteDeliveryOrder(record)"
+                >
+                  <a-button 
+                    type="link" 
+                    size="small" 
+                    danger
+                    v-permission="['business:declaration:pickup-delete']"
+                  >
+                    删除
+                  </a-button>
+                </a-popconfirm>
               </a-space>
             </template>
           </template>
         </a-table>
-        <a-empty v-if="pickupAttachments.length === 0" description="暂无提货单附件" />
+        <a-empty v-if="deliveryOrderList.length === 0 && !loadingDeliveryOrders" description="暂无提货单，请点击上方按钮添加" />
       </a-card>
+      
+      <!-- 新增/编辑提货单弹窗 -->
+      <a-modal
+        v-model:open="deliveryOrderModalVisible"
+        :title="editingDeliveryOrder ? '编辑提货单' : '新增提货单'"
+        @ok="handleSaveDeliveryOrder"
+        :confirmLoading="savingDeliveryOrder"
+        width="520px"
+      >
+        <a-form :model="deliveryOrderForm" layout="vertical">
+          <a-form-item label="提货日期" required>
+            <a-date-picker 
+              v-model:value="deliveryOrderForm.deliveryDate" 
+              style="width: 100%" 
+              placeholder="选择提货日期"
+            />
+          </a-form-item>
+          <a-form-item label="备注说明">
+            <a-textarea 
+              v-model:value="deliveryOrderForm.remark" 
+              :rows="3" 
+              placeholder="请输入备注说明（可选）"
+            />
+          </a-form-item>
+          <a-form-item label="上传提货单文件">
+            <a-upload
+              :file-list="deliveryOrderForm.fileList"
+              :max-count="1"
+              :before-upload="beforeDeliveryOrderUpload"
+              @remove="handleRemoveDeliveryOrderFile"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+            >
+              <a-button>
+                <template #icon><UploadOutlined /></template>
+                选择文件
+              </a-button>
+            </a-upload>
+            <div style="margin-top: 8px; color: #999; font-size: 12px;">
+              支持PDF、Word文档、图片格式，单个文件不超过10MB
+            </div>
+          </a-form-item>
+        </a-form>
+      </a-modal>
+      
+      <!-- 财务补充单证 -->
+      <a-card v-if="financeSupplement?.id || isFinanceUploadMode" :title="isFinanceUploadMode ? '财务补充单证 (可编辑)' : '财务补充单证 (已上传详情)'" size="small" class="section-card">
+        <template #extra v-if="isFinanceUploadMode">
+          <a-button type="primary" size="small" @click="handleSaveFinanceSupplement" :loading="submittingSupplement" v-permission="['business:declaration:financeSupplement']">保存内容</a-button>
+        </template>
+        <a-form layout="vertical" :model="financeSupplement">
+          <a-row :gutter="16">
+             <a-col :span="24" style="margin-bottom: 16px;">
+               <a-form-item label="币种" style="margin-bottom: 0;">
+                 <a-select v-model:value="financeSupplement.currency" :disabled="!isFinanceUploadMode" style="width: 200px">
+                   <a-select-option value="CNY">人民币 (CNY)</a-select-option>
+                   <a-select-option value="USD">美元 (USD)</a-select-option>
+                 </a-select>
+               </a-form-item>
+             </a-col>
+             
+             <!-- 货代发票 -->
+             <a-col :span="8">
+               <a-card title="货代发票" size="small">
+                 <a-form-item label="发票号">
+                   <a-input v-model:value="financeSupplement.freightInvoiceNo" :disabled="!isFinanceUploadMode" />
+                 </a-form-item>
+                 <a-form-item label="金额">
+                   <a-input-number v-model:value="financeSupplement.freightAmount" style="width: 100%" :disabled="!isFinanceUploadMode" />
+                 </a-form-item>
+                 <a-form-item label="附件">
+                   <div v-if="!isFinanceUploadMode && financeSupplement.freightFileName">
+                     <a :href="financeSupplement.freightFileUrl" target="_blank">{{ financeSupplement.freightFileName }}</a>
+                   </div>
+                   <a-upload
+                     v-else-if="isFinanceUploadMode"
+                     :max-count="1"
+                     :before-upload="(file) => beforeSupplementPhotoUpload(file, 'freight')"
+                     @remove="() => handleRemoveSupplementPhoto('freight')"
+                     :file-list="financeSupplement.freightFileList || (financeSupplement.freightFileName ? [{uid: '-1', name: financeSupplement.freightFileName, status: 'done', url: financeSupplement.freightFileUrl}] : [])"
+                   >
+                     <a-button><UploadOutlined /> {{ financeSupplement.freightFileName ? '替换附件' : '上传附件' }}</a-button>
+                   </a-upload>
+                   <span v-else style="color: #999">无附件</span>
+                 </a-form-item>
+               </a-card>
+             </a-col>
+
+             <!-- 报关发票 -->
+             <a-col :span="8">
+               <a-card title="报关发票" size="small">
+                 <a-form-item label="发票号">
+                   <a-input v-model:value="financeSupplement.customsInvoiceNo" :disabled="!isFinanceUploadMode" />
+                 </a-form-item>
+                 <a-form-item label="金额">
+                   <a-input-number v-model:value="financeSupplement.customsAmount" style="width: 100%" :disabled="!isFinanceUploadMode" />
+                 </a-form-item>
+                 <a-form-item label="附件">
+                   <div v-if="!isFinanceUploadMode && financeSupplement.customsFileName">
+                     <a :href="financeSupplement.customsFileUrl" target="_blank">{{ financeSupplement.customsFileName }}</a>
+                   </div>
+                   <a-upload
+                     v-else-if="isFinanceUploadMode"
+                     :max-count="1"
+                     :before-upload="(file) => beforeSupplementPhotoUpload(file, 'customs')"
+                     @remove="() => handleRemoveSupplementPhoto('customs')"
+                     :file-list="financeSupplement.customsFileList || (financeSupplement.customsFileName ? [{uid: '-2', name: financeSupplement.customsFileName, status: 'done', url: financeSupplement.customsFileUrl}] : [])"
+                   >
+                     <a-button><UploadOutlined /> {{ financeSupplement.customsFileName ? '替换附件' : '上传附件' }}</a-button>
+                   </a-upload>
+                   <span v-else style="color: #999">无附件</span>
+                 </a-form-item>
+               </a-card>
+             </a-col>
+
+             <!-- 海关回执 -->
+             <a-col :span="8">
+               <a-card title="海关回执" size="small">
+                 <a-form-item label="附件">
+                   <div v-if="!isFinanceUploadMode && financeSupplement.customsReceiptFileName">
+                     <a :href="financeSupplement.customsReceiptFileUrl" target="_blank">{{ financeSupplement.customsReceiptFileName }}</a>
+                   </div>
+                   <a-upload
+                     v-else-if="isFinanceUploadMode"
+                     :max-count="1"
+                     :before-upload="(file) => beforeSupplementPhotoUpload(file, 'customsReceipt')"
+                     @remove="() => handleRemoveSupplementPhoto('customsReceipt')"
+                     :file-list="financeSupplement.customsReceiptFileList || (financeSupplement.customsReceiptFileName ? [{uid: '-4', name: financeSupplement.customsReceiptFileName, status: 'done', url: financeSupplement.customsReceiptFileUrl}] : [])"
+                   >
+                     <a-button><UploadOutlined /> {{ financeSupplement.customsReceiptFileName ? '替换附件' : '上传附件' }}</a-button>
+                   </a-upload>
+                   <span v-else style="color: #999">无附件</span>
+                 </a-form-item>
+               </a-card>
+             </a-col>
+
+             <a-col :span="24" style="margin-top: 16px;"></a-col>
+
+             <!-- 退税与外汇 -->
+             <a-col :span="12">
+               <a-card title="外汇与退税明细" size="small">
+                 <a-row :gutter="16">
+                     <a-col :span="12">
+                         <a-form-item label="收汇总计(自动汇总)">
+                           <a-input-number :value="totalReceiptCNY" style="width: 100%" disabled />
+                           <div style="font-size: 12px; color: #888; margin-top: 4px;">已转成人民币(CNY)</div>
+                         </a-form-item>
+                     </a-col>
+                     <a-col :span="12">
+                         <a-form-item label="外汇银行">
+                           <template v-if="isFinanceUploadMode">
+                             <!-- 编辑模式：下拉选择 -->
+                             <a-select 
+                               v-model:value="financeSupplement.foreignExchangeBank" 
+                               style="width: 100%" 
+                               :disabled="!isFinanceUploadMode"
+                               :loading="loadingBankAccounts"
+                               @change="handleBankAccountChange"
+                               placeholder="请选择银行账户"
+                               allowClear
+                             >
+                               <a-select-option 
+                                 v-for="bank in bankAccountList" 
+                                 :key="bank.id" 
+                                 :value="bank.id"
+                               >
+                                 {{ bank.accountName }} - {{ bank.bankName }} ({{ bank.currency }})
+                               </a-select-option>
+                             </a-select>
+                           </template>
+                           <template v-else>
+                             <!-- 查看模式：只读文本 -->
+                             <a-input 
+                               :value="financeSupplement.foreignExchangeBank || '未设置'" 
+                               style="width: 100%" 
+                               disabled 
+                             />
+                           </template>
+                         </a-form-item>
+                     </a-col>
+                     <a-col :span="12">
+                         <a-form-item label="外汇银行手续费率(%)">
+                           <a-input-number v-model:value="financeSupplement.bankFeeRate" style="width: 100%" :disabled="!isFinanceUploadMode" />
+                         </a-form-item>
+                     </a-col>
+                     <a-col :span="12">
+                         <a-form-item label="退税点(%)">
+                           <a-input-number v-model:value="financeSupplement.taxRefundRate" style="width: 100%" :disabled="!isFinanceUploadMode" />
+                         </a-form-item>
+                     </a-col>
+                     <a-col :span="12">
+                         <a-form-item label="银行手续费金额">
+                           <a-input-number :value="bankFeeAmount" style="width: 100%" disabled />
+                           <div style="font-size: 12px; color: #888; margin-top: 4px;">收汇总计 × 手续费率</div>
+                         </a-form-item>
+                     </a-col>
+                     <a-col :span="12">
+                         <a-form-item label="退税金额">
+                           <a-input-number :value="taxRefundAmount" style="width: 100%" disabled />
+                           <div style="font-size: 12px; color: #888; margin-top: 4px;">收汇总计 × 退税点%</div>
+                         </a-form-item>
+                     </a-col>
+                 </a-row>
+               </a-card>
+             </a-col>
+
+             <!-- 开票明细 -->
+             <a-col :span="12">
+               <a-card title="开票明细(生成部分)" size="small">
+                 <a-form-item label="金额(收汇*汇率*(1+退税%) - 货代 - 报关 -手续费扣款)">
+                   <a-input-number v-model:value="computedDetailsAmount" style="width: 100%" disabled />
+                 </a-form-item>
+                 <a-form-item label="操作">
+                   <a-space style="margin-bottom: 8px;" v-if="isFinanceUploadMode">
+                     <a-button type="primary" size="small" @click="handleGenerateFinanceDetails" :loading="generatingDetails" v-permission="['business:declaration:financeSupplement']">生成开票明细单</a-button>
+                   </a-space>
+                   <br/>
+                   <div v-if="!isFinanceUploadMode && financeSupplement.detailsFileName">
+                     <a :href="financeSupplement.detailsFileUrl" target="_blank">{{ financeSupplement.detailsFileName }}</a>
+                   </div>
+                   <a-upload
+                     v-else-if="isFinanceUploadMode"
+                     :max-count="1"
+                     :before-upload="(file) => beforeSupplementPhotoUpload(file, 'details')"
+                     @remove="() => handleRemoveSupplementPhoto('details')"
+                     :file-list="financeSupplement.detailsFileList || (financeSupplement.detailsFileName ? [{uid: '-3', name: financeSupplement.detailsFileName, status: 'done', url: financeSupplement.detailsFileUrl}] : [])"
+                   >
+                     <a-button><UploadOutlined /> {{ financeSupplement.detailsFileName ? '手动替换附件' : '手动上传附件' }}</a-button>
+                   </a-upload>
+                   <span v-else style="color: #999">无附件</span>
+                 </a-form-item>
+               </a-card>
+             </a-col>
+          </a-row>
+          
+          <!-- 财务汇总信息 -->
+          <a-row :gutter="16" style="margin-top: 16px;" v-if="!isFinanceUploadMode">
+            <a-col :span="24">
+              <a-card title="财务汇总信息" size="small" style="background-color: #f8f9fa;">
+                <a-row :gutter="16">
+                  <a-col :span="6">
+                    <div style="text-align: center; padding: 8px;">
+                      <div style="font-size: 12px; color: #666;">收汇总计</div>
+                      <div style="font-size: 16px; font-weight: bold; color: #1890ff;">{{ totalReceiptCNY.toFixed(2) }} CNY</div>
+                      <div style="font-size: 10px; color: #999;">已转成人民币</div>
+                    </div>
+                  </a-col>
+                  <a-col :span="6">
+                    <div style="text-align: center; padding: 8px;">
+                      <div style="font-size: 12px; color: #666;">银行手续费</div>
+                      <div style="font-size: 16px; font-weight: bold; color: #ff4d4f;">{{ bankFeeAmount.toFixed(2) }} CNY</div>
+                      <div style="font-size: 10px; color: #999;">{{ financeSupplement.bankFeeRate || 0 }}%</div>
+                    </div>
+                  </a-col>
+                  <a-col :span="6">
+                    <div style="text-align: center; padding: 8px;">
+                      <div style="font-size: 12px; color: #666;">退税金额</div>
+                      <div style="font-size: 16px; font-weight: bold; color: #52c41a;">{{ taxRefundAmount.toFixed(2) }} CNY</div>
+                      <div style="font-size: 10px; color: #999;">{{ financeSupplement.taxRefundRate || 0 }}%</div>
+                    </div>
+                  </a-col>
+                  <a-col :span="6">
+                    <div style="text-align: center; padding: 8px;">
+                      <div style="font-size: 12px; color: #666;">开票金额</div>
+                      <div style="font-size: 16px; font-weight: bold; color: #722ed1;">{{ computedDetailsAmount.toFixed(2) }} CNY</div>
+                      <div style="font-size: 10px; color: #999;">最终计算结果</div>
+                    </div>
+                  </a-col>
+                </a-row>
+              </a-card>
+            </a-col>
+          </a-row>
+          
+          <!-- 计算详情展示 -->
+          <a-row :gutter="16" style="margin-top: 16px;" v-if="!isFinanceUploadMode && financeSupplement.calculationDetail">
+            <a-col :span="24">
+              <a-card title="计算详情" size="small">
+                <div class="calculation-box">
+                  <!-- 解析计算详情JSON -->
+                  <template v-if="parsedCalculationDetail">
+                    <!-- 定金明细 -->
+                    <div class="calc-section" v-if="parsedCalculationDetail.depositDetails && parsedCalculationDetail.depositDetails.length > 0">
+                      <div class="calc-title" style="color: #1890ff;">定金收汇明细</div>
+                      <div class="calc-row" v-for="(item, index) in parsedCalculationDetail.depositDetails" :key="index">
+                        <span class="calc-label">{{ item.remittanceName || '定金' }}:</span>
+                        <span class="calc-value">{{ formatMoney(item.amount) }} {{ item.currency || 'USD' }} × {{ item.exchangeRate }} = {{ formatMoney(item.cny) }} CNY</span>
+                      </div>
+                      <div class="calc-row total">
+                        <span class="calc-label">定金合计:</span>
+                        <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.depositCny) }} CNY</span>
+                      </div>
+                    </div>
+                    
+                    <a-divider v-if="parsedCalculationDetail.depositDetails && parsedCalculationDetail.depositDetails.length > 0" />
+                    
+                    <!-- 尾款明细 -->
+                    <div class="calc-section" v-if="parsedCalculationDetail.balanceDetails && parsedCalculationDetail.balanceDetails.length > 0">
+                      <div class="calc-title" style="color: #fa8c16;">尾款收汇明细</div>
+                      <div class="calc-row" v-for="(item, index) in parsedCalculationDetail.balanceDetails" :key="index">
+                        <span class="calc-label">{{ item.remittanceName || '尾款' }}:</span>
+                        <span class="calc-value">{{ formatMoney(item.amount) }} {{ item.currency || 'USD' }} × {{ item.exchangeRate }} = {{ formatMoney(item.cny) }} CNY</span>
+                      </div>
+                      <div class="calc-row total">
+                        <span class="calc-label">尾款合计:</span>
+                        <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.balanceCny) }} CNY</span>
+                      </div>
+                    </div>
+                    
+                    <a-divider v-if="(parsedCalculationDetail.depositDetails && parsedCalculationDetail.depositDetails.length > 0) || (parsedCalculationDetail.balanceDetails && parsedCalculationDetail.balanceDetails.length > 0)" />
+                    
+                    <!-- 总货物金额 -->
+                    <div class="calc-section" v-if="parsedCalculationDetail.totalGoodsAmount">
+                      <div class="calc-title">汇总</div>
+                      <div class="calc-row">
+                        <span class="calc-label">总货物金额:</span>
+                        <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
+                      </div>
+                    </div>
+                    
+                    <a-divider v-if="parsedCalculationDetail.totalGoodsAmount" />
+                    
+                    <!-- 开票金额计算 -->
+                    <div class="calc-section" v-if="parsedCalculationDetail.totalGoodsAmount">
+                      <div class="calc-title">开票金额计算</div>
+                      <div class="calc-row">
+                        <span class="calc-label">货款金额:</span>
+                        <span class="calc-value">{{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
+                      </div>
+                      <div class="calc-row" v-if="parsedCalculationDetail.taxRefundRate">
+                        <span class="calc-label">退税金额 ({{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} × {{ parsedCalculationDetail.taxRefundRate }}%):</span>
+                        <span class="calc-value" style="color: #52c41a;">+{{ formatMoney(getTaxRefundAmount()) }} CNY</span>
+                      </div>
+                      <div class="calc-row total-with-tax" v-if="parsedCalculationDetail.amountWithTaxRefund">
+                        <span class="calc-label">含税总金额:</span>
+                        <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.amountWithTaxRefund) }} CNY</span>
+                      </div>
+                      <div class="calc-row deduct" v-if="parsedCalculationDetail.freightInvoiceAmount">
+                        <span class="calc-label">- 货代发票金额:</span>
+                        <span class="calc-value">{{ formatMoney(parsedCalculationDetail.freightInvoiceAmount) }} CNY</span>
+                      </div>
+                      <div class="calc-row deduct" v-if="parsedCalculationDetail.customsInvoiceAmount">
+                        <span class="calc-label">- 海关代理发票金额:</span>
+                        <span class="calc-value">{{ formatMoney(parsedCalculationDetail.customsInvoiceAmount) }} CNY</span>
+                      </div>
+                      <div class="calc-row deduct" v-if="parsedCalculationDetail.bankFeeAmount">
+                        <span class="calc-label">- 银行手续费:</span>
+                        <span class="calc-value">{{ formatMoney(parsedCalculationDetail.bankFeeAmount) }} CNY</span>
+                      </div>
+                    </div>
+                    
+                    <a-divider v-if="parsedCalculationDetail.totalGoodsAmount" />
+                    
+                    <!-- 最终结果 -->
+                    <div class="calc-section">
+                      <div class="calc-row final">
+                        <span class="calc-label">开票金额:</span>
+                        <span class="calc-value final-value">{{ formatMoney(parsedCalculationDetail.invoiceAmount) }} CNY</span>
+                      </div>
+                      <div class="calc-row" v-if="financeSupplement.taxRefundAmount">
+                        <span class="calc-label">退税金额:</span>
+                        <span class="calc-value" style="color: #52c41a;">+{{ formatMoney(financeSupplement.taxRefundAmount) }} CNY</span>
+                      </div>
+                      <div class="calc-row" v-if="parsedCalculationDetail.foreignExchangeBank">
+                        <span class="calc-label">外汇银行:</span>
+                        <span class="calc-value">{{ parsedCalculationDetail.foreignExchangeBank }}</span>
+                      </div>
+                    </div>
+                  </template>
+                  <div v-else style="text-align: center; color: #999; padding: 40px 0;">
+                    <p>暂无计算详情数据</p>
+                  </div>
+                </div>
+              </a-card>
+            </a-col>
+          </a-row>
+        </a-form>
+      </a-card>
+
     </a-card>
   </div>
 </template>
@@ -707,8 +1226,9 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
-import { PlusOutlined, UploadOutlined, CameraOutlined } from '@ant-design/icons-vue'
+import { message, Modal } from 'ant-design-vue'
+import type { SelectValue } from 'ant-design-vue/lib/select';
+import { PlusOutlined, UploadOutlined, CameraOutlined, DownloadOutlined } from '@ant-design/icons-vue'
 import dayjs, { Dayjs } from 'dayjs'
 import {
   getDeclarationDetail, 
@@ -720,16 +1240,24 @@ import {
   submitDeclaration,
   submitForAudit,
   auditDeclaration,
+  getActiveTasks,
   saveRemittance,
   updateRemittance,
   deleteRemittance,
   getPickupAttachments,
-  savePickupAttachment,
-  deleteAttachment
+  getFinancialSupplement,
+  createFinancialSupplement,
+  updateFinancialSupplement,
+  saveDeliveryOrder,
+  getDeliveryOrders,
+  updateDeliveryOrder,
+  deleteDeliveryOrder,
+  getEnabledBankAccounts
 } from '@/api/business/declaration'
 import { getProductTypes } from '@/api/system/product'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
 import { getEnabledCountries } from '@/api/system'
+import { getEnabledCurrencies } from '@/api/system/currency'
 
 // 文件预览 URL 生成函数
 const FILE_DOWNLOAD_URL = '/api/v1/files/download'
@@ -740,29 +1268,285 @@ const router = useRouter()
 
 // 页面状态
 const isAudit = ref(route.query.mode === 'audit')
+const isFinanceUploadMode = ref(route.query.mode === 'financeUpload') // 财务补充模式
 const isPaymentMode = ref(route.query.mode === 'payment') // 水单提交模式
+const isPickupMode = ref(route.query.type === 'pickup') // 提货单模式（从mode=payment&type=pickup进入）
+const isPaymentOnlyMode = computed(() => isPaymentMode.value && !isPickupMode.value) // 纯水单模式（隐藏提货单区域）
 const isReadonly = ref(route.query.readonly === 'true' || isAudit.value)
 const formId = ref(route.query.id ? Number(route.query.id) : null)
 const formStatus = ref<number | null>(route.query.status ? Number(route.query.status) : null)
 const submitting = ref(false)
 
-// 基本信息是否只读（审核模式、查看模式、水单提交模式都只读）
-const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value)
+// 活跃任务状态（用于任务驱动的UI判断）
+const activeTasks = ref<any[]>([])
+const activeTaskKeys = computed(() => activeTasks.value.map((t: any) => t.taskKey))
 
-// 定金水单是否可编辑（付定金时可编辑，付尾款时只读）
-const isDepositEditable = computed(() => !isReadonly.value && !isAudit.value && formStatus.value === 2)
+// 基本信息是否只读（审核模式、查看模式、水单提交模式、财务补充模式都只读）
+const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value || isFinanceUploadMode.value)
 
-// 尾款水单是否可编辑（付尾款时可编辑）
-const isBalanceEditable = computed(() => !isReadonly.value && !isAudit.value && formStatus.value === 4)
+// 定金水单是否可编辑（付定金时可编辑，付尾款时只读，财务模式不可编辑，水单提交模式下根据type判断，提货单模式下只读）
+const isDepositEditable = computed(() => 
+  !isReadonly.value && 
+  !isAudit.value && 
+  !isFinanceUploadMode.value && 
+  formStatus.value === 2 && 
+  !(isPaymentMode.value && route.query.type === 'balance') && // 尾款水单提交模式下定金水单只读
+  !isPickupMode.value // 提货单模式下定金水单只读
+)
+
+// 尾款水单是否可编辑（status=4时可编辑，财务模式不可编辑，提货单模式下只读）
+const isBalanceEditable = computed(() => 
+  !isReadonly.value && 
+  !isAudit.value && 
+  !isFinanceUploadMode.value && 
+  formStatus.value === 4 &&
+  !isPickupMode.value // 提货单模式下尾款水单只读
+)
 
 // 获取当前审核阶段文本
 const getAuditActionText = () => {
+  // 优先从 URL 参数获取 taskKey
+  const taskKey = route.query.taskKey as string
+  if (taskKey) {
+    const map: Record<string, string> = {
+      deptAudit: '初审',
+      depositAudit: '定金审核',
+      balanceAudit: '尾款审核',
+      pickupListAudit: '提货单审核'
+    }
+    return map[taskKey] || '审批'
+  }
+  // 兼容: 如果没有 taskKey 参数，从活跃任务中推断
   if (formStatus.value === 1) return '初审'
-  if (formStatus.value === 3) return '定金审核'
-  if (formStatus.value === 5) return '尾款审核'
-  if (formStatus.value === 7) return '提货单审核'
+  if (activeTaskKeys.value.includes('depositAudit')) return '定金审核'
+  if (activeTaskKeys.value.includes('balanceAudit')) return '尾款审核'
+  if (activeTaskKeys.value.includes('pickupListAudit')) return '提货单审核'
   return '审批'
 }
+
+// 财务补充模式逻辑
+const financeSupplement = ref<any>({
+  id: null,
+  freightAmount: null,
+  freightInvoiceNo: '',
+  freightFileName: '',
+  freightFileUrl: '',
+  customsAmount: null,
+  customsInvoiceNo: '',
+  customsFileName: '',
+  customsFileUrl: '',
+  taxRefundAmount: null,
+  detailsAmount: null,
+  detailsInvoiceNo: '',
+  detailsFileName: '',
+  detailsFileUrl: '',
+  currency: 'CNY',
+  // 银行账户相关字段
+  foreignExchangeBank: '', // 外汇银行名称（对应下拉框选择的银行账户ID）
+  bankFeeRate: null, // 银行手续费率
+  taxRefundRate: null, // 退税点
+  selectedBankAccount: null // 选中的银行账户对象
+})
+
+const submittingSupplement = ref(false)
+
+// 银行账户相关数据
+const bankAccountList = ref<any[]>([])
+const loadingBankAccounts = ref(false)
+
+// 加载启用的银行账户列表
+const loadBankAccounts = async (currency?: string) => {
+  loadingBankAccounts.value = true
+  try {
+    const res = await getEnabledBankAccounts(currency)
+    if (res.data?.code === 200) {
+      bankAccountList.value = res.data.data || []
+      console.log('加载银行账户列表成功:', bankAccountList.value.length + ' 条记录')
+    } else {
+      console.error('加载银行账户列表失败:', res.data?.message)
+      bankAccountList.value = []
+    }
+  } catch (error) {
+    console.error('加载银行账户列表异常:', error)
+    bankAccountList.value = []
+  } finally {
+    loadingBankAccounts.value = false
+  }
+}
+
+// 监听财务补充模式变化
+watch(isFinanceUploadMode, (newVal) => {
+  if (newVal) {
+    // 进入财务补充模式时加载银行账户
+    loadBankAccounts(financeSupplement.value.currency)
+  }
+})
+
+// 监听币种变化，重新加载对应的银行账户
+watch(() => financeSupplement.value.currency, (newCurrency) => {
+  if (isFinanceUploadMode.value) {
+    loadBankAccounts(newCurrency)
+  }
+})
+
+// 银行账户选择变化处理
+const handleBankAccountChange = (value: SelectValue) => {
+  console.log('银行账户选择变化:', value)
+  console.log('银行账户列表:', bankAccountList.value)
+  
+  if (!value) {
+    financeSupplement.value.selectedBankAccount = null
+    financeSupplement.value.foreignExchangeBank = '' // 清空绑定值
+    return
+  }
+  
+  const bankAccountId = typeof value === 'string' || typeof value === 'number' ? value : (value as any)?.value
+  const selectedBank = bankAccountList.value.find(bank => bank.id === Number(bankAccountId))
+  console.log('找到的银行:', selectedBank)
+  
+  if (selectedBank) {
+    financeSupplement.value.selectedBankAccount = selectedBank
+    // 正确设置银行ID和名称
+    financeSupplement.value.foreignExchangeBank = selectedBank.id // 存储银行ID
+    // 自动填充银行手续费率（如果银行账户配置中有）
+    console.log('银行手续费率:', selectedBank.serviceFeeRate, '类型:', typeof selectedBank.serviceFeeRate)
+    if (selectedBank.serviceFeeRate !== undefined && selectedBank.serviceFeeRate !== null) {
+      financeSupplement.value.bankFeeRate = selectedBank.serviceFeeRate * 100 // 转换为百分比显示
+      console.log('设置手续费率:', selectedBank.serviceFeeRate * 100)
+    } else {
+      console.log('银行手续费率为undefined或null')
+    }
+  } else {
+    financeSupplement.value.selectedBankAccount = null
+    console.log('未找到对应银行')
+  }
+}
+
+const loadFinancialSupplement = async () => {
+  if (!formId.value) return
+  try {
+    console.log('加载财务补充记录, formId:', formId.value)
+    const res = await getFinancialSupplement(formId.value)
+    console.log('财务补充记录响应:', res)
+    if (res.data && res.data.code === 200 && res.data.data) {
+      Object.assign(financeSupplement.value, res.data.data)
+      console.log('财务补充数据加载成功:', financeSupplement.value)
+      
+      // 如果有银行ID，尝试转换为银行名称显示
+      if (financeSupplement.value.foreignExchangeBank && bankAccountList.value.length > 0) {
+        const bank = bankAccountList.value.find(b => b.id === Number(financeSupplement.value.foreignExchangeBank))
+        if (bank) {
+          console.log('找到银行信息:', bank)
+          // 在查看模式下显示银行名称，在编辑模式下保持ID用于下拉框
+          if (!isFinanceUploadMode.value) {
+            financeSupplement.value.foreignExchangeBank = bank.accountName
+          }
+        } else {
+          console.log('未找到对应银行，银行ID:', financeSupplement.value.foreignExchangeBank)
+        }
+      }
+      
+      financeSupplement.value.freightFileList = financeSupplement.value.freightFileName ? [{uid: '-1', name: financeSupplement.value.freightFileName, status: 'done', url: financeSupplement.value.freightFileUrl}] : []
+      financeSupplement.value.customsFileList = financeSupplement.value.customsFileName ? [{uid: '-2', name: financeSupplement.value.customsFileName, status: 'done', url: financeSupplement.value.customsFileUrl}] : []
+      financeSupplement.value.detailsFileList = financeSupplement.value.detailsFileName ? [{uid: '-3', name: financeSupplement.value.detailsFileName, status: 'done', url: financeSupplement.value.detailsFileUrl}] : []
+      financeSupplement.value.customsReceiptFileList = financeSupplement.value.customsReceiptFileName ? [{uid: '-4', name: financeSupplement.value.customsReceiptFileName, status: 'done', url: financeSupplement.value.customsReceiptFileUrl}] : []
+    } else {
+      console.log('未找到财务补充记录，可能需要初始化')
+      // 如果没有找到记录，在财务补充模式下可以提示用户
+      if (isFinanceUploadMode.value) {
+        message.info('财务补充记录正在初始化中，请稍后重试')
+      }
+    }
+  } catch (error) {
+    console.error('获取财务补充记录失败', error)
+    message.error('加载财务补充记录失败')
+  }
+}
+
+const handleSaveFinanceSupplement = async () => {
+  if (!formId.value) return
+  
+  submittingSupplement.value = true
+  try {
+    // 确保设置formId
+    financeSupplement.value.formId = formId.value
+    
+    if (financeSupplement.value.id) {
+      // 更新现有记录
+      await updateFinancialSupplement(financeSupplement.value.id, financeSupplement.value)
+      message.success('财务补充单证更新成功')
+    } else {
+      // 创建新记录
+      console.log('创建新的财务补充记录:', financeSupplement.value)
+      const res = await createFinancialSupplement(financeSupplement.value)
+      if (res.data && res.data.code === 200 && res.data.data) {
+        // 更新本地数据的ID
+        financeSupplement.value.id = res.data.data.id
+        message.success('财务补充单证创建成功')
+      } else {
+        throw new Error('创建失败')
+      }
+    }
+  } catch (error) {
+    console.error('财务补充保存失败:', error)
+    message.error('保存失败: ' + (error as Error).message)
+  } finally {
+    submittingSupplement.value = false
+  }
+}
+
+const beforeSupplementPhotoUpload = async (file: any, type: 'freight' | 'customs' | 'details' | 'customsReceipt') => {
+  try {
+    const res = await uploadFile(file, 'finance_supplement')
+    if (res.data && res.data.code === 200) {
+      const attachment = res.data.data
+      const fileUrl = getFilePreviewUrl(attachment.id)
+      
+      if (type === 'freight') {
+        financeSupplement.value.freightFileUrl = fileUrl
+        financeSupplement.value.freightFileName = file.name
+        financeSupplement.value.freightFileList = [{uid: String(attachment.id), name: file.name, status: 'done', url: fileUrl}]
+      } else if (type === 'customs') {
+        financeSupplement.value.customsFileUrl = fileUrl
+        financeSupplement.value.customsFileName = file.name
+        financeSupplement.value.customsFileList = [{uid: String(attachment.id), name: file.name, status: 'done', url: fileUrl}]
+      } else if (type === 'customsReceipt') {
+        financeSupplement.value.customsReceiptFileUrl = fileUrl
+        financeSupplement.value.customsReceiptFileName = file.name
+        financeSupplement.value.customsReceiptFileList = [{uid: String(attachment.id), name: file.name, status: 'done', url: fileUrl}]
+      } else if (type === 'details') {
+        financeSupplement.value.detailsFileUrl = fileUrl
+        financeSupplement.value.detailsFileName = file.name
+        financeSupplement.value.detailsFileList = [{uid: String(attachment.id), name: file.name, status: 'done', url: fileUrl}]
+      }
+      message.success('附件上传成功')
+    }
+  } catch (error) {
+    message.error('附件上传失败')
+  }
+  return false
+}
+
+const handleRemoveSupplementPhoto = (type: 'freight' | 'customs' | 'details' | 'customsReceipt') => {
+  if (type === 'freight') {
+    financeSupplement.value.freightFileUrl = ''
+    financeSupplement.value.freightFileName = ''
+    financeSupplement.value.freightFileList = []
+  } else if (type === 'customs') {
+    financeSupplement.value.customsFileUrl = ''
+    financeSupplement.value.customsFileName = ''
+    financeSupplement.value.customsFileList = []
+  } else if (type === 'customsReceipt') {
+    financeSupplement.value.customsReceiptFileUrl = ''
+    financeSupplement.value.customsReceiptFileName = ''
+    financeSupplement.value.customsReceiptFileList = []
+  } else if (type === 'details') {
+    financeSupplement.value.detailsFileUrl = ''
+    financeSupplement.value.detailsFileName = ''
+    financeSupplement.value.detailsFileList = []
+  }
+}
+
 
 // 提交审核（定金/尾款/提货单）
 const handleSubmitAudit = async (type: 'deposit' | 'balance' | 'pickup') => {
@@ -790,13 +1574,18 @@ const handleApprove = async () => {
   if (!formId.value) return
   submitting.value = true
   try {
-    await auditDeclaration(formId.value, 1) // 1 是通过
+    const taskKey = route.query.taskKey as string
+    console.log('执行审核通过操作:', { formId: formId.value, taskKey, result: 1 })
+    await auditDeclaration(formId.value, 1, '', taskKey)
     message.success(`${getAuditActionText()}已通过`)
     if (formStatus.value === 1) {
       message.info('全套单证已自动生成')
     }
+    // 刷新页面状态
+    await loadData()
     goBack()
   } catch (error) {
+    console.error('审核操作失败:', error)
     message.error('审批操作失败')
   } finally {
     submitting.value = false
@@ -808,10 +1597,15 @@ const handleReject = async () => {
   if (!formId.value) return
   submitting.value = true
   try {
-    await auditDeclaration(formId.value, 2) // 2 是驳回
+    const taskKey = route.query.taskKey as string
+    console.log('执行驳回操作:', { formId: formId.value, taskKey, result: 2 })
+    await auditDeclaration(formId.value, 2, '', taskKey)
     message.success(`${getAuditActionText()}已驳回`)
+    // 驳回后刷新状态并返回列表
+    await loadData()
     goBack()
   } catch (error) {
+    console.error('驳回操作失败:', error)
     message.error('审批操作失败')
   } finally {
     submitting.value = false
@@ -925,21 +1719,306 @@ const depositRemittanceList = computed(() =>
   remittanceList.value.filter(r => r.remittanceType === 1)
 )
 
+// // 定金水单是否有已审核通过的记录（用于控制尾款水单区域显示）
+// const depositApproved = computed(() => depositRemittanceList.value.some(r => r.auditStatus === 1))
+
+// 尾款水单是否有已审核通过的记录（用于控制提货单区域显示）
+const balanceApproved = computed(() => balanceRemittanceList.value.some(r => r.auditStatus === 1))
+
 // 尾款水单列表
 const balanceRemittanceList = computed(() => 
   remittanceList.value.filter(r => r.remittanceType === 2)
 )
 
+const totalReceiptCNY = computed(() => {
+  let total = 0
+  remittanceList.value.forEach(r => total += (r.remittanceAmount || 0) * (r.exchangeRate || 1))
+  return Number(total.toFixed(2))
+})
+
+// 银行手续费金额计算
+const bankFeeAmount = computed(() => {
+  const receipt = totalReceiptCNY.value
+  const feeRate = financeSupplement.value.bankFeeRate || 0
+  return Number((receipt * (feeRate / 100)).toFixed(2))
+})
+
+// 退税金额计算
+const taxRefundAmount = computed(() => {
+  const receipt = totalReceiptCNY.value
+  const taxRate = financeSupplement.value.taxRefundRate || 0
+  return Number((receipt * (taxRate / 100)).toFixed(2))
+})
+
+
+import { watch } from 'vue'
+
+const computedDetailsAmount = computed(() => {
+  const receipt = totalReceiptCNY.value
+  const taxRate = financeSupplement.value.taxRefundRate || 0
+  const freight = financeSupplement.value.freightAmount || 0
+  const customs = financeSupplement.value.customsAmount || 0
+  const feeRate = financeSupplement.value.bankFeeRate || 0
+  
+  // 开票金额 = 总金额 * (1 + 退税点%) - 货代 - 报关 - 总金额 * 外汇银行手续费率%
+  const bankFee = receipt * (feeRate / 100)
+  return Number((receipt * (1 + taxRate / 100) - freight - customs - bankFee).toFixed(2))
+})
+
+watch(computedDetailsAmount, (newVal) => {
+  financeSupplement.value.detailsAmount = newVal
+}, { immediate: true })
+
+import { exportFinanceCalculation } from '@/api/business/declaration'
+import { getCitiesByCountry } from '@/api/system/city-info'
+
+const generatingDetails = ref(false)
+const handleGenerateFinanceDetails = async () => {
+  if (!formId.value) return
+  generatingDetails.value = true
+  try {
+    // 确保最新数据已经保存
+    await handleSaveFinanceSupplement()
+    
+    // 调用后端生成接口
+    const res = await exportFinanceCalculation(formId.value) as any
+    // 处理下载
+    const blob = new Blob([res.data || res], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `开票明细单_${financeSupplement.value.detailsInvoiceNo || formId.value}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    message.success('明细单下载成功')
+  } catch (err) {
+    message.error('生成明细单失败')
+  } finally {
+    generatingDetails.value = false
+  }
+}
+
+// 格式化金额显示
+const formatMoney = (amount: number | undefined) => {
+  if (amount === undefined || amount === null) return '0.00'
+  return amount.toFixed(2)
+}
+
+// 解析计算详情JSON
+const parsedCalculationDetail = computed(() => {
+  if (!financeSupplement.value.calculationDetail) return null
+  try {
+    return JSON.parse(financeSupplement.value.calculationDetail)
+  } catch (e) {
+    console.error('解析计算详情JSON失败:', e)
+    return null
+  }
+})
+
+// 计算退税金额
+const getTaxRefundAmount = () => {
+  if (!parsedCalculationDetail.value) return 0
+  const goodsAmount = parsedCalculationDetail.value.totalGoodsAmount || 0
+  const taxRate = parsedCalculationDetail.value.taxRefundRate || 0
+  return goodsAmount * (taxRate / 100)
+}
+
+
 // 提货单附件列表
 const pickupAttachments = ref<any[]>([])
 
-// 提货单表格列配置
-const pickupColumns = [
-  { title: '文件名', key: 'fileName', dataIndex: 'fileName' },
-  { title: '类型', key: 'fileType', width: 100 },
-  { title: '上传时间', key: 'createTime', width: 180 },
-  { title: '操作', key: 'action', width: 120 }
+// ========== 提货单相关 ==========
+const deliveryOrderList = ref<any[]>([])
+const loadingDeliveryOrders = ref(false)
+const deliveryOrderModalVisible = ref(false)
+const editingDeliveryOrder = ref<any>(null)
+const savingDeliveryOrder = ref(false)
+
+const deliveryOrderForm = reactive({
+  deliveryDate: undefined as Dayjs | undefined,
+  remark: '',
+  fileUrl: '',
+  fileName: '',
+  fileList: [] as any[]
+})
+
+// 提货单列表表格列配置
+const deliveryOrderColumns = [
+  { title: '提货日期', key: 'deliveryDate', width: 120 },
+  { title: '备注说明', dataIndex: 'remark', key: 'remark' },
+  { title: '附件', key: 'fileName', width: 120 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 },
+  { title: '操作', key: 'action', width: 180 }
 ]
+
+// 获取提货单状态颜色
+const getDeliveryOrderStatusColor = (status: number) => {
+  const colorMap: Record<number, string> = {
+    0: 'orange',    // 待审核
+    1: 'green',     // 已通过
+    2: 'red'        // 已驳回
+  }
+  return colorMap[status] || 'default'
+}
+
+// 获取提货单状态文本
+const getDeliveryOrderStatusText = (status: number) => {
+  const textMap: Record<number, string> = {
+    0: '待审核',
+    1: '已通过',
+    2: '已驳回'
+  }
+  return textMap[status] || '未知'
+}
+
+// 加载提货单列表
+const loadDeliveryOrders = async () => {
+  if (!formId.value) return
+  loadingDeliveryOrders.value = true
+  try {
+    const res = await getDeliveryOrders(formId.value)
+    if (res.data && res.data.code === 200) {
+      // 增加数组安全性检查
+      deliveryOrderList.value = Array.isArray(res.data.data) ? res.data.data : []
+    }
+  } catch (error) {
+    console.warn('加载提货单列表失败:', error)
+    deliveryOrderList.value = []
+  } finally {
+    loadingDeliveryOrders.value = false
+  }
+}
+
+// 显示新增/编辑提货单弹窗
+const showDeliveryOrderModal = (record?: any) => {
+  if (record) {
+    editingDeliveryOrder.value = record
+    deliveryOrderForm.deliveryDate = record.deliveryDate ? dayjs(record.deliveryDate) : undefined
+    deliveryOrderForm.remark = record.remark || ''
+    deliveryOrderForm.fileUrl = record.fileUrl || ''
+    deliveryOrderForm.fileName = record.fileName || ''
+    deliveryOrderForm.fileList = record.fileUrl ? [{
+      uid: '-1',
+      name: record.fileName || '附件',
+      status: 'done',
+      url: record.fileUrl
+    }] : []
+  } else {
+    editingDeliveryOrder.value = null
+    deliveryOrderForm.deliveryDate = dayjs()
+    deliveryOrderForm.remark = ''
+    deliveryOrderForm.fileUrl = ''
+    deliveryOrderForm.fileName = ''
+    deliveryOrderForm.fileList = []
+  }
+  deliveryOrderModalVisible.value = true
+}
+
+// 提货单文件上传前处理
+const beforeDeliveryOrderUpload = async (file: any) => {
+  const isLt10M = file.size / 1024 / 1024 < 10
+  if (!isLt10M) {
+    message.error('文件大小不能超过10MB!')
+    return false
+  }
+  
+  try {
+    const res = await uploadFile(file, 'DeliveryOrder')
+    if (res.data && res.data.code === 200) {
+      const attachment = res.data.data
+      deliveryOrderForm.fileUrl = attachment.fileUrl || getFilePreviewUrl(attachment.id)
+      deliveryOrderForm.fileName = file.name
+      deliveryOrderForm.fileList = [{
+        uid: String(attachment.id),
+        name: file.name,
+        status: 'done',
+        url: deliveryOrderForm.fileUrl
+      }]
+      message.success('文件上传成功')
+    } else {
+      message.error('文件上传失败')
+    }
+  } catch (error) {
+    message.error('文件上传失败')
+  }
+  return false
+}
+
+// 移除提货单文件
+const handleRemoveDeliveryOrderFile = () => {
+  deliveryOrderForm.fileUrl = ''
+  deliveryOrderForm.fileName = ''
+  deliveryOrderForm.fileList = []
+}
+
+// 保存提货单
+const handleSaveDeliveryOrder = async () => {
+  if (!formId.value) return
+  if (!deliveryOrderForm.deliveryDate) {
+    message.warning('请选择提货日期')
+    return
+  }
+  
+  savingDeliveryOrder.value = true
+  try {
+    const data = {
+      deliveryDate: deliveryOrderForm.deliveryDate.format('YYYY-MM-DD'),
+      remark: deliveryOrderForm.remark,
+      fileUrl: deliveryOrderForm.fileUrl,
+      fileName: deliveryOrderForm.fileName
+    }
+    
+    if (editingDeliveryOrder.value && editingDeliveryOrder.value.id) {
+      // 更新 - 确保 id 存在
+      await updateDeliveryOrder(editingDeliveryOrder.value.id, data)
+      message.success('提货单更新成功')
+    } else {
+      // 新增
+      await saveDeliveryOrder(formId.value, data)
+      message.success('提货单添加成功')
+    }
+    
+    deliveryOrderModalVisible.value = false
+    await loadDeliveryOrders()
+  } catch (error) {
+    message.error('保存提货单失败')
+  } finally {
+    savingDeliveryOrder.value = false
+  }
+}
+
+// 编辑提货单
+const handleEditDeliveryOrder = (record: any) => {
+  showDeliveryOrderModal(record)
+}
+
+// 下载提货单
+const handleDownloadDeliveryOrder = (record: any) => {
+  if (record.fileUrl) {
+    window.open(record.fileUrl, '_blank')
+  }
+}
+
+// 下载水单附件
+const handleDownloadRemittancePhoto = (record: any) => {
+  if (record.photoUrl) {
+    window.open(record.photoUrl, '_blank')
+  }
+}
+
+// 删除提货单
+const handleDeleteDeliveryOrder = async (record: any) => {
+  try {
+    await deleteDeliveryOrder(record.id)
+    message.success('提货单删除成功')
+    await loadDeliveryOrders()
+  } catch (error) {
+    message.error('删除提货单失败')
+  }
+}
 
 // 不包含类型列的列定义
 const remittanceColumnsNoType = [
@@ -960,8 +2039,8 @@ const handleAddRemittance = (type: number) => {
     remittanceName: type === 1 ? '定金水单' : '尾款水单',
     remittanceDate: dayjs(),
     remittanceAmount: 0,
-    exchangeRate: 7.2,
-    bankFee: 30,
+    exchangeRate: 0,
+    bankFee: 0,
     creditedAmount: 0,
     photoUrl: '',
     photoFileList: []
@@ -977,10 +2056,14 @@ const formData = reactive({
   consigneeAddress: '',
   invoiceNo: '',
   transportMode: undefined as string | undefined,
-  departureCity: 'SHANGHAI, CHINA',
+  departureCity: '',
+  departureCityChinese: '',
+  departureCityEnglish: '',
   destinationCountry: undefined as string | undefined,
+  tradeCountry: undefined as string | undefined,
   currency: 'USD',
-  declarationDate: undefined as Dayjs | undefined
+  declarationDate: undefined as Dayjs | undefined,
+  orgId: undefined as number | undefined
 })
 
 // 产品列表
@@ -1000,6 +2083,75 @@ const transportModeOptions = ref<any[]>([])
 
 // 国家选项
 const countryOptions = ref<any[]>([])
+
+// // 国家自动完成选项
+// const countryAutoCompleteOptions = computed(() => {
+//   return countryOptions.value.map(option => ({
+//     label: option.label,
+//     value: option.value
+//   }))
+// })
+
+// // 包含自定义选项的国家选项
+// const countryOptionsWithCustom = computed(() => {
+//   // 如果当前值不在标准选项中，添加为自定义选项
+//   if (formData.destinationCountry && !countryOptions.value.some(opt => opt.value === formData.destinationCountry)) {
+//     return [
+//       {
+//         label: formData.destinationCountry,
+//         value: formData.destinationCountry,
+//         isCustom: true
+//       },
+//       ...countryOptions.value
+//     ];
+//   }
+//   return countryOptions.value;
+// });
+
+// 国家选择过滤函数
+const filterCountrySelectOption = (input: string, option: any) => {
+  if (!input) return true;
+  const lowerInput = input.toLowerCase();
+  return (
+    (option.label && option.label.toLowerCase().includes(lowerInput)) ||
+    (option.value && option.value.toLowerCase().includes(lowerInput))
+  );
+};
+
+
+// 货币选项
+// 城市选项
+const cityOptions = ref<any[]>([])
+
+// 加载城市信息
+const loadCities = async (countryName?: string) => {
+  if (!countryName) {
+    // 如果没有指定国家，默认加载中国城市
+    countryName = '中国'
+  }
+  
+  try {
+    const response = await getCitiesByCountry(countryName)
+    if (response.data && response.data.code === 200) {
+      cityOptions.value = response.data.data.map((city: any) => ({
+        label: `${city.cityChineseName || city.cityName} (${city.cityEnglishName}), ${city.countryEnglishName}`,
+        value: city.cityName || city.cityChineseName, // 使用中文城市名作为值
+        cityChineseName: city.cityName || city.cityChineseName,
+        cityEnglishName: city.cityEnglishName,
+        countryName: city.countryName
+      }))
+      console.log('城市信息加载成功:', cityOptions.value.length + '个城市')
+    } else {
+      console.warn('城市信息加载失败:', response.data?.message || '未知错误')
+      cityOptions.value = []
+    }
+  } catch (error) {
+    console.error('加载城市信息失败:', error)
+    cityOptions.value = []
+  }
+}
+
+const currencyOptions = ref<any[]>([])
 
 // 加载运输方式选项
 const loadTransportModes = async () => {
@@ -1024,15 +2176,45 @@ const loadTransportModes = async () => {
   }
 }
 
+// 加载货币选项
+const loadCurrencies = async () => {
+  try {
+    const response = await getEnabledCurrencies()
+    if (response.data.code === 200 && response.data.data.length > 0) {
+      currencyOptions.value = response.data.data.map((item: any) => ({
+        label: `${item.currencyCode} - ${item.chineseName || item.currencyName}`,
+        value: item.currencyCode
+      }))
+      console.log('加载货币数据成功:', currencyOptions.value)
+    } else {
+      // 如果API失败，使用默认数据
+      currencyOptions.value = [
+        { label: 'USD - 美元', value: 'USD' },
+        { label: 'EUR - 欧元', value: 'EUR' },
+        { label: 'CNY - 人民币', value: 'CNY' }
+      ]
+    }
+  } catch (error) {
+    console.warn('加载货币数据失败:', error)
+    // 使用默认数据作为后备
+    currencyOptions.value = [
+      { label: 'USD - 美元', value: 'USD' },
+      { label: 'EUR - 欧元', value: 'EUR' },
+      { label: 'CNY - 人民币', value: 'CNY' }
+    ]
+  }
+}
+
 // 加载国家选项
 const loadCountries = async () => {
   try {
     const response = await getEnabledCountries()
     if (response.data.code === 200 && response.data.data.length > 0) {
       countryOptions.value = response.data.data.map((item: any) => ({
-        label: item.englishName,  // 显示英文全拼
+        label: `${item.chineseName} / ${item.englishName}`,  // 显示中英文名称
         value: item.countryCode,   // 使用国家代码作为值
-        englishName: item.englishName  // 保存英文全名用于提交时转换
+        englishName: item.englishName,  // 保存英文全名用于提交时转换
+        chineseName: item.chineseName   // 保存中文名称
       }))
       console.log('加载国家数据成功:', countryOptions.value)
     } else {
@@ -1062,6 +2244,44 @@ const loadCountries = async () => {
   }
 }
 
+
+// // 监听国家变化，动态加载对应的城市
+// watch(() => formData.destinationCountry, async (newCountryCode) => {
+//   if (newCountryCode && newCountryCode.trim() !== '') {
+//     // 尝试找到国家的英文名称
+//     const selectedCountry = countryOptions.value.find(country => country.value === newCountryCode);
+//     if (selectedCountry) {
+//       await loadCities(selectedCountry.englishName || selectedCountry.chineseName);
+//     } else {
+//       // 如果找不到对应的国家选项，尝试直接使用国家代码
+//       await loadCities(newCountryCode);
+//     }
+//   } else {
+//     // 清空城市选项
+//     cityOptions.value = [];
+//   }
+// });
+
+// // 国家输入变化处理函数
+// const handleCountryInputChange = (value: string) => {
+//   // 如果输入的值匹配某个国家的中文名或英文名，自动选择对应的国家
+//   if (value) {
+//     const matchedCountry = countryOptions.value.find(option => 
+//       option.chineseName.toLowerCase().includes(value.toLowerCase()) ||
+//       option.englishName.toLowerCase().includes(value.toLowerCase()) ||
+//       option.label.toLowerCase().includes(value.toLowerCase())
+//     );
+    
+//     if (matchedCountry) {
+//       formData.destinationCountry = matchedCountry.value;
+//     } else {
+//       // 如果没有匹配项，可以考虑让用户输入自定义值
+//       // 但在这里我们只接受有效的国家代码
+//       // formData.destinationCountry = value; // 不推荐直接赋值用户输入
+//     }
+//   }
+// };
+
 // 根据国家代码获取英文全名
 const getCountryEnglishName = (countryCode: string): string => {
   const country = countryOptions.value.find(item => item.value === countryCode);
@@ -1075,27 +2295,21 @@ const loadProductTypes = async () => {
     console.log('加载HS商品类型数据:', response.data)
     if (response.data.code === 200 && response.data.data.length > 0) {
       hsOptions.value = response.data.data.map((item: any) => ({
-        label: `${item.hsCode} - ${item.englishName}`,
-        value: item.hsCode
+        label: `${item.hsCode}`,
+        value: item.hsCode,
+        chineseName: item.chineseName,
+        englishName: item.englishName
       }))
       console.log('加载HS商品类型成功:', hsOptions.value)
     } else {
       // 如果API失败，使用默认数据
       hsOptions.value = [
-        { label: '39269090 - PLASTIC SEAL', value: '39269090' },
-        { label: '85235210 - RFID STICKER', value: '85235210' },
-        { label: '48239090 - HANGTAG', value: '48239090' },
-        { label: '39232900 - Polybag', value: '39232900' }
       ]
     }
   } catch (error) {
     console.warn('加载HS商品类型失败，使用默认数据:', error)
     // 使用默认数据
     hsOptions.value = [
-      { label: '39269090 - PLASTIC SEAL', value: '39269090' },
-      { label: '85235210 - RFID STICKER', value: '85235210' },
-      { label: '48239090 - HANGTAG', value: '48239090' },
-      { label: '39232900 - Polybag', value: '39232900' }
     ]
   }
 }
@@ -1108,9 +2322,68 @@ const productOptions = computed(() => {
   }))
 })
 
+// 产品自动完成选项
+const productAutoCompleteOptions = computed(() => {
+  // 从HS选项中提取产品信息，用于自动完成功能
+  const options: { label: string; value: string }[] = [];
+  
+  hsOptions.value.forEach(option => {
+    // 如果有中文和英文名称，分别添加选项
+    if (option.chineseName && option.englishName) {
+      options.push(
+        { label: `${option.chineseName}`, value: option.chineseName },
+        { label: `${option.englishName}`, value: option.englishName },
+        { label: `${option.chineseName} / ${option.englishName}`, value: `${option.chineseName} / ${option.englishName}` }
+      );
+    } else if (option.englishName) {
+      options.push({ label: `${option.englishName}`, value: option.englishName });
+    } else {
+      // 备选方案：从label中解析
+      const labelParts = option.label.split(' - ');
+      if (labelParts.length >= 2) {
+        const namePart = labelParts.slice(1).join(' - ');
+        options.push({ label: namePart, value: namePart });
+      }
+    }
+  });
+  
+  return options;
+});
+
+// 包含自定义选项的产品自动完成选项
+const productAutoCompleteOptionsWithCustom = computed(() => {
+  const baseOptions = [...productAutoCompleteOptions.value];
+  
+  // 如果当前产品名称不在基础选项中，添加为自定义选项
+  if (productList.value) {
+    productList.value.forEach(product => {
+      if (product.productName && 
+          !baseOptions.some(opt => opt.value === product.productName)) {
+        baseOptions.unshift({
+          label: product.productName,
+          value: product.productName,
+        });
+      }
+    });
+  }
+  
+  return baseOptions;
+});
+
+// 产品选项过滤函数
+const filterProductOption = (input: string, option: any) => {
+  if (!input) return true;
+  const lowerInput = input.toLowerCase();
+  return (
+    (option.label && option.label.toLowerCase().includes(lowerInput)) ||
+    (option.value && option.value.toLowerCase().includes(lowerInput))
+  );
+};
+
 // 产品表格列配置
 const productColumns = [
-  { title: '产品名称', dataIndex: 'productName', key: 'productName', width: 150 },
+  { title: '产品中文名', dataIndex: 'productChineseName', key: 'productChineseName', width: 150 },
+  { title: '产品英文名', dataIndex: 'productEnglishName', key: 'productEnglishName', width: 150 },
   { title: 'HS编码', dataIndex: 'hsCode', key: 'hsCode', width: 150 },
   { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 100 },
   { title: '单位', dataIndex: 'unit', key: 'unit', width: 80 },
@@ -1127,6 +2400,7 @@ const productColumns = [
 // 箱子表格列配置
 const cartonColumns = [
   { title: '箱号', dataIndex: 'cartonNo', key: 'cartonNo', width: 120 },
+  { title: '类型', dataIndex: 'typeChinese', key: 'typeChinese', width: 100 },
   { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 100 },
   { title: '总体积(CBM)', dataIndex: 'volume', key: 'volume', width: 150 },
   { title: '产品选择', key: 'selectedProducts', width: 200 },
@@ -1145,7 +2419,8 @@ const totals = computed(() => {
     totalQuantity += item.quantity || 0
     totalGrossWeight += (item.grossWeight || 0) 
     totalNetWeight += (item.netWeight || 0) 
-    totalAmount += (item.unitPrice || 0) * (item.quantity || 0)
+    // 如果金额被手动设置，则使用手动输入的值，否则使用计算值
+    totalAmount += item._amountManuallySet ? parseFloat(item.amount) || 0 : (item.unitPrice || 0) * (item.quantity || 0)
   })
   
   // 箱子总体积直接累加（因为输入的就是总体积）
@@ -1164,11 +2439,41 @@ const totals = computed(() => {
 
 // 计算单项金额
 const calculateAmount = (record: any) => {
+  // 只有在用户未明确输入金额或者金额为0时才自动计算
+  // 如果用户已输入金额，保留用户的输入
+  if (record._amountManuallySet) {
+    return record.amount;
+  }
   const amount = (record.unitPrice || 0) * (record.quantity || 0)
   // 同时更新record中的amount字段
   record.amount = amount.toFixed(2)
   return record.amount
-}
+};
+
+// 处理单价或数量变更
+const handleUnitPriceOrQuantityChange = (record: any) => {
+  // 如果金额是手动设置的，询问用户是否要重新计算
+  if (record._amountManuallySet && record.amount !== 0) {
+    // 使用 ant design 的 Modal 确认对话框
+    Modal.confirm({
+      title: '重新计算金额?',
+      content: '检测到单价或数量已更改，是否根据新的单价和数量重新计算金额？',
+      okText: '重新计算',
+      cancelText: '保持手动输入',
+      onOk: () => {
+        record._amountManuallySet = false; // 临时取消手动标记，允许重新计算
+        calculateAmount(record); // 重新计算
+        record._amountManuallySet = true; // 重新标记为手动设置
+      },
+      onCancel: () => {
+        // 用户选择保持手动输入，不做任何操作
+      }
+    });
+  } else {
+    // 如果金额未手动设置，直接计算
+    calculateAmount(record);
+  }
+};
 
 // HS编码变更处理
 const onHsCodeChange = async (index: number, value: string | number) => {
@@ -1203,14 +2508,28 @@ const onHsCodeChange = async (index: number, value: string | number) => {
       if (productType) {
         // 设置HS产品中文名
         if (productType.chineseName) {
-          productList.value[index].chineseName = productType.chineseName
+          console.log('设置产品中文名:', productType.chineseName)
+          productList.value[index].productChineseName = productType.chineseName
         } else {
           // 从选项标签中提取中文名（如果有）
           const chineseMatch = option.label.match(/^([^\s-]+.*?)\s*-\s*(.+)$/)
           if (chineseMatch && chineseMatch[1]) {
-            productList.value[index].chineseName = chineseMatch[1].trim()
+            productList.value[index].productChineseName = chineseMatch[1].trim()
           }
         }
+        if (productType.englishName) {
+          console.log('设置产品英文名:', productType.englishName)
+          productList.value[index].productEnglishName = productType.englishName
+        } else {
+          // 从选项标签中提取英文名（如果有）
+          const englishMatch = option.label.match(/-?\s*([^\s-]+?)\s*$/)
+          if (englishMatch && englishMatch[1]) {
+            productList.value[index].productEnglishName = englishMatch[1].trim()
+          }
+        }
+        
+        // 更新产品名称
+        updateProductName(productList.value[index]);
         
         // 解析申报要素配置
         let elements = []
@@ -1315,11 +2634,14 @@ const addProduct = () => {
   productList.value.push({
     id: newId,
     productName: '',
+    productChineseName: '',
+    productEnglishName: '',
     hsCode: '',
     quantity: 1,
     unit: 'PCS',
     unitPrice: 0,
-    amount: '0.00', // 初始化金额字段
+    amount: 0, // 初始化金额字段
+    _amountManuallySet: false, // 标记金额是否手动设置
     grossWeight: 0,
     netWeight: 0,
     cartons: 1,    // 默认1箱
@@ -1350,6 +2672,8 @@ const addCarton = () => {
     cartonNo: `CTN${String(newId).padStart(3, '0')}`,
     quantity: 1,
     volume: 0,
+    typeChinese: '箱子', // 默认类型
+    typeEnglish: 'CARTRONS', // 默认类型
     selectedProducts: []
   })
   
@@ -1362,6 +2686,48 @@ const removeCarton = (index: number) => {
   cartonList.value.splice(index, 1)
   console.log('删除箱子:', { removedId: removedCarton.id, removedCartonNo: removedCarton.cartonNo, remainingCartons: cartonList.value.length })
 }
+
+// 更新产品名称，将其设置为中文名和英文名的组合
+const updateProductName = (record: any) => {
+  const chineseName = record.productChineseName || '';
+  const englishName = record.productEnglishName || '';
+  
+  if (chineseName && englishName) {
+    record.productName = `${chineseName} / ${englishName}`;
+  } else if (chineseName) {
+    record.productName = chineseName;
+  } else if (englishName) {
+    record.productName = englishName;
+  }
+}
+
+// 出发城市选择变化
+const onDepartureCityChange = (value: SelectValue) => {
+  // 查找对应的城市信息并更新中文名和英文名字段
+  if (value !== undefined && value !== null && typeof value === 'string') { // 确保值存在且为字符串类型再处理
+    const selectedCity = cityOptions.value.find((city: any) => city.value === value);
+    if (selectedCity) {
+      formData.departureCity = value; // 更新英文格式的城市名称
+      formData.departureCityChinese = selectedCity.cityChineseName;
+      formData.departureCityEnglish = selectedCity.cityEnglishName;
+    }
+  } else {
+    // 当选择被清空时，重置相关字段
+    formData.departureCity = '';
+    formData.departureCityChinese = '';
+    formData.departureCityEnglish = '';
+  }
+}
+
+// // 箱子类型选择变化
+// const onCartonTypeChange = (record: any, value: string) => {
+//   // 根据中文类型设置英文类型
+//   if (value === '箱子') {
+//     record.typeEnglish = 'Carton';
+//   } else if (value === '托盘') {
+//     record.typeEnglish = 'Pallet';
+//   }
+// }
 
 // 返回列表
 const goBack = () => {
@@ -1480,8 +2846,7 @@ const handleSubmit = async () => {
     if (productList.value.length === 0) {
       message.error('请至少添加一个产品')
       return
-    }
-    
+    }    
     // 检查所有产品是否都关联了箱子
     const unassignedProducts = productList.value.filter(product => {
       // 检查这个产品是否在任何箱子的产品列表中
@@ -1490,6 +2855,10 @@ const handleSubmit = async () => {
       )
     })
     
+    if(!formData.transportMode){
+      message.error('请填写运输方式')
+      return
+    }
     if (unassignedProducts.length > 0) {
       const productNames = unassignedProducts.map(p => p.productName || '未命名产品').join('、')
       message.error(`以下产品未分配箱子: ${productNames}，请在箱子信息中选择关联产品`)
@@ -1541,6 +2910,7 @@ const handleSubmit = async () => {
       ...formData,
       // 关键修复：将国家代码转换为英文全名
       destinationCountry: formData.destinationCountry ? getCountryEnglishName(formData.destinationCountry) : '',
+      tradeCountry: formData.tradeCountry ? getCountryEnglishName(formData.tradeCountry) : '',
       totalQuantity: totals.value.totalQuantity,
       totalGrossWeight: totals.value.totalGrossWeight,
       totalNetWeight: totals.value.totalNetWeight,
@@ -1612,7 +2982,10 @@ const loadData = async () => {
   // 并行加载配置数据
   await Promise.all([
     loadProductTypes(),
-    loadTransportModes()
+    loadTransportModes(),
+    loadCountries(),
+    loadCurrencies(),
+    loadCities()
   ])
   
   if (formId.value) {
@@ -1633,16 +3006,28 @@ const loadData = async () => {
         formStatus.value = submittedStatus
         console.log('🔄 更新formStatus为:', submittedStatus)
         
+        // 如果申报单已提交（status >= 1），查询活跃任务
+        if (submittedStatus >= 1 && formId.value) {
+          try {
+            const taskRes = await getActiveTasks(formId.value)
+            activeTasks.value = taskRes.data || []
+            console.log('📋 活跃任务:', activeTasks.value)
+          } catch (e) {
+            console.warn('获取活跃任务失败', e)
+            activeTasks.value = []
+          }
+        }
+        
         // 只读状态判断：
         // 1. 如果 URL 参数 readonly=true，保持只读
         // 2. 如果是审核模式 (isAudit)，保持只读
         // 3. 如果是水单提交模式 (isPaymentMode)，不改变 isReadonly
-        // 4. 否则根据状态判断：状态 0/2/4 可编辑，其他只读
+        // 4. 否则根据状态判断：状态 0/2 可编辑，其他只读
         if (route.query.readonly === 'true' || isAudit.value) {
           isReadonly.value = true
           console.log('查看模式或审核模式, 设置为只读')
         } else if (!isPaymentMode.value) {
-          const editableStatuses = [0, 2, 4]
+          const editableStatuses = [0, 2]
           if (!editableStatuses.includes(submittedStatus)) {
             isReadonly.value = true
             console.log('申报单状态=' + submittedStatus + ', 设置为只读模式')
@@ -1661,13 +3046,16 @@ const loadData = async () => {
         formData.invoiceNo = detailData.invoiceNo || ''
         formData.transportMode = detailData.transportMode
         formData.departureCity = detailData.departureCity || 'SHANGHAI, CHINA'
+                formData.departureCityChinese = detailData.departureCityChinese || '上海'
+                formData.departureCityEnglish = detailData.departureCityEnglish || 'SHANGHAI, CHINA'
         formData.destinationCountry = detailData.destinationCountry || ''
         formData.currency = detailData.currency || 'USD'
         formData.declarationDate = detailData.declarationDate ? dayjs(detailData.declarationDate) : undefined
         
         // 填充产品列表
-        if (detailData.products && Array.isArray(detailData.products)) {
-          productList.value = detailData.products.map((product: any) => ({
+        const productsRaw = detailData.products
+        if (Array.isArray(productsRaw)) {
+          productList.value = productsRaw.map((product: any) => ({
             ...product,
             // 处理申报要素值 - 注意后端字段名是 elementName 和 elementValue
             declarationElements: (product.elementValues || []).map((ev: any) => ({
@@ -1716,8 +3104,9 @@ const loadData = async () => {
         }
         
         // 填充箱子列表
-        if (detailData.cartons && Array.isArray(detailData.cartons)) {
-          cartonList.value = detailData.cartons.map((carton: any) => ({
+        const cartonsRaw = detailData.cartons
+        if (Array.isArray(cartonsRaw)) {
+          cartonList.value = cartonsRaw.map((carton: any) => ({
             ...carton,
             // 添加体积字段(如果后端没返回)
             volume: carton.volume || 0,
@@ -1742,8 +3131,9 @@ const loadData = async () => {
         }
         
         // 填充水单列表
-        if (detailData.remittances && Array.isArray(detailData.remittances)) {
-          remittanceList.value = detailData.remittances.map((rem: any) => ({
+        const remittancesRaw = detailData.remittances
+        if (Array.isArray(remittancesRaw)) {
+          remittanceList.value = remittancesRaw.map((rem: any) => ({
             ...rem,
             remittanceDate: dayjs(rem.remittanceDate),
             tempId: rem.id,
@@ -1756,9 +3146,9 @@ const loadData = async () => {
           }))
           console.log('加载水单列表成功:', remittanceList.value.length + ' 条记录')
         }
-        // 填充提货单附件(若需要)，如果是状态 >=6 开始加载
+        // 填充提货单附件(若需要)，如果是状态 >=2 开始加载
         const fStatus = formStatus.value || 0
-        if (fStatus >= 6 && formId.value) {
+        if (fStatus >= 2 && formId.value) {
           try {
             console.log('开始加载提货单附件，申报单ID:', formId.value)
             const pickupRes = await getPickupAttachments(formId.value)
@@ -1779,6 +3169,24 @@ const loadData = async () => {
           } catch (e) {
             console.warn('加载提货单附件失败:', e)
             pickupAttachments.value = [] // 确保数组为空而不是undefined
+          }
+        }
+
+        // 加载财务补充记录
+        if (formId.value && (submittedStatus > 1 || isFinanceUploadMode.value)) {
+          loadFinancialSupplement()
+        }
+        
+        // 加载提货单列表（状态>=2可创建和查看提货单，或者在审核模式下也需要加载）
+        if (formId.value && (submittedStatus >= 2 || isAudit.value)) {
+          loadDeliveryOrders()
+        }
+        
+        // 根据已加载的国家信息加载对应的城市
+        if (formData.destinationCountry) {
+          const selectedCountry = countryOptions.value.find(country => country.value === formData.destinationCountry);
+          if (selectedCountry) {
+            loadCities(selectedCountry.englishName || selectedCountry.chineseName);
           }
         }
         
@@ -1821,104 +3229,6 @@ const testDataStructure = (elements: any[]) => {
   })
 }
 
-// 上传提货单
-const handleUploadPickup = async () => {
-  if (!formId.value) return message.error('申报单ID不存在')
-  
-  try {
-    const fileInput = document.createElement('input')
-    fileInput.type = 'file'
-    fileInput.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png'
-    fileInput.onchange = async (e: any) => {
-      const file = e.target.files[0]
-      if (file) {
-        // 第一步：上传物理文件
-        const response = await uploadFile(file, 'PickupList')  // 直接指定文件类型为PickupList
-        if (response.data && response.data.code === 200) {
-          const fileInfo = response.data.data
-          
-          // fileInfo已经是完整的DeclarationAttachment对象，包含了正确的ID和fileUrl
-          // 直接保存到数据库，避免重复上传
-          const attachRes = await savePickupAttachment(formId.value!, {
-            fileName: fileInfo.fileName,
-            fileUrl: fileInfo.fileUrl,
-            fileType: 'PickupList'  // 确保文件类型正确
-          })
-          
-          if (attachRes.data && attachRes.data.code === 200) {
-            message.success('提货单上传成功')
-            // 重新加载提货单列表
-            const pickupRes = await getPickupAttachments(formId.value!)
-            if (pickupRes.data && pickupRes.data.code === 200) {
-              pickupAttachments.value = pickupRes.data.data.map((att: any) => ({
-                id: att.id,
-                fileName: att.fileName,
-                fileUrl: att.fileUrl || `/api/v1/files/download?id=${att.id}`,
-                fileType: 'PickupList',
-                createTime: att.createTime
-              }))
-            }
-          } else {
-            message.error(attachRes.data.message || '保存提货单记录失败')
-          }
-        }
-      }
-    }
-    fileInput.click()
-  } catch (error) {
-    message.error('上传失败')
-  }
-}
-
-// 获取文件类型标签颜色
-const getFileTagColor = (fileType: string) => {
-  const colorMap: Record<string, string> = {
-    'PickupList': 'orange',
-    'Invoice': 'blue',
-    'PackingList': 'green',
-    'Remittance': 'purple',
-    'Contract': 'magenta',
-    'FullDocuments': 'cyan'
-  }
-  return colorMap[fileType] || 'default'
-}
-
-// 获取文件类型显示文本
-const getFileTypeDisplay = (fileType: string) => {
-  const textMap: Record<string, string> = {
-    'PickupList': '提货单',
-    'Invoice': '商业发票',
-    'PackingList': '装箱单',
-    'Remittance': '水单',
-    'Contract': '合同',
-    'FullDocuments': '全套单证'
-  }
-  return textMap[fileType] || fileType
-}
-
-// 下载文件
-const handleDownloadFile = (record: any) => {
-  const link = document.createElement('a')
-  link.href = getFilePreviewUrl(record.id)
-  link.download = record.fileName
-  link.click()
-}
-
-// 删除提货单
-const handleDeletePickup = async (record: any) => {
-  try {
-    const res = await deleteAttachment(record.id)
-    if (res.data && res.data.code === 200) {
-      pickupAttachments.value = pickupAttachments.value.filter(item => item.id !== record.id)
-      message.success('删除成功')
-    } else {
-      message.error(res.data.message || '删除失败')
-    }
-  } catch (error) {
-    message.error('删除失败')
-  }
-}
-
 onMounted(() => {
   loadData()
   loadCountries()
@@ -1954,41 +3264,40 @@ onMounted(() => {
 }
 
 :deep(.ant-table-thead > tr > th) {
-  background-color: #f8fafc !important;
+  background-color: #FAFBFC !important;
   font-weight: 600;
-  color: #475569;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid #f1f5f9;
+  color: #1E40AF;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  border-bottom: 2px solid #E2E8F0 !important;
 }
 
 :deep(.ant-table-cell) {
   border-bottom: 1px solid #f1f5f9;
 }
 
-/* 主按钮样式 */
+/* 主按钮样式已通过全局CSS优化，这里保持基础覆盖以确保一致性 */
 :deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  border: none;
-  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.25);
-  border-radius: 10px;
+  background: #2563EB !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2) !important;
 }
 
 :deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
-  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.35);
+  background: #1D4ED8 !important;
+  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3) !important;
   transform: translateY(-1px);
 }
 
 /* 产品表格特定样式 */
 :deep(.product-table .ant-table-thead > tr > th) {
-  background: #f8fafc !important;
+  background: #FAFBFC !important;
 }
 
 /* 箱子表格特定样式 */
 :deep(.carton-table .ant-table-thead > tr > th) {
-  background: #f1f5f9 !important;
+  background: #FAFBFC !important;
 }
 
 /* 数值显示样式 */
@@ -2030,30 +3339,31 @@ onMounted(() => {
 
 .section-card {
   margin-bottom: 24px;
-  border-radius: 16px;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(15, 23, 42, 0.04);
-  border: 1px solid rgba(226, 232, 240, 0.6);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border: 1px solid #E2E8F0;
+  background: white;
 }
 
 :deep(.ant-card-head) {
-  background: #f8fafc;
-  border-bottom: 1px solid #f1f5f9;
+  background: #FAFBFC;
+  border-bottom: 1px solid #E2E8F0;
   min-height: 48px;
 }
 
 :deep(.ant-card-head-title) {
   font-size: 15px;
   font-weight: 700;
-  color: #1e293b;
+  color: #1E40AF;
 }
 
 .totals-section {
   margin-top: 24px;
   padding: 24px;
-  background: #f8fafc;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
+  background: #FAFBFC;
+  border-radius: 12px;
+  border: 1px solid #E2E8F0;
 }
 
 .total-item {
@@ -2072,7 +3382,7 @@ onMounted(() => {
 
 .total-value {
   font-weight: 800;
-  color: #1e40af;
+  color: #2563EB;
   font-size: 18px;
   letter-spacing: -0.5px;
 }
@@ -2146,5 +3456,72 @@ onMounted(() => {
 .upload-placeholder:hover {
   border-color: #1890ff;
   background: #e6f7ff;
+}
+
+/* 计算详情样式 */
+.calculation-box {
+  background: #f7f7f7;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.calc-section {
+  margin-bottom: 20px;
+}
+
+.calc-title {
+  font-weight: bold;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.calc-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px dashed #ddd;
+}
+
+.calc-row:last-child {
+  border-bottom: none;
+}
+
+.calc-label {
+  color: #666;
+}
+
+.calc-value {
+  font-weight: 500;
+}
+
+.calc-value.highlight {
+  color: #1890ff;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.calc-value.final-value {
+  color: #722ed1;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.calc-row.deduct .calc-value {
+  color: #ff4d4f;
+}
+
+.calc-row.total-with-tax .calc-value {
+  color: #fa8c16;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.calc-row.final .calc-label {
+  font-weight: bold;
+}
+
+.calc-row.final .calc-value {
+  font-size: 20px;
+  font-weight: bold;
 }
 </style>

@@ -10,12 +10,14 @@
           <a-input v-model:value="searchForm.processName" placeholder="请输入流程名称" />
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">搜索</a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
-          <a-button style="margin-left: 8px" @click="$emit('refresh')">
-            <template #icon><reload-outlined /></template>
-            刷新
-          </a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch" v-permission="['workflow:task:list']">搜索</a-button>
+            <a-button @click="handleReset" v-permission="['workflow:task:list']">重置</a-button>
+            <a-button @click="$emit('refresh')" v-permission="['workflow:task:list']">
+              <template #icon><reload-outlined /></template>
+              刷新
+            </a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
@@ -38,25 +40,25 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record as Task)">查看</a-button>
+              <a-button type="link" size="small" @click="handleView(record as Task)" v-permission="['workflow:task:list']">查看</a-button>
               
               <template v-if="type === 'candidate'">
-                <a-button type="link" size="small" @click="$emit('claim', record as Task)">
+                <a-button type="link" size="small" @click="$emit('claim', record as Task)" v-permission="['workflow:task:claim']">
                   签收
                 </a-button>
               </template>
               
               <template v-else-if="type === 'assigned'">
-                <a-button type="link" size="small" @click="$emit('complete', record as Task)">
+                <a-button type="link" size="small" @click="$emit('complete', record as Task)" v-permission="['workflow:task:complete']">
                   处理
                 </a-button>
-                <a-button type="link" size="small" @click="handleTransfer(record as Task)">
+                <a-button type="link" size="small" @click="handleTransfer(record as Task)" v-permission="['workflow:task:transfer']">
                   转办
                 </a-button>
               </template>
               
               <template v-else>
-                <a-button type="link" size="small" @click="handleViewProcess(record as Task)">
+                <a-button type="link" size="small" @click="handleViewProcess(record as Task)" v-permission="['workflow:instance:list']">
                   查看流程
                 </a-button>
               </template>
@@ -124,6 +126,9 @@ interface SearchForm {
 const props = defineProps<{
   tasks: Task[]
   loading: boolean
+  total: number
+  pageNum: number
+  pageSize: number
   type?: 'assigned' | 'completed' | 'candidate'
 }>()
 
@@ -132,6 +137,10 @@ const emit = defineEmits<{
   (e: 'refresh'): void
   (e: 'claim', task: Task): void
   (e: 'complete', task: Task): void
+  (e: 'change', pagination: { current: number, pageSize: number }): void
+  (e: 'search', params: SearchForm): void
+  (e: 'view', task: Task): void
+  (e: 'viewProcess', task: Task): void
 }>()
 
 // 响应式数据
@@ -141,12 +150,24 @@ const searchForm = reactive<SearchForm>({
 })
 
 const pagination = reactive({
-  current: 1,
-  pageSize: 10,
-  total: 0,
+  current: props.pageNum,
+  pageSize: props.pageSize,
+  total: props.total,
   showSizeChanger: true,
   showQuickJumper: true,
   showTotal: (total: number) => `共 ${total} 条记录`
+})
+
+// 监听 props 变化更新分页
+import { watch } from 'vue'
+watch(() => props.total, (val) => {
+  pagination.total = val
+})
+watch(() => props.pageNum, (val) => {
+  pagination.current = val
+})
+watch(() => props.pageSize, (val) => {
+  pagination.pageSize = val
 })
 
 // 转办相关
@@ -235,8 +256,7 @@ if (props.type === 'completed') {
 // 方法
 const handleSearch = () => {
   pagination.current = 1
-  // 这里可以添加实际的搜索逻辑
-  message.info('搜索功能待实现')
+  emit('search', { ...searchForm })
 }
 
 const handleReset = () => {
@@ -246,8 +266,7 @@ const handleReset = () => {
 }
 
 const handleView = (record: Task) => {
-  message.info(`查看任务: ${record.taskName}`)
-  // 这里可以打开任务详情弹窗
+  emit('view', record)
 }
 
 const handleViewProcess = (record: Task) => {
@@ -299,20 +318,12 @@ const handleTransferCancel = () => {
 const handleTableChange = (pag: any) => {
   pagination.current = pag.current
   pagination.pageSize = pag.pageSize
-  // 这里可以添加分页逻辑
+  emit('change', { current: pag.current, pageSize: pag.pageSize })
 }
 </script>
 
 <style scoped>
 .task-list {
   padding: 0;
-}
-
-.search-card {
-  margin-bottom: 16px;
-}
-
-:deep(.ant-card-body) {
-  padding: 16px;
 }
 </style>

@@ -142,21 +142,18 @@ public class BankAccountConfigController {
     @Operation(summary = "新增银行账户配置")
     @RequiresPermissions("system:bank-account:add")
     public Result<Void> addBankAccount(@RequestBody BankAccountConfig account) {
-        // 检查账户名称是否重复
-        boolean exists = bankAccountConfigService.lambdaQuery()
-                .eq(BankAccountConfig::getAccountName, account.getAccountName())
-                .exists();
-        if (exists) {
-            return Result.fail("账户名称已存在");
-        }
-        
-        // 检查账号是否重复
-        if (account.getAccountNumber() != null && !account.getAccountNumber().isEmpty()) {
-            boolean accountExists = bankAccountConfigService.lambdaQuery()
+        // 检查银行账号+银行名称+币种的组合是否重复
+        if (account.getAccountNumber() != null && !account.getAccountNumber().isEmpty() && 
+            account.getBankName() != null && !account.getBankName().isEmpty() &&
+            account.getCurrency() != null && !account.getCurrency().isEmpty()) {
+            
+            boolean exists = bankAccountConfigService.lambdaQuery()
                     .eq(BankAccountConfig::getAccountNumber, account.getAccountNumber())
+                    .eq(BankAccountConfig::getBankName, account.getBankName())
+                    .eq(BankAccountConfig::getCurrency, account.getCurrency())
                     .exists();
-            if (accountExists) {
-                return Result.fail("银行账号已存在");
+            if (exists) {
+                return Result.fail("该银行账号、银行名称和币种的组合已存在");
             }
         }
         
@@ -190,23 +187,19 @@ public class BankAccountConfigController {
             return Result.fail("银行账户不存在");
         }
         
-        // 检查账户名称是否重复（排除自己）
-        boolean exists = bankAccountConfigService.lambdaQuery()
-                .eq(BankAccountConfig::getAccountName, account.getAccountName())
-                .ne(BankAccountConfig::getId, id)
-                .exists();
-        if (exists) {
-            return Result.fail("账户名称已存在");
-        }
-        
-        // 检查账号是否重复（排除自己）
-        if (account.getAccountNumber() != null && !account.getAccountNumber().isEmpty()) {
-            boolean accountExists = bankAccountConfigService.lambdaQuery()
+        // 检查银行账号+银行名称+币种的组合是否重复（排除自己）
+        if (account.getAccountNumber() != null && !account.getAccountNumber().isEmpty() && 
+            account.getBankName() != null && !account.getBankName().isEmpty() &&
+            account.getCurrency() != null && !account.getCurrency().isEmpty()) {
+            
+            boolean exists = bankAccountConfigService.lambdaQuery()
                     .eq(BankAccountConfig::getAccountNumber, account.getAccountNumber())
+                    .eq(BankAccountConfig::getBankName, account.getBankName())
+                    .eq(BankAccountConfig::getCurrency, account.getCurrency())
                     .ne(BankAccountConfig::getId, id)
                     .exists();
-            if (accountExists) {
-                return Result.fail("银行账号已存在");
+            if (exists) {
+                return Result.fail("该银行账号、银行名称和币种的组合已存在");
             }
         }
         

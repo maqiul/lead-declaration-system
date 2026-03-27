@@ -49,6 +49,7 @@ public class DeclarationFormController {
 
     private final DeclarationFormService declarationFormService;
     private final HistoryService historyService;
+    private final RuntimeService runtimeService;
     private final DeclarationProductService declarationProductService;
     private final DeclarationCartonService declarationCartonService;
     private final DeclarationCartonProductService declarationCartonProductService;
@@ -56,7 +57,6 @@ public class DeclarationFormController {
     private final DeclarationAttachmentService attachmentService;
     private final DeclarationRemittanceService remittanceService;
     private final ProcessInstanceService processInstanceService;
-    private final DeclarationDraftService declarationDraftService;
     private final TaskService flowableTaskService;
     private final ObjectMapper objectMapper;
     private final UserService userService;
@@ -182,12 +182,34 @@ public class DeclarationFormController {
         List<DeclarationAttachment> attachments = attachmentService.list(wrapper);
         return Result.success(attachments);
     }
+
+    /**
+     * 获取水单详情
+     */
+    @GetMapping("/remittance/{remittanceId}")
+    @Operation(summary = "获取水单详情")
+    @RequiresPermissions("business:declaration:view")
     public Result<DeclarationRemittance> getRemittance(@PathVariable Long remittanceId) {
         DeclarationRemittance remittance = remittanceService.getById(remittanceId);
         if (remittance == null) {
             return Result.fail("水单不存在");
         }
         return Result.success(remittance);
+    }
+
+    /**
+     * 获取申报单的水单列表
+     */
+    @GetMapping("/{id}/remittances")
+    @Operation(summary = "获取申报单的水单列表")
+    @RequiresPermissions("business:declaration:view")
+    public Result<List<DeclarationRemittance>> getRemittancesByFormId(
+            @Parameter(description = "申报单ID") @PathVariable Long id) {
+        List<DeclarationRemittance> list = remittanceService.lambdaQuery()
+                .eq(DeclarationRemittance::getFormId, id)
+                .orderByAsc(DeclarationRemittance::getRemittanceDate)
+                .list();
+        return Result.success(list);
     }
 
     /**
@@ -243,6 +265,9 @@ public class DeclarationFormController {
 
             Object resultObj = auditData.get("result"); // 1-通过, 2-驳回
             boolean isApproved = resultObj != null && ("1".equals(resultObj.toString()) || Boolean.TRUE.equals(resultObj));
+            
+            // 支持通过 taskKey 参数精确指定要完成的任务（用于并行流程）
+            String taskKey = auditData.get("taskKey") != null ? auditData.get("taskKey").toString() : null;
 
             List<Task> activeTasks = flowableTaskService.createTaskQuery()
                     .processInstanceBusinessKey(String.valueOf(id))
@@ -269,16 +294,63 @@ public class DeclarationFormController {
                 return Result.fail(diagnostic);
             }
 
-            Task activeTask = activeTasks.get(0);
+            Task activeTask = null;
+            
+            // 如果指定了 taskKey，精确匹配任务
+            if (taskKey != null && !taskKey.isEmpty()) {
+                for (Task t : activeTasks) {
+                    if (taskKey.equals(t.getTaskDefinitionKey())) {
+                        activeTask = t;
+                        break;
+                    }
+                }
+                if (activeTask == null) {
+                    // 列出当前可用的任务供诊断
+                    String availableTasks = activeTasks.stream()
+                            .map(Task::getTaskDefinitionKey)
+                            .collect(Collectors.joining(", "));
+                    return Result.fail("未找到指定的任务节点: " + taskKey + "。当前可用任务: [" + availableTasks + "]");
+                }
+            } else {
+                // 智能匹配：优先处理审核类任务（按优先级排序）
+                // 优先级: deptAudit > depositAudit > balanceAudit > pickupListAudit > 其他
+                String[] priorityOrder = {"deptAudit", "depositAudit", "balanceAudit", "pickupListAudit"};
+                for (String key : priorityOrder) {
+                    for (Task t : activeTasks) {
+                        if (key.equals(t.getTaskDefinitionKey())) {
+                            activeTask = t;
+                            break;
+                        }
+                    }
+                    if (activeTask != null) break;
+                }
+                
+                // 如果没有匹配优先级任务，选择第一个非财务补充任务
+                if (activeTask == null) {
+                    for (Task t : activeTasks) {
+                        if (!"financeUploadTask".equals(t.getTaskDefinitionKey())) {
+                            activeTask = t;
+                            break;
+                        }
+                    }
+                }
+                
+                // 最后兜底：取第一个任务
+                if (activeTask == null) {
+                    activeTask = activeTasks.get(0);
+                }
+            }
+            
             if (activeTasks.size() > 1) {
-                log.warn("业务Key={}有多个任务，默认处理: {}", id, activeTask.getId());
+                log.info("业务Key={}有{}个并行任务，当前处理的节点为: {}", id, activeTasks.size(), activeTask.getTaskDefinitionKey());
             }
 
             Map<String, Object> variables = new HashMap<>();
             variables.put("approved", isApproved);
             flowableTaskService.complete(activeTask.getId(), variables);
 
-            return Result.success("审核成功");
+            String taskName = activeTask.getName() != null ? activeTask.getName() : activeTask.getTaskDefinitionKey();
+            return Result.success("审核成功 (" + taskName + ")");
         } catch (Exception e) {
             log.error("审核申报单失败", e);
             return Result.fail("审核失败内部异常: " + e.getMessage() + " | 原因: " + (e.getCause() != null ? e.getCause().getMessage() : "无"));
@@ -377,16 +449,227 @@ public class DeclarationFormController {
             return Result.fail("申报单不存在");
         }
 
-        Task activeTask = flowableTaskService.createTaskQuery()
+        List<Task> activeTasks = flowableTaskService.createTaskQuery()
                 .processInstanceBusinessKey(String.valueOf(id))
-                .singleResult();
-
-        if (activeTask == null) {
+                .list();
+                
+        if (activeTasks == null || activeTasks.isEmpty()) {
             return Result.fail("找不到待办的流程任务");
         }
+        
+        // 根据 auditType 映射到具体的 taskDefinitionKey
+        // deposit -> depositPayment (业务员提交定金凭证)
+        // balance -> balancePayment (业务员提交尾款凭证)
+        // pickup -> pickupListUpload (业务员上传提货单)
+        // finance/financeUpload -> financeUploadTask (财务补充完成)
+        // rejectHandler -> rejectHandler (驳回修改后重新提交)
+        String targetTaskKey = null;
+        switch (auditType) {
+            case "deposit":
+                targetTaskKey = "depositPayment";
+                break;
+            case "balance":
+                targetTaskKey = "balancePayment";
+                break;
+            case "pickup":
+                targetTaskKey = "pickupListUpload";
+                break;
+            case "finance":
+            case "financeUpload":
+                targetTaskKey = "financeUploadTask";
+                break;
+            case "rejectHandler":
+                targetTaskKey = "rejectHandler";
+                break;
+            default:
+                // 如果是直接传入 taskKey，也支持
+                targetTaskKey = auditType;
+        }
+        
+        Task activeTask = null;
+        for (Task t : activeTasks) {
+            if (targetTaskKey.equals(t.getTaskDefinitionKey())) {
+                activeTask = t;
+                break;
+            }
+        }
 
+        if (activeTask == null) {
+            String availableTasks = activeTasks.stream()
+                    .map(Task::getTaskDefinitionKey)
+                    .collect(Collectors.joining(", "));
+            return Result.fail("找不到对应类型的流程任务 (auditType=" + auditType + ", targetTaskKey=" + targetTaskKey + ")。当前可用任务: [" + availableTasks + "]");
+        }
+
+        log.info("申报单 {} 提交任务: {} (auditType={})", id, activeTask.getTaskDefinitionKey(), auditType);
         flowableTaskService.complete(activeTask.getId());
         return Result.success();
+    }
+
+    /**
+     * 获取申报单的当前流程任务列表
+     * 用于并行流程中查看所有活跃的任务节点
+     */
+    @GetMapping("/{id}/tasks")
+    @Operation(summary = "获取申报单的当前流程任务列表")
+    @RequiresPermissions("business:declaration:query")
+    public Result<List<Map<String, Object>>> getActiveTasks(
+            @Parameter(description = "申报单ID") @PathVariable Long id) {
+        
+        List<Task> activeTasks = flowableTaskService.createTaskQuery()
+                .processInstanceBusinessKey(String.valueOf(id))
+                .list();
+        
+        if (activeTasks == null || activeTasks.isEmpty()) {
+            // 检查流程是否已结束
+            HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
+                    .processInstanceBusinessKey(String.valueOf(id))
+                    .singleResult();
+            
+            if (hpi != null && hpi.getEndTime() != null) {
+                // 流程已结束
+                List<Map<String, Object>> result = new ArrayList<>();
+                Map<String, Object> endInfo = new HashMap<>();
+                endInfo.put("status", "completed");
+                endInfo.put("endTime", hpi.getEndTime());
+                endInfo.put("endActivityId", hpi.getEndActivityId());
+                result.add(endInfo);
+                return Result.success(result);
+            }
+            
+            return Result.success(new ArrayList<>());
+        }
+        
+        List<Map<String, Object>> taskList = new ArrayList<>();
+        for (Task task : activeTasks) {
+            Map<String, Object> taskInfo = new HashMap<>();
+            taskInfo.put("taskId", task.getId());
+            taskInfo.put("taskKey", task.getTaskDefinitionKey());
+            taskInfo.put("taskName", task.getName());
+            taskInfo.put("assignee", task.getAssignee());
+            taskInfo.put("createTime", task.getCreateTime());
+            
+            // 根据 taskKey 添加任务分类
+            String category = getTaskCategory(task.getTaskDefinitionKey());
+            taskInfo.put("category", category);
+            
+            taskList.add(taskInfo);
+        }
+        
+        return Result.success(taskList);
+    }
+    
+    /**
+     * 根据任务Key获取任务分类
+     */
+    private String getTaskCategory(String taskKey) {
+        if (taskKey == null) return "unknown";
+        switch (taskKey) {
+            case "deptAudit":
+                return "初审";
+            case "rejectHandler":
+                return "驳回修改";
+            case "depositPayment":
+                return "定金上传";
+            case "depositAudit":
+                return "定金审核";
+            case "balancePayment":
+                return "尾款上传";
+            case "balanceAudit":
+                return "尾款审核";
+            case "pickupListUpload":
+                return "提货单上传";
+            case "pickupListAudit":
+                return "提货单审核";
+            case "financeUploadTask":
+                return "财务补充";
+            default:
+                return taskKey;
+        }
+    }
+
+    /**
+     * 批量获取申报单的活跃任务
+     * 用于列表页高效获取多个申报单的当前任务节点
+     */
+    @GetMapping("/batch-tasks")
+    @Operation(summary = "批量获取申报单的活跃任务")
+    @RequiresPermissions("business:declaration:query")
+    public Result<Map<String, List<String>>> getBatchActiveTasks(
+            @Parameter(description = "申报单ID列表，逗号分隔") @RequestParam String ids) {
+        
+        log.info("批量获取任务请求，ids: {}", ids);
+        
+        if (ids == null || ids.trim().isEmpty()) {
+            log.info("IDs为空，返回空结果");
+            return Result.success(new HashMap<>());
+        }
+        
+        try {
+            List<String> idList = Arrays.asList(ids.split(","));
+            log.info("解析得到 {} 个ID: {}", idList.size(), idList);
+            Map<String, List<String>> result = new HashMap<>();
+            
+            // 优化：先批量查询所有相关的流程实例，建立 processInstanceId -> businessKey 映射
+            Map<String, String> processInstanceToBusinessKey = new HashMap<>();
+            List<String> processInstanceIds = new ArrayList<>();
+            
+            for (String businessKey : idList) {
+                String trimmedKey = businessKey.trim();
+                log.debug("查询流程实例，businessKey: {}", trimmedKey);
+                
+                // 使用list()而不是singleResult()来处理可能的多个结果
+                List<ProcessInstance> instances = runtimeService.createProcessInstanceQuery()
+                        .processInstanceBusinessKey(trimmedKey)
+                        .list();
+                
+                if (!instances.isEmpty()) {
+                    // 如果有多个实例，取最新的一个（按开始时间排序）
+                    ProcessInstance latestInstance = instances.stream()
+                            .max(Comparator.comparing(ProcessInstance::getStartTime))
+                            .orElse(instances.get(0));
+                    
+                    processInstanceIds.add(latestInstance.getId());
+                    processInstanceToBusinessKey.put(latestInstance.getId(), trimmedKey);
+                    log.debug("找到流程实例: {} -> {} (共{}个实例，取最新)", 
+                             latestInstance.getId(), trimmedKey, instances.size());
+                } else {
+                    log.debug("未找到流程实例，businessKey: {}", trimmedKey);
+                }
+            }
+            
+            log.info("找到 {} 个流程实例", processInstanceIds.size());
+            
+            if (processInstanceIds.isEmpty()) {
+                log.info("没有找到任何流程实例，返回空结果");
+                return Result.success(result);
+            }
+            
+            // 批量查询所有相关的活跃任务
+            log.debug("查询活跃任务，processInstanceIds: {}", processInstanceIds);
+            List<Task> tasks = flowableTaskService.createTaskQuery()
+                    .processInstanceIdIn(processInstanceIds)
+                    .list();
+            
+            log.info("查询到 {} 个活跃任务", tasks.size());
+            
+            // 按 businessKey 分组，提取 taskDefinitionKey
+            for (Task task : tasks) {
+                String businessKey = processInstanceToBusinessKey.get(task.getProcessInstanceId());
+                if (businessKey != null) {
+                    result.computeIfAbsent(businessKey, k -> new ArrayList<>())
+                            .add(task.getTaskDefinitionKey());
+                    log.debug("任务映射: {} -> {}", businessKey, task.getTaskDefinitionKey());
+                }
+            }
+            
+            log.info("最终结果: {}", result);
+            return Result.success(result);
+            
+        } catch (Exception e) {
+            log.error("批量获取任务失败，ids: {}", ids, e);
+            return Result.fail("获取任务失败: " + e.getMessage());
+        }
     }
 
     @GetMapping
@@ -402,36 +685,7 @@ public class DeclarationFormController {
         if (StpUtil.isLogin()) {
             Long userId = StpUtil.getLoginIdAsLong();
 
-            // 如果明确查草稿 (status == 0)
-            if (status != null && status == 0) {
-                LambdaQueryWrapper<DeclarationDraft> draftWrapper = new LambdaQueryWrapper<>();
-                draftWrapper.eq(DeclarationDraft::getUserId, userId);
-                if (formNo != null && !formNo.isEmpty()) {
-                    draftWrapper.like(DeclarationDraft::getFormNo, formNo);
-                }
-                draftWrapper.orderByDesc(DeclarationDraft::getUpdateTime);
-                
-                Page<DeclarationDraft> draftPage = new Page<>(pageParam.getCurrent(), pageParam.getSize());
-                IPage<DeclarationDraft> draftResult = declarationDraftService.page(draftPage, draftWrapper);
-                
-                // 转换为 DeclarationForm 以适配前端
-                IPage<DeclarationForm> convertedResult = draftResult.convert(draft -> {
-                    DeclarationForm f = new DeclarationForm();
-                    f.setId(draft.getId());
-                    f.setFormNo(draft.getFormNo());
-                    f.setShipperCompany(draft.getShipperCompany());
-                    f.setConsigneeCompany(draft.getConsigneeCompany());
-                    f.setTotalAmount(draft.getTotalAmount());
-                    f.setStatus(0);
-                    f.setCreateTime(draft.getCreateTime());
-                    f.setUpdateTime(draft.getUpdateTime());
-                    f.setCreateBy(draft.getUserId());
-                    return f;
-                });
-                return Result.success(convertedResult);
-            }
-
-            // 查询正式表
+            // 查询正式/草稿混合表
             LambdaQueryWrapper<DeclarationForm> queryWrapper = new LambdaQueryWrapper<>();
             if (formNo != null && !formNo.isEmpty()) {
                 queryWrapper.like(DeclarationForm::getFormNo, formNo);
@@ -464,12 +718,15 @@ public class DeclarationFormController {
             
             // 批量填充申请人名称
             fillApplicantNames(result.getRecords());
+            // 批量填充财务补充状态
+            fillFinanceUploadStatus(result.getRecords());
             
             return Result.success(result);
         }
 
         IPage<DeclarationForm> result = declarationFormService.page(page);
         fillApplicantNames(result.getRecords());
+        fillFinanceUploadStatus(result.getRecords());
         return Result.success(result);
     }
     
@@ -507,30 +764,40 @@ public class DeclarationFormController {
         });
     }
 
+    /**
+     * 批量填充财务补充审核状态
+     */
+    private void fillFinanceUploadStatus(List<DeclarationForm> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        for (DeclarationForm form : records) {
+            // 如果已在正式表中且状态不为结束（简化判断：或者直接查询）
+            long count = flowableTaskService.createTaskQuery()
+                    .processInstanceBusinessKey(String.valueOf(form.getId()))
+                    .taskDefinitionKey("financeUploadTask")
+                    .count();
+            form.setFinanceUploadPending(count > 0);
+        }
+    }
+
     @PostMapping("/draft")
     @Operation(summary = "保存草稿")
     @RequiresPermissions("business:declaration:add")
     public Result<Long> saveDraft(@RequestBody DeclarationForm form) {
         try {
-            Long userId = StpUtil.getLoginIdAsLong();
             Long orgId = OrganizationUtils.getCurrentUserOrgId();
-
-            DeclarationDraft draft = new DeclarationDraft();
-            // 如果已存在草稿ID (编辑现有草稿)
-            if (form.getId() != null && form.getStatus() != null && form.getStatus() == 0) {
-                draft.setId(form.getId());
+            if (form.getOrgId() == null) {
+                form.setOrgId(orgId);
             }
+            form.setStatus(0); // 确保是草稿状态
             
-            draft.setUserId(userId);
-            draft.setOrgId(orgId);
-            draft.setFormNo(form.getFormNo());
-            draft.setShipperCompany(form.getShipperCompany());
-            draft.setConsigneeCompany(form.getConsigneeCompany());
-            draft.setTotalAmount(form.getTotalAmount());
-            draft.setFormData(objectMapper.writeValueAsString(form));
-            
-            declarationDraftService.saveOrUpdate(draft);
-            return Result.success(draft.getId());
+            if (form.getId() != null) {
+                declarationFormService.updateDeclarationForm(form);
+            } else {
+                declarationFormService.saveDeclarationForm(form);
+            }
+            return Result.success(form.getId());
         } catch (Exception e) {
             log.error("保存草稿失败", e);
             return Result.fail("保存草稿失败: " + e.getMessage());
@@ -544,35 +811,15 @@ public class DeclarationFormController {
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
         
-        // 如果明确是查草稿，或者在正式表查不到且已知是草稿
-        if (status != null && status == 0) {
-            DeclarationDraft draft = declarationDraftService.getById(id);
-            if (draft != null) {
-                try {
-                    DeclarationForm form = objectMapper.readValue(draft.getFormData(), DeclarationForm.class);
-                    form.setId(draft.getId());
-                    form.setStatus(0);
-                    return Result.success(form);
-                } catch (Exception e) {
-                    log.error("解析草稿JSON失败", e);
-                }
-            }
-        }
-
         DeclarationForm form = declarationFormService.getFullDeclarationForm(id);
-        // 如果正式表查不到，尝试查下草稿表 (容错处理)
-        if (form == null) {
-            DeclarationDraft draft = declarationDraftService.getById(id);
-            if (draft != null) {
-                try {
-                    form = objectMapper.readValue(draft.getFormData(), DeclarationForm.class);
-                    form.setId(draft.getId());
-                    form.setStatus(0);
-                    return Result.success(form);
-                } catch (Exception e) {
-                    log.error("解析草稿JSON失败", e);
-                }
-            }
+        
+        // 查询单一记录时，也填充财务状态
+        if (form != null && form.getId() != null) {
+            long count = flowableTaskService.createTaskQuery()
+                    .processInstanceBusinessKey(String.valueOf(form.getId()))
+                    .taskDefinitionKey("financeUploadTask")
+                    .count();
+            form.setFinanceUploadPending(count > 0);
         }
         
         return Result.success(form);
@@ -597,7 +844,10 @@ public class DeclarationFormController {
             String currentDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yy-MMdd"));
             form.setInvoiceNo("ZIYI-" + currentDate);
         }
-        
+        Long orgId = OrganizationUtils.getCurrentUserOrgId();
+        if (form.getOrgId() == null) {
+            form.setOrgId(orgId);
+        }
         declarationFormService.saveDeclarationForm(form);
         return Result.success(form.getId());
     }
@@ -611,7 +861,15 @@ public class DeclarationFormController {
     public Result<Void> updateDeclaration(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Valid @RequestBody DeclarationForm form) {
+        // 验证申报单ID与路径参数的一致性
         form.setId(id);
+        
+        // 设置组织ID，确保不会被从前端修改
+        Long currentOrgId = OrganizationUtils.getCurrentUserOrgId();
+        if (currentOrgId != null) {
+            form.setOrgId(currentOrgId);
+        }
+        
         declarationFormService.updateDeclarationForm(form);
         return Result.success();
     }
@@ -626,20 +884,12 @@ public class DeclarationFormController {
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
         
-        // 如果是删除草稿
-        if (status != null && status == 0) {
-            declarationDraftService.removeById(id);
-            return Result.success();
-        }
-
         DeclarationForm form = declarationFormService.getById(id);
         if (form == null) {
-            // 尝试从草稿表删除 (容错)
-            declarationDraftService.removeById(id);
             return Result.success();
         }
         
-        // 只有草稿状态才能被删除 (正式表中的草稿)
+        // 只有草稿状态才能被删除
         if (form.getStatus() != 0) {
             return Result.fail("只有草稿状态的申报单才允许删除");
         }
@@ -661,6 +911,18 @@ public class DeclarationFormController {
         if (form != null) {
             if (form.getStatus() != 0) {
                 return Result.fail("当前状态不支持提交操作");
+            }
+            
+            // 验证组织权限，确保用户只能提交自己组织的申报单
+            Long currentOrgId = OrganizationUtils.getCurrentUserOrgId();
+            if (form.getOrgId() != null && currentOrgId != null && !form.getOrgId().equals(currentOrgId)) {
+                log.warn("用户尝试提交不属于其组织的申报单: {}", id);
+                return Result.fail("没有权限提交此申报单");
+            }
+            
+            // 如果组织ID为空，则设置为当前用户组织ID
+            if (form.getOrgId() == null && currentOrgId != null) {
+                form.setOrgId(currentOrgId);
             }
             
             form.setStatus(1); // 已提交状态
@@ -965,19 +1227,25 @@ public class DeclarationFormController {
     
     /**
      * 获取状态文本
+     * 状态定义（任务驱动流程）：
+     * 0 - 草稿
+     * 1 - 待初审
+     * 2 - 处理中（并行任务进行中，具体进度由活跃任务决定）
+     * 8 - 已完成
+     * 注：状态3/4/5已移除，并行阶段主状态始终为2
      */
     private String getStatusText(Integer status) {
         if (status == null) return "未知";
         switch (status) {
             case 0: return "草稿";
-            case 1: return "已提交";
-            case 2: return "已审核";
-            case 3: return "已完成";
+            case 1: return "待初审";
+            case 2: return "处理中";
+            case 8: return "已完成";
             default: return "状态" + status;
         }
     }
 
-    // ================== 提货单附件管理 ==================
+    // ================== 提货单与财务附件管理 ==================
     
     /**
      * 获取提货单附件列表
@@ -1040,6 +1308,152 @@ public class DeclarationFormController {
         
         attachmentService.removeById(attachmentId);
         return Result.success();
+    }
+
+    // ================== 提货单管理 API ==================
+
+    /**
+     * 提交提货单
+     */
+    @PostMapping("/{id}/delivery-order")
+    @Operation(summary = "提交提货单")
+    @RequiresPermissions("business:declaration:deliveryOrder:add")
+    public Result<Long> saveDeliveryOrder(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @RequestBody DeliveryOrder deliveryOrder) {
+        
+        DeclarationForm form = declarationFormService.getById(id);
+        if (form == null) {
+            return Result.fail("申报单不存在");
+        }
+        
+        deliveryOrder.setFormId(id);
+        boolean saved = declarationFormService.saveDeliveryOrder(deliveryOrder);
+        if (saved) {
+            return Result.success(deliveryOrder.getId());
+        }
+        return Result.fail("保存提货单失败");
+    }
+
+    /**
+     * 获取提货单列表
+     */
+    @GetMapping("/{id}/delivery-orders")
+    @Operation(summary = "获取提货单列表")
+    @RequiresPermissions("business:declaration:deliveryOrder")
+    public Result<List<DeliveryOrder>> getDeliveryOrders(
+            @Parameter(description = "申报单ID") @PathVariable Long id) {
+        
+        List<DeliveryOrder> deliveryOrders = declarationFormService.getDeliveryOrdersByFormId(id);
+        return Result.success(deliveryOrders);
+    }
+
+    /**
+     * 更新提货单
+     */
+    @PutMapping("/delivery-order/{deliveryOrderId}")
+    @Operation(summary = "更新提货单")
+    @RequiresPermissions("business:declaration:deliveryOrder:edit")
+    public Result<Void> updateDeliveryOrder(
+            @Parameter(description = "提货单ID") @PathVariable Long deliveryOrderId,
+            @RequestBody DeliveryOrder deliveryOrder) {
+        
+        DeliveryOrder existing = declarationFormService.getDeliveryOrderById(deliveryOrderId);
+        if (existing == null) {
+            return Result.fail("提货单不存在");
+        }
+        
+        // 保持原有的formId和createdBy不变
+        deliveryOrder.setId(deliveryOrderId);
+        deliveryOrder.setFormId(existing.getFormId());
+        deliveryOrder.setCreatedBy(existing.getCreatedBy());
+        deliveryOrder.setCreatedAt(existing.getCreatedAt());
+        
+        boolean updated = declarationFormService.updateDeliveryOrder(deliveryOrder);
+        if (updated) {
+            return Result.success();
+        }
+        return Result.fail("更新提货单失败");
+    }
+
+    /**
+     * 删除提货单
+     */
+    @DeleteMapping("/delivery-order/{deliveryOrderId}")
+    @Operation(summary = "删除提货单")
+    @RequiresPermissions("business:declaration:deliveryOrder:delete")
+    public Result<Void> deleteDeliveryOrder(
+            @Parameter(description = "提货单ID") @PathVariable Long deliveryOrderId) {
+        
+        DeliveryOrder existing = declarationFormService.getDeliveryOrderById(deliveryOrderId);
+        if (existing == null) {
+            return Result.fail("提货单不存在");
+        }
+        
+        // 只有待审核状态才能删除
+        if (existing.getStatus() != null && existing.getStatus() != 0) {
+            return Result.fail("只有待审核的提货单才能删除");
+        }
+        
+        boolean deleted = declarationFormService.deleteDeliveryOrder(deliveryOrderId);
+        if (deleted) {
+            return Result.success();
+        }
+        return Result.fail("删除提货单失败");
+    }
+
+    // ================== 财务审核 API ==================
+
+    /**
+     * 审核水单（定金/尾款）
+     */
+    @PostMapping("/remittance/{remittanceId}/audit")
+    @Operation(summary = "审核水单")
+    @RequiresPermissions("business:declaration:audit")
+    public Result<Void> auditRemittance(
+            @Parameter(description = "水单ID") @PathVariable Long remittanceId,
+            @RequestBody Map<String, Object> params) {
+        
+        DeclarationRemittance remittance = remittanceService.getById(remittanceId);
+        if (remittance == null) {
+            return Result.fail("水单不存在");
+        }
+        
+        Object approvedObj = params.get("approved");
+        boolean approved = approvedObj != null && (Boolean.TRUE.equals(approvedObj) || "true".equals(approvedObj.toString()));
+        String remark = params.get("remark") != null ? params.get("remark").toString() : "";
+        
+        boolean result = declarationFormService.auditRemittance(remittanceId, approved, remark);
+        if (result) {
+            return Result.success();
+        }
+        return Result.fail("审核水单失败");
+    }
+
+    /**
+     * 审核提货单
+     */
+    @PostMapping("/delivery-order/{deliveryOrderId}/audit")
+    @Operation(summary = "审核提货单")
+    @RequiresPermissions("business:declaration:deliveryOrder:audit")
+    public Result<Void> auditDeliveryOrder(
+            @Parameter(description = "提货单ID") @PathVariable Long deliveryOrderId,
+            @RequestBody Map<String, Object> params) {
+        
+        DeliveryOrder deliveryOrder = declarationFormService.getDeliveryOrderById(deliveryOrderId);
+        if (deliveryOrder == null) {
+            return Result.fail("提货单不存在");
+        }
+        
+        Object approvedObj = params.get("approved");
+        boolean approved = approvedObj != null && (Boolean.TRUE.equals(approvedObj) || "true".equals(approvedObj.toString()));
+        String remark = params.get("remark") != null ? params.get("remark").toString() : "";
+        
+        boolean result = declarationFormService.auditDeliveryOrder(deliveryOrderId, approved, remark);
+        if (result) {
+            return Result.success();
+        }
+        return Result.fail("审核提货单失败");
     }
     
     /**

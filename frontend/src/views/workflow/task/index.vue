@@ -6,7 +6,14 @@
         <task-list 
           :tasks="assignedTasks" 
           :loading="loading" 
+          :total="assignedPagination.total"
+          :page-num="assignedPagination.current"
+          :page-size="assignedPagination.pageSize"
           @refresh="loadAssignedTasks"
+          @change="(p) => { assignedPagination.current = p.current; assignedPagination.pageSize = p.pageSize; loadAssignedTasks() }"
+          @search="(params) => { assignedPagination.current = 1; assignedPagination.searchParams = params; loadAssignedTasks() }"
+          @view="handleView"
+          @viewProcess="handleViewProcess"
           @claim="handleClaim"
           @complete="handleComplete"
         />
@@ -15,16 +22,30 @@
         <task-list 
           :tasks="completedTasks" 
           :loading="loading" 
+          :total="completedPagination.total"
+          :page-num="completedPagination.current"
+          :page-size="completedPagination.pageSize"
           type="completed"
           @refresh="loadCompletedTasks"
+          @change="(p) => { completedPagination.current = p.current; completedPagination.pageSize = p.pageSize; loadCompletedTasks() }"
+          @search="(params) => { completedPagination.current = 1; completedPagination.searchParams = params; loadCompletedTasks() }"
+          @view="handleView"
+          @viewProcess="handleViewProcess"
         />
       </a-tab-pane>
       <a-tab-pane key="candidate" tab="候选任务">
         <task-list 
           :tasks="candidateTasks" 
           :loading="loading" 
+          :total="candidatePagination.total"
+          :page-num="candidatePagination.current"
+          :page-size="candidatePagination.pageSize"
           type="candidate"
           @refresh="loadCandidateTasks"
+          @change="(p) => { candidatePagination.current = p.current; candidatePagination.pageSize = p.pageSize; loadCandidateTasks() }"
+          @search="(params) => { candidatePagination.current = 1; candidatePagination.searchParams = params; loadCandidateTasks() }"
+          @view="handleView"
+          @viewProcess="handleViewProcess"
           @claim="handleClaim"
         />
       </a-tab-pane>
@@ -83,6 +104,33 @@
         </a-form>
       </div>
     </a-modal>
+
+    <!-- 流程实例详情弹窗 -->
+    <a-modal
+      v-model:open="detailVisible"
+      title="流程详情"
+      width="900px"
+      :footer="null"
+    >
+      <a-tabs v-model:activeKey="detailActiveTab">
+        <a-tab-pane key="taskHistory" tab="流转历史">
+          <a-table
+            :dataSource="instanceTaskData"
+            :columns="instanceTaskColumns"
+            :loading="instanceTaskLoading"
+            size="small"
+            rowKey="taskId"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'status'">
+                <a-tag v-if="record.status === 1" color="green">已完成</a-tag>
+                <a-tag v-else color="blue">待处理</a-tag>
+              </template>
+            </template>
+          </a-table>
+        </a-tab-pane>
+      </a-tabs>
+    </a-modal>
   </div>
 </template>
 
@@ -91,7 +139,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import TaskList from './components/TaskList.vue'
-import { getMyAssignedTasks, getMyCandidateTasks, getMyCompletedTasks, claimTask, completeTask } from '@/api/workflow'
+import { getMyAssignedTasks, getMyCandidateTasks, getMyCompletedTasks, claimTask, completeTask, getTasksByProcessInstance } from '@/api/workflow'
 
 const router = useRouter()
 
@@ -117,6 +165,27 @@ const assignedTasks = ref<Task[]>([])
 const completedTasks = ref<Task[]>([])
 const candidateTasks = ref<Task[]>([])
 
+const assignedPagination = reactive({
+  current: 1,
+  pageSize: 10,
+  total: 0,
+  searchParams: {} as any
+})
+
+const completedPagination = reactive({
+  current: 1,
+  pageSize: 10,
+  total: 0,
+  searchParams: {} as any
+})
+
+const candidatePagination = reactive({
+  current: 1,
+  pageSize: 10,
+  total: 0,
+  searchParams: {} as any
+})
+
 // 任务弹窗相关
 const taskModalVisible = ref(false)
 const modalLoading = ref(false)
@@ -124,6 +193,19 @@ const modalTitle = ref('')
 const modalType = ref('')
 const taskFormRef = ref()
 const currentTask = ref<Task | null>(null)
+
+// 详情弹窗相关
+const detailVisible = ref(false)
+const detailActiveTab = ref('taskHistory')
+const instanceTaskData = ref<any[]>([])
+const instanceTaskLoading = ref(false)
+const instanceTaskColumns = [
+  { title: '任务名称', dataIndex: 'taskName', key: 'taskName' },
+  { title: '办理人', dataIndex: 'assigneeName', key: 'assigneeName' },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
+  { title: '完成时间', dataIndex: 'endTime', key: 'endTime', width: 180 }
+]
 
 // 任务表单数据
 const taskFormData = reactive({
@@ -136,9 +218,15 @@ const taskFormData = reactive({
 const loadAssignedTasks = async () => {
   loading.value = true
   try {
-    const response = await getMyAssignedTasks()
+    const params = {
+      pageNum: assignedPagination.current,
+      pageSize: assignedPagination.pageSize,
+      ...assignedPagination.searchParams
+    }
+    const response = await getMyAssignedTasks(params)
     if (response.data?.code === 200) {
-      assignedTasks.value = response.data.data.map((item: any) => ({
+      const records = response.data.data?.records || []
+      assignedTasks.value = records.map((item: any) => ({
         taskId: item.taskId,
         taskName: item.taskName,
         processName: item.processDefinitionName,
@@ -151,6 +239,7 @@ const loadAssignedTasks = async () => {
         activityId: item.activityId,
         businessKey: item.businessKey
       }))
+      assignedPagination.total = response.data.data?.total || 0
     } else {
       message.error(response.data?.message || '加载待办任务失败')
     }
@@ -164,9 +253,15 @@ const loadAssignedTasks = async () => {
 const loadCompletedTasks = async () => {
   loading.value = true
   try {
-    const response = await getMyCompletedTasks()
+    const params = {
+      pageNum: completedPagination.current,
+      pageSize: completedPagination.pageSize,
+      ...completedPagination.searchParams
+    }
+    const response = await getMyCompletedTasks(params)
     if (response.data?.code === 200) {
-      completedTasks.value = response.data.data.map((item: any) => ({
+      const records = response.data.data?.records || []
+      completedTasks.value = records.map((item: any) => ({
         taskId: item.taskId,
         taskName: item.taskName,
         processName: item.processDefinitionName,
@@ -180,6 +275,7 @@ const loadCompletedTasks = async () => {
         activityId: item.activityId,
         businessKey: item.businessKey
       }))
+      completedPagination.total = response.data.data?.total || 0
     } else {
       message.error(response.data?.message || '加载已办任务失败')
     }
@@ -193,9 +289,15 @@ const loadCompletedTasks = async () => {
 const loadCandidateTasks = async () => {
   loading.value = true
   try {
-    const response = await getMyCandidateTasks()
+    const params = {
+      pageNum: candidatePagination.current,
+      pageSize: candidatePagination.pageSize,
+      ...candidatePagination.searchParams
+    }
+    const response = await getMyCandidateTasks(params)
     if (response.data?.code === 200) {
-      candidateTasks.value = response.data.data.map((item: any) => ({
+      const records = response.data.data?.records || []
+      candidateTasks.value = records.map((item: any) => ({
         taskId: item.taskId,
         taskName: item.taskName,
         processName: item.processDefinitionName,
@@ -206,6 +308,7 @@ const loadCandidateTasks = async () => {
         dueTime: item.dueTime,
         claimTime: item.claimTime
       }))
+      candidatePagination.total = response.data.data?.total || 0
     } else {
       message.error(response.data?.message || '加载候选任务失败')
     }
@@ -218,16 +321,33 @@ const loadCandidateTasks = async () => {
 
 const handleTabChange = (key: any) => {
   const activeKey = String(key)
+  activeTab.value = activeKey
   switch (activeKey) {
     case 'assigned':
+      assignedPagination.current = 1
       loadAssignedTasks()
       break
     case 'completed':
+      completedPagination.current = 1
       loadCompletedTasks()
       break
     case 'candidate':
+      candidatePagination.current = 1
       loadCandidateTasks()
       break
+  }
+}
+
+const handleView = (task: Task) => {
+  // 跳转到申报单管理页面并打开审核/查看模式，或者直接显示任务详情
+  // 统一逻辑：跳转到业务单据页
+  if (task.businessKey) {
+    router.push({
+      path: '/declaration/manage',
+      query: { action: 'view', id: task.businessKey }
+    })
+  } else {
+    message.warning('任务未关联业务单据')
   }
 }
 
@@ -340,6 +460,30 @@ const handleTaskModalCancel = () => {
   taskModalVisible.value = false
   taskFormRef.value?.resetFields()
   currentTask.value = null
+}
+
+const handleViewProcess = async (task: Task) => {
+  detailVisible.value = true
+  instanceTaskLoading.value = true
+  instanceTaskData.value = []
+  try {
+    const response = await getTasksByProcessInstance(task.processInstanceId)
+    if (response.data?.code === 200) {
+      const tasks = Array.isArray(response.data.data) ? response.data.data : []
+      instanceTaskData.value = tasks.map((t: any) => ({
+        taskId: t.taskId || t.id,
+        taskName: t.taskName || t.activityName || t.name,
+        assigneeName: t.assigneeName || t.assignee || '未分配',
+        status: t.status ?? (t.endTime ? 1 : 0),
+        createTime: t.createTime,
+        endTime: t.endTime
+      }))
+    }
+  } catch (error) {
+    message.error('加载任务历史失败')
+  } finally {
+    instanceTaskLoading.value = false
+  }
 }
 
 // 生命周期

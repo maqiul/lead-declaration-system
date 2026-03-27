@@ -6,6 +6,8 @@ import com.declaration.common.PageParam;
 import com.declaration.common.Result;
 import com.declaration.entity.*;
 import com.declaration.service.*;
+
+import cn.dev33.satoken.stp.StpUtil;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,6 +39,15 @@ public class RoleController {
     @RequiresPermissions("role:list")
     public Result<List<Role>> getRoleList() {
         List<Role> roles = roleService.list();
+        try {
+            if (!StpUtil.hasRole("ADMIN")) {
+                roles = roles.stream()
+                        .filter(r -> !"ADMIN".equalsIgnoreCase(r.getRoleCode()))
+                        .collect(java.util.stream.Collectors.toList());
+            }
+        } catch (Exception e) {
+            log.warn("检查当前用户角色状态异常", e);
+        }
         return Result.success(roles);
     }
 
@@ -95,7 +106,7 @@ public class RoleController {
         if (role != null && "admin".equals(role.getRoleCode())) {
             return Result.fail("不能删除管理员角色");
         }
-        
+
         boolean result = roleService.deleteRole(id);
         if (result) {
             return new Result<Void>().setCode(200).setMessage("删除成功");

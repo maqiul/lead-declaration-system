@@ -1,32 +1,40 @@
 <template>
-  <div class="currency-management">
+  <div class="currency-management px-6 py-6 bg-white min-h-full">
     <!-- 搜索区域 -->
-    <a-card class="search-card">
-      <a-form :model="searchForm" layout="inline">
+    <a-card class="ui-card mb-4" :bordered="false">
+      <a-form :model="searchForm" layout="inline" class="flex flex-wrap gap-4">
         <a-form-item label="关键词">
-          <a-input v-model:value="searchForm.keyword" placeholder="货币代码/中文名称/英文名称" />
+          <a-input v-model:value="searchForm.keyword" placeholder="货币代码/中文名称/英文名称" allow-clear class="ui-input" />
         </a-form-item>
         <a-form-item label="状态">
-          <a-select v-model:value="searchForm.status" placeholder="请选择状态" allowClear style="width: 100px">
+          <a-select v-model:value="searchForm.status" placeholder="请选择状态" allowClear style="width: 140px" class="ui-select">
             <a-select-option :value="1">启用</a-select-option>
             <a-select-option :value="0">禁用</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">搜索</a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch" class="ui-btn-primary">
+              <template #icon><SearchOutlined /></template>
+              查询
+            </a-button>
+            <a-button @click="handleReset" class="ui-btn-secondary">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
 
     <!-- 操作按钮区域 -->
-    <a-card class="operation-card">
+    <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="openAddModal">
+        <a-button type="primary" @click="openAddModal" v-permission="['system:currency:add']" class="ui-btn-cta">
           <template #icon><PlusOutlined /></template>
           新增货币
         </a-button>
-        <a-button @click="loadCurrencyList">
+        <a-button @click="loadCurrencyList" class="ui-btn-secondary">
           <template #icon><ReloadOutlined /></template>
           刷新
         </a-button>
@@ -34,7 +42,7 @@
     </a-card>
 
     <!-- 表格区域 -->
-    <a-card>
+    <a-card class="ui-card" :bordered="false">
       <a-table
         :dataSource="currencyList"
         :columns="columns"
@@ -42,7 +50,35 @@
         :pagination="pagination"
         @change="handleTableChange"
         rowKey="id"
-      />
+        class="ui-table"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'status'">
+            <a-tag :color="record.status === 1 ? 'success' : 'error'" class="ui-tag">
+              {{ record.status === 1 ? '启用' : '禁用' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click="openEditModal(record as CurrencyInfo)" v-permission="['system:currency:edit']" class="font-medium text-blue-600">编辑</a-button>
+              <a-popconfirm
+                title="确定要切换状态吗？"
+                @confirm="toggleStatus(record as CurrencyInfo)"
+              >
+                <a-button type="link" size="small" :danger="record.status === 1" v-permission="['system:currency:edit']" class="font-medium">
+                  {{ record.status === 1 ? '禁用' : '启用' }}
+                </a-button>
+              </a-popconfirm>
+              <a-popconfirm
+                title="确定要删除吗？"
+                @confirm="handleDelete(record.id)"
+              >
+                <a-button type="link" size="small" danger v-permission="['system:currency:delete']" class="font-medium">删除</a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
     </a-card>
 
     <!-- 编辑弹窗 -->
@@ -120,9 +156,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, h } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+
+import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
 import {
   getCurrencyList,
@@ -199,13 +236,9 @@ const columns = [
   },
   {
     title: '状态',
+    dataIndex: 'status',
     key: 'status',
-    width: 80,
-    customRender: ({ record }: { record: CurrencyInfo }) => {
-      return h('a-tag', { 
-        color: record.status === 1 ? 'green' : 'red'
-      }, record.status === 1 ? '启用' : '禁用')
-    }
+    width: 80
   },
   {
     title: '创建时间',
@@ -216,36 +249,8 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 180,
-    customRender: ({ record }: { record: CurrencyInfo }) => {
-      return h('a-space', {}, [
-        h('a-button', {
-          type: 'link',
-          size: 'small',
-          onClick: () => openEditModal(record)
-        }, '编辑'),
-        h('a-popconfirm', {
-          title: '确定要切换状态吗？',
-          onConfirm: () => toggleStatus(record)
-        }, {
-          default: () => h('a-button', {
-            type: 'link',
-            size: 'small',
-            danger: record.status === 1
-          }, record.status === 1 ? '禁用' : '启用')
-        }),
-        h('a-popconfirm', {
-          title: '确定要删除吗？',
-          onConfirm: () => handleDelete(record.id!)
-        }, {
-          default: () => h('a-button', {
-            type: 'link',
-            size: 'small',
-            danger: true
-          }, '删除')
-        })
-      ])
-    }
+    fixed: 'right' as const,
+    width: 200
   }
 ]
 
@@ -437,15 +442,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.currency-management {
-  padding: 20px;
-}
-
-.search-card {
-  margin-bottom: 16px;
-}
-
-.operation-card {
-  margin-bottom: 16px;
-}
+/* 页面特有样式已由全局 index.less 覆盖 */
 </style>
+

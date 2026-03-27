@@ -23,8 +23,10 @@
           </a-select>
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">搜索</a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch" v-permission="['workflow:definition:list']">搜索</a-button>
+            <a-button @click="handleReset" v-permission="['workflow:definition:list']">重置</a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
@@ -32,11 +34,11 @@
     <!-- 操作按钮区域 -->
     <a-card class="operation-card">
       <a-space>
-        <a-button type="primary" @click="handleDeploy">
+        <a-button type="primary" @click="handleDeploy" v-permission="['workflow:definition:deploy']">
           <template #icon><upload-outlined /></template>
           部署流程
         </a-button>
-        <a-button @click="handleBatchDisable" :disabled="selectedRowKeys.length === 0" :loading="batchDisableLoading">
+        <a-button @click="handleBatchDisable" :disabled="selectedRowKeys.length === 0" :loading="batchDisableLoading" v-permission="['workflow:definition:update']">
           <template #icon><stop-outlined /></template>
           批量停用
         </a-button>
@@ -62,32 +64,34 @@
           </template>
             <template v-else-if="column.key === 'action'">
               <a-space>
-                <a-button type="link" size="small" @click="handleView(record as ProcessDefinition)">查看</a-button>
-                <a-button type="link" size="small" @click="handleEdit(record as ProcessDefinition)">编辑</a-button>
-              <a-button 
-                v-if="record.status === 1" 
-                type="link" 
-                size="small" 
-                @click="handleDisable(record.id)"
-              >
-                停用
-              </a-button>
-              <a-button 
-                v-else 
-                type="link" 
-                size="small" 
-                @click="handleEnable(record.id)"
-              >
-                启用
-              </a-button>
-              <a-popconfirm
-                title="确定要删除这个流程定义吗？"
-                @confirm="handleDelete(record.id)"
-              >
-                <a-button type="link" size="small" danger>删除</a-button>
-              </a-popconfirm>
-            </a-space>
-          </template>
+                <a-button type="link" size="small" @click="handleView(record as ProcessDefinition)" v-permission="['workflow:definition:view']">查看</a-button>
+                <a-button type="link" size="small" @click="handleEdit(record as ProcessDefinition)" v-permission="['workflow:definition:update']">编辑</a-button>
+                <a-button 
+                  v-if="record.status === 1" 
+                  type="link" 
+                  size="small" 
+                  @click="handleDisable(record.id)"
+                  v-permission="['workflow:definition:update']"
+                >
+                  停用
+                </a-button>
+                <a-button 
+                  v-else 
+                  type="link" 
+                  size="small" 
+                  @click="handleEnable(record.id)"
+                  v-permission="['workflow:definition:update']"
+                >
+                  启用
+                </a-button>
+                <a-popconfirm
+                  title="确定要删除这个流程定义吗？"
+                  @confirm="handleDelete(record.id)"
+                >
+                  <a-button type="link" size="small" danger v-permission="['workflow:definition:delete']">删除</a-button>
+                </a-popconfirm>
+              </a-space>
+            </template>
         </template>
       </a-table>
     </a-card>
@@ -591,71 +595,21 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 页面特有样式已由全局 index.less 覆盖 */
 .process-definition {
-  padding: 0;
+  padding: 24px;
   background: transparent;
   min-height: 100%;
-  box-sizing: border-box;
-  overflow-x: hidden;
-}
-
-.search-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
-}
-
-.operation-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
 }
 
 .bpmn-preview {
-  height: 300px;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
+  height: 400px;
+  border: 1px solid #f1f5f9;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-:deep(.ant-card) {
-  border-radius: 8px;
-}
-
-:deep(.ant-card-body) {
-  padding: 24px;
-}
-
-:deep(.ant-table) {
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-:deep(.ant-table-thead > tr > th) {
-  background-color: #fafafa;
-  font-weight: 600;
-}
-
-:deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-}
-
-:deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
-
-:deep(.ant-upload) {
-  border-radius: 6px;
-}
-
-:deep(.ant-descriptions) {
-  background: white;
-  border-radius: 8px;
-  padding: 16px;
+  background: #f8fafc;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 </style>

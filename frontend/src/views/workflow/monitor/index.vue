@@ -301,7 +301,7 @@ const loadInstances = async () => {
   try {
     const response = await getRunningProcessInstances()
     if (response.data?.code === 200) {
-      instances.value = response.data.data
+      instances.value = response.data.data?.records || []
     }
   } catch (error) {
     message.error('加载实例数据失败')
@@ -315,7 +315,7 @@ const loadTasks = async () => {
   try {
     const response = await getAllActiveTasks()
     if (response.data?.code === 200) {
-      tasks.value = response.data.data
+      tasks.value = response.data.data?.records || []
     }
   } catch (error) {
     message.error('加载全量任务失败')

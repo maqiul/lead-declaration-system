@@ -216,10 +216,18 @@ public class ProcessInstanceServiceImpl implements ProcessInstanceService {
             instance.setProcessName(def.getName());
         }
 
-        // 获取当前节点名称
-        org.flowable.task.api.Task activeTask = flowableTaskService.createTaskQuery().processInstanceId(flowableInstance.getId()).singleResult();
-        if (activeTask != null) {
-            instance.setCurrentActivityName(activeTask.getName());
+        // 获取当前节点信息
+        List<org.flowable.task.api.Task> activeTasks = flowableTaskService.createTaskQuery()
+                .processInstanceId(flowableInstance.getId())
+                .list();
+        if (activeTasks != null && !activeTasks.isEmpty()) {
+            // 如果有多个任务（如并行网关），以逗号分隔
+            instance.setCurrentActivityName(activeTasks.stream()
+                    .map(org.flowable.task.api.Task::getName)
+                    .collect(Collectors.joining(", ")));
+            instance.setCurrentActivityId(activeTasks.stream()
+                    .map(org.flowable.task.api.Task::getTaskDefinitionKey)
+                    .collect(Collectors.joining(", ")));
         }
 
         // 获取发起人

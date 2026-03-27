@@ -1,35 +1,43 @@
 <template>
-  <div class="role-management">
+  <div class="role-management px-6 py-6 bg-white min-h-full">
     <!-- 搜索区域 -->
-    <a-card class="search-card">
-      <a-form :model="searchForm" layout="inline">
+    <a-card class="ui-card mb-4" :bordered="false">
+      <a-form :model="searchForm" layout="inline" class="flex flex-wrap gap-4">
         <a-form-item label="角色名称">
-          <a-input v-model:value="searchForm.roleName" placeholder="请输入角色名称" />
+          <a-input v-model:value="searchForm.roleName" placeholder="请输入角色名称" class="ui-input" />
         </a-form-item>
         <a-form-item label="角色编码">
-          <a-input v-model:value="searchForm.roleCode" placeholder="请输入角色编码" />
+          <a-input v-model:value="searchForm.roleCode" placeholder="请输入角色编码" class="ui-input" />
         </a-form-item>
         <a-form-item label="状态">
-          <a-select v-model:value="searchForm.status" style="width: 120px" placeholder="请选择状态">
+          <a-select v-model:value="searchForm.status" style="width: 140px" placeholder="请选择状态" class="ui-select" allow-clear>
             <a-select-option :value="1">启用</a-select-option>
             <a-select-option :value="0">禁用</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">搜索</a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch" class="ui-btn-primary">
+              <template #icon><search-outlined /></template>
+              查询
+            </a-button>
+            <a-button @click="handleReset" class="ui-btn-secondary">
+              <template #icon><reload-outlined /></template>
+              重置
+            </a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
 
     <!-- 操作按钮区域 -->
-    <a-card class="operation-card">
+    <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="handleAdd">
+        <a-button type="primary" @click="handleAdd" v-permission="['role:add']" class="ui-btn-cta">
           <template #icon><plus-outlined /></template>
           新增角色
         </a-button>
-        <a-button @click="handleBatchDelete" :disabled="selectedRowKeys.length === 0">
+        <a-button @click="handleBatchDelete" :disabled="selectedRowKeys.length === 0" v-permission="['role:delete']" class="ui-btn-secondary">
           <template #icon><delete-outlined /></template>
           批量删除
         </a-button>
@@ -37,7 +45,7 @@
     </a-card>
 
     <!-- 表格区域 -->
-    <a-card>
+    <a-card class="ui-card" :bordered="false">
       <a-table
         :dataSource="tableData"
         :columns="columns"
@@ -46,28 +54,30 @@
         :row-selection="rowSelection"
         row-key="id"
         @change="handleTableChange"
+        class="ui-table"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
-            <a-tag :color="record.status === 1 ? 'green' : 'red'">
+            <a-tag :color="record.status === 1 ? 'success' : 'error'" class="ui-tag">
               {{ record.status === 1 ? '启用' : '禁用' }}
             </a-tag>
           </template>
           <template v-else-if="column.key === 'dataScope'">
-            <a-tag v-if="record.dataScope === 1">全部数据</a-tag>
-            <a-tag v-else-if="record.dataScope === 2" color="blue">本级数据</a-tag>
+            <a-tag v-if="record.dataScope === 1" color="blue">全部数据</a-tag>
+            <a-tag v-else-if="record.dataScope === 2" color="cyan">本级数据</a-tag>
             <a-tag v-else-if="record.dataScope === 3" color="orange">本级及下级</a-tag>
-            <a-tag v-else color="purple">自定义</a-tag>
+            <a-tag v-else color="default">自定义</a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as Role)">编辑</a-button>
-              <a-button type="link" size="small" @click="handlePermission(record as Role)">权限配置</a-button>
+              <a-button type="link" size="small" @click="handleEdit(record as Role)" v-permission="['role:update']" class="font-medium text-blue-600">编辑</a-button>
+              <a-button type="link" size="small" @click="handlePermission(record as Role)" v-permission="['role:menu']" class="font-medium text-blue-600">权限配置</a-button>
               <a-button 
-                v-if="(record as Role).roleCode === 'admin'" 
+                v-if="(record as Role).roleCode === 'admin' || (record as Role).roleCode === 'SUPER_ADMIN'" 
                 type="link" 
                 size="small" 
                 @click="handleAssignAllPermissions(record as Role)"
+                class="font-medium text-blue-600"
               >
                 分配全部权限
               </a-button>
@@ -75,7 +85,7 @@
                 title="确定要删除这个角色吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger>删除</a-button>
+                <a-button type="link" size="small" danger v-permission="['role:delete']" class="font-medium">删除</a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -91,6 +101,7 @@
       @ok="handleModalOk"
       @cancel="handleModalCancel"
       width="600px"
+      destroyOnClose
     >
       <a-form
         ref="formRef"
@@ -141,34 +152,37 @@
       @ok="handlePermissionOk"
       @cancel="handlePermissionCancel"
       width="800px"
+      destroyOnClose
     >
-      <div class="permission-tree">
+      <div class="permission-tree-container px-4 py-4">
         <a-alert
           message="勾选菜单权限会自动关联对应的按钮权限"
           type="info"
           show-icon
-          style="margin-bottom: 16px"
+          class="mb-4 rounded-md"
         />
-        <a-tree
-          v-model:checked-keys="checkedKeys"
-          :tree-data="menuTreeData"
-          :field-names="{ title: 'menuName', key: 'id' }"
-          checkable
-          check-strictly
-          default-expand-all
-        >
-          <template #title="{ menuName, menuType, permission }">
-            <span>
-              <a-tag v-if="menuType === 1" color="blue" style="margin-right: 4px; font-size: 11px;">目录</a-tag>
-              <a-tag v-else-if="menuType === 2" color="green" style="margin-right: 4px; font-size: 11px;">菜单</a-tag>
-              <a-tag v-else-if="menuType === 3" color="orange" style="margin-right: 4px; font-size: 11px;">按钮</a-tag>
-              {{ menuName }}
-              <span v-if="permission" style="color: #999; font-size: 12px; margin-left: 8px">
-                ({{ permission }})
+        <div class="tree-wrapper border border-slate-200 rounded-lg p-4 bg-slate-50 max-h-[500px] overflow-y-auto">
+          <a-tree
+            v-model:checked-keys="checkedKeys"
+            :tree-data="menuTreeData"
+            :field-names="{ title: 'menuName', key: 'id' }"
+            checkable
+            check-strictly
+            default-expand-all
+          >
+            <template #title="{ menuName, menuType, permission: perm }">
+              <span class="flex items-center gap-2">
+                <a-tag v-if="menuType === 1" color="blue" class="scale-90 origin-left">目录</a-tag>
+                <a-tag v-else-if="menuType === 2" color="green" class="scale-90 origin-left">菜单</a-tag>
+                <a-tag v-else-if="menuType === 3" color="orange" class="scale-90 origin-left">按钮</a-tag>
+                <span class="font-medium">{{ menuName }}</span>
+                <span v-if="perm" class="text-slate-400 text-xs italic">
+                  ({{ perm }})
+                </span>
               </span>
-            </span>
-          </template>
-        </a-tree>
+            </template>
+          </a-tree>
+        </div>
       </div>
     </a-modal>
   </div>
@@ -177,7 +191,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import type { TableProps, TreeProps } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { getRoleList, addRole, updateRole, deleteRole, updateRoleMenus, assignAllPermissionsToAdmin, getRoleMenus, getMenuTree } from '@/api/system'
@@ -218,7 +232,7 @@ const pagination = reactive({
   total: 0,
   showSizeChanger: true,
   showQuickJumper: true,
-  showTotal: (total: number) => `共 ${total} 条记录`
+  showTotal: (total: number) => `共 ${total} 条`
 })
 
 // 表格列配置
@@ -304,18 +318,6 @@ const currentRoleId = ref<number>()
 // 菜单树数据
 const menuTreeData = ref<TreeProps['treeData']>([])
 
-// 加载菜单树数据
-const loadMenuTree = async () => {
-  try {
-    const response = await getMenuTree()
-    if (response.data?.code === 200) {
-      menuTreeData.value = response.data.data || []
-    }
-  } catch (error) {
-    // 加载菜单树失败
-  }
-}
-
 // 方法
 const loadData = async () => {
   loading.value = true
@@ -330,10 +332,10 @@ const loadData = async () => {
     
     const response = await getRoleList(params)
     if (response.data?.code === 200) {
-      tableData.value = response.data.data.records
-      pagination.total = Number(response.data.data.total) || 0
-    } else {
-      message.error(response.data?.message || '加载数据失败')
+      // 增加数组安全性检查
+      const records = response.data.data?.records
+      tableData.value = Array.isArray(records) ? records : []
+      pagination.total = Number(response.data.data?.total) || 0
     }
   } catch (error) {
     message.error('加载数据失败')
@@ -369,14 +371,7 @@ const handleAdd = () => {
 
 const handleEdit = (record: Role) => {
   modalTitle.value = '编辑角色'
-  Object.assign(formData, {
-    id: record.id,
-    roleName: record.roleName,
-    roleCode: record.roleCode,
-    description: record.description,
-    dataScope: record.dataScope,
-    status: record.status
-  })
+  Object.assign(formData, { ...record })
   modalVisible.value = true
 }
 
@@ -386,8 +381,6 @@ const handleDelete = async (id: number) => {
     if (response.data?.code === 200) {
       message.success('删除成功')
       loadData()
-    } else {
-      message.error(response.data?.message || '删除失败')
     }
   } catch (error) {
     message.error('删除失败')
@@ -395,19 +388,13 @@ const handleDelete = async (id: number) => {
 }
 
 const handleBatchDelete = async () => {
-  if (selectedRowKeys.value.length === 0) {
-    message.warning('请先选择要删除的角色')
-    return
-  }
-  
+  if (selectedRowKeys.value.length === 0) return
   try {
     const response = await deleteRole(selectedRowKeys.value as any)
     if (response.data?.code === 200) {
       message.success('批量删除成功')
       selectedRowKeys.value = []
       loadData()
-    } else {
-      message.error(response.data?.message || '批量删除失败')
     }
   } catch (error) {
     message.error('批量删除失败')
@@ -416,48 +403,23 @@ const handleBatchDelete = async () => {
 
 const handlePermission = async (record: Role) => {
   currentRoleId.value = record.id
-  
-  // 显示加载状态
-  permissionLoading.value = true
   permissionVisible.value = true
+  permissionLoading.value = true
   
   try {
-    // 并行加载菜单树和角色权限
-    const [menuResponse, roleMenuResponse] = await Promise.all([
+    const [menuRes, roleMenuRes] = await Promise.all([
       getMenuTree(),
       getRoleMenus(record.id)
     ])
     
-    // 处理菜单树数据
-    if (menuResponse.data?.code === 200) {
-      menuTreeData.value = menuResponse.data.data || []
-    } else {
-      throw new Error(menuResponse.data?.message || '加载菜单树失败')
+    if (menuRes.data?.code === 200) {
+      menuTreeData.value = menuRes.data.data || []
     }
-    
-    // 处理角色已有权限
-    if (roleMenuResponse.data?.code === 200) {
-      checkedKeys.value = roleMenuResponse.data.data || []
-    } else {
-      checkedKeys.value = []
+    if (roleMenuRes.data?.code === 200) {
+      checkedKeys.value = roleMenuRes.data.data || []
     }
-    
   } catch (error) {
-    console.error('加载权限数据失败:', error)
     message.error('加载权限数据失败')
-    // 使用模拟数据作为备选
-    menuTreeData.value = [
-      {
-        id: 1,
-        key: 1,
-        menuName: '系统管理',
-        children: [
-          { id: 2, key: 2, menuName: '用户管理' },
-          { id: 3, key: 3, menuName: '角色管理' }
-        ]
-      }
-    ]
-    checkedKeys.value = []
   } finally {
     permissionLoading.value = false
   }
@@ -474,27 +436,20 @@ const handleModalOk = async () => {
     await formRef.value?.validateFields()
     confirmLoading.value = true
     
+    let response
     if (modalTitle.value === '新增角色') {
-      const response = await addRole(formData)
-      if (response.data?.code === 200) {
-        message.success('新增成功')
-        modalVisible.value = false
-        loadData()
-      } else {
-        message.error(response.data?.message || '新增失败')
-      }
+      response = await addRole(formData)
     } else {
-      const response = await updateRole(formData.id!, formData)
-      if (response.data?.code === 200) {
-        message.success('编辑成功')
-        modalVisible.value = false
-        loadData()
-      } else {
-        message.error(response.data?.message || '编辑失败')
-      }
+      response = await updateRole(formData.id!, formData)
+    }
+    
+    if (response.data?.code === 200) {
+      message.success('操作成功')
+      modalVisible.value = false
+      loadData()
     }
   } catch (error) {
-    message.error('操作失败')
+    // 验证失败
   } finally {
     confirmLoading.value = false
   }
@@ -502,156 +457,63 @@ const handleModalOk = async () => {
 
 const handleModalCancel = () => {
   modalVisible.value = false
-  formRef.value?.resetFields()
 }
 
 const handlePermissionOk = async () => {
-  // 确保 currentRoleId 存在
-  if (!currentRoleId.value) {
-    message.error('角色ID不存在，请重新打开权限配置');
-    return;
-  }
-  
+  if (!currentRoleId.value) return
   permissionLoading.value = true
   
   try {
-    // 将 checkedKeys 转换为正确的数据结构
-    let menuIds: (number | string)[] = [];
+    let menuIds: (number | string)[] = []
     if (Array.isArray(checkedKeys.value)) {
-      menuIds = checkedKeys.value;
-    } else if (checkedKeys.value && (checkedKeys.value as { checked: (number | string)[] }).checked) {
-      menuIds = (checkedKeys.value as { checked: (number | string)[] }).checked;
+      menuIds = checkedKeys.value
+    } else if (checkedKeys.value && (checkedKeys.value as any).checked) {
+      menuIds = (checkedKeys.value as any).checked
     }
     
-    // 确保所有ID都是数字类型
     const numericMenuIds = menuIds
-      .map((id: number | string) => typeof id === 'string' ? parseInt(id, 10) : id)
-      .filter((id: number) => !isNaN(id));
+      .map(id => typeof id === 'string' ? parseInt(id, 10) : id)
+      .filter(id => !isNaN(id as number)) as number[]
     
-    const requestData = {
+    const response = await updateRoleMenus({
       roleId: currentRoleId.value,
       menuIds: numericMenuIds
-    };
+    })
     
-    const response = await updateRoleMenus(requestData);
     if (response.data?.code === 200) {
-      message.success('权限配置保存成功');
-      permissionVisible.value = false;
-    } else {
-      message.error(response.data?.message || '权限配置保存失败');
+      message.success('权限配置已更新')
+      permissionVisible.value = false
     }
   } catch (error) {
-    console.error('权限配置保存失败:', error);
-    message.error('权限配置保存失败');
+    message.error('更新失败')
   } finally {
-    permissionLoading.value = false;
+    permissionLoading.value = false
   }
 }
 
 const handlePermissionCancel = () => {
   permissionVisible.value = false
-  permissionLoading.value = false
-  checkedKeys.value = []
-  menuTreeData.value = []
-  currentRoleId.value = undefined
 }
 
 const handleAssignAllPermissions = async (record: Role) => {
   try {
-    await message.loading('正在分配全部权限...', 0)
+    const hide = message.loading('正在同步系统权限...', 0)
     const response = await assignAllPermissionsToAdmin(record.id)
-    message.destroy()
-    
+    hide()
     if (response.data?.code === 200) {
-      message.success('权限分配成功')
-      // 重新加载数据以更新显示
+      message.success('全权限同步完成')
       loadData()
-    } else {
-      message.error(response.data?.message || '权限分配失败')
     }
   } catch (error) {
-    message.destroy()
-    console.error('分配权限异常:', error)
-    message.error('权限分配失败')
+    message.error('同步失败')
   }
 }
 
-// 生命周期
 onMounted(() => {
   loadData()
-  // 预加载菜单树数据
-  loadMenuTree()
 })
 </script>
 
 <style scoped>
-.role-management {
-  padding: 0;
-  height: 100%;
-}
-
-.search-card, .operation-card {
-  margin-bottom: 20px;
-  border-radius: 16px;
-  border: 1px solid rgba(226, 232, 240, 0.6);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-.permission-tree {
-  max-height: 480px;
-  overflow-y: auto;
-  padding: 20px;
-  border: 1px solid #f1f5f9;
-  border-radius: 12px;
-  background-color: #f8fafc;
-}
-
-:deep(.ant-card) {
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
-  border: 1px solid rgba(226, 232, 240, 0.6);
-  margin-bottom: 20px;
-}
-
-:deep(.ant-card-body) {
-  padding: 24px;
-}
-
-:deep(.ant-table) {
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-:deep(.ant-table-thead > tr > th) {
-  background-color: #f8fafc !important;
-  font-weight: 600;
-  color: #475569;
-  font-size: 13px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-:deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  border: none;
-  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.2);
-  border-radius: 8px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-:deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
-  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
-  transform: translateY(-1px);
-}
-
-:deep(.ant-alert-info) {
-  border-radius: 10px;
-  border: 1px solid #bae0ff;
-  background-color: #e6f4ff;
-}
-
+/* 页面特有样式已由全局 index.less 覆盖 */
 </style>

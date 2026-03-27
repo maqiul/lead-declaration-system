@@ -2,6 +2,7 @@ package com.declaration.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.declaration.annotation.RequiresPermissions;
 import com.declaration.common.Result;
@@ -19,7 +20,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.time.LocalDateTime;
@@ -490,6 +490,7 @@ public class TaxRefundController {
      */
     @PostMapping("/{id}/attach-files")
     @Operation(summary = "关联文件到退税申请")
+    @RequiresPermissions("business:tax-refund:edit")
     public Result<Boolean> attachFilesToApplication(
             @Parameter(description = "申请ID") @PathVariable Long id,
             @Parameter(description = "文件URL列表") @RequestBody List<String> fileUrls) {
@@ -709,7 +710,9 @@ public class TaxRefundController {
     @GetMapping("/tasks/todo")
     @Operation(summary = "获取当前用户的待办任务")
     @RequiresPermissions("business:tax-refund:list")
-    public Result<List<Map<String, Object>>> getUserTodoTasks() {
+    public Result<IPage<Map<String, Object>>> getUserTodoTasks(
+            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "10") Integer pageSize) {
         try {
             String userId = StpUtil.getLoginIdAsString();
             List<Task> tasks = flowableTaskService.createTaskQuery()
@@ -718,7 +721,7 @@ public class TaxRefundController {
                 .desc()
                 .list();
             
-            List<Map<String, Object>> result = new ArrayList<>();
+            List<Map<String, Object>> resultList = new ArrayList<>();
             for (Task task : tasks) {
                 Map<String, Object> taskInfo = new HashMap<>();
                 taskInfo.put("taskId", task.getId());
@@ -748,10 +751,18 @@ public class TaxRefundController {
                     } catch (NumberFormatException ignored) {}
                 }
                 
-                result.add(taskInfo);
+                resultList.add(taskInfo);
             }
             
-            return Result.success(result);
+            int total = resultList.size();
+            int fromIndex = (pageNum - 1) * pageSize;
+            int toIndex = Math.min(fromIndex + pageSize, total);
+            List<Map<String, Object>> pagedData = fromIndex < total ? resultList.subList(fromIndex, toIndex) : new ArrayList<>();
+
+            Page<Map<String, Object>> page = new Page<>(pageNum, pageSize, total);
+            page.setRecords(pagedData);
+            
+            return Result.success(page);
         } catch (Exception e) {
             log.error("获取待办任务失败", e);
             return Result.fail("获取待办任务失败: " + e.getMessage());

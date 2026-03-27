@@ -6,7 +6,7 @@ import request from '@/utils/request'
  * 运输方式接口定义
  */
 export interface TransportMode {
-  id?: number
+  id?: number | string
   name: string
   chineseName: string
   code: string

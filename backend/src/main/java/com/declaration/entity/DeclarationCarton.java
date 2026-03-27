@@ -57,4 +57,14 @@ public class DeclarationCarton {
      */
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
+
+    /**
+     * 类型中文名（箱子/托盘）
+     */
+    private String typeChinese;
+
+    /**
+     * 类型英文名（Carton/Pallet）
+     */
+    private String typeEnglish;
 }

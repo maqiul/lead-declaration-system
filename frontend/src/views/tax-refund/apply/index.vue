@@ -348,64 +348,13 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 统一UI风格 - 与 declaration/form 完全一致 */
 .tax-refund-application {
   height: 100%;
   overflow-x: hidden;
 }
 
-:deep(.ant-card) {
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
-}
-
-:deep(.ant-card-body) {
-  padding: 24px;
-}
-
-:deep(.ant-card-head) {
-  background: #f8fafc;
-  border-bottom: 1px solid #f1f5f9;
-  min-height: 48px;
-}
-
-:deep(.ant-card-head-title) {
-  font-size: 15px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-/* 主按钮样式 */
-:deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  border: none;
-  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.25);
-  border-radius: 10px;
-}
-
-:deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
-  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.35);
-  transform: translateY(-1px);
-}
-
-
-.section-card {
-  margin-bottom: 24px;
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(15, 23, 42, 0.04);
-  border: 1px solid rgba(226, 232, 240, 0.6);
-}
-
 .application-form {
   padding: 0;
-}
-
-:deep(.ant-form-item-label > label) {
-  font-weight: 600;
-  color: #334155;
 }
 
 :deep(.ant-upload.ant-upload-select-picture-card) {

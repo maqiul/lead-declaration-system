@@ -10,11 +10,13 @@
           <a-input-number v-model:value="searchForm.declarationFormId" placeholder="请输入申报单ID" allowClear style="width: 150px" />
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">
-            <template #icon><SearchOutlined /></template>
-            搜索
-          </a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch">
+              <template #icon><SearchOutlined /></template>
+              搜索
+            </a-button>
+            <a-button @click="handleReset">重置</a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
@@ -176,10 +178,125 @@ onMounted(() => {
 </script>
 
 <style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
+
 .contract-generation-management {
   padding: 24px;
+  background: white;
+  min-height: 100%;
+  font-family: 'Source Sans 3', sans-serif;
 }
+
+h1, h2, h3, h4, h5, h6, .ant-table-thead > tr > th {
+  font-family: 'Lexend', sans-serif !important;
+}
+
+:deep(.ant-card) {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); /* shadow-sm */
+  border: 1px solid #E2E8F0;
+  transition: all 250ms ease;
+  background: white;
+}
+
+:deep(.ant-card:hover) {
+  box-shadow: 0 10px 15px rgba(0,0,0,0.1); /* shadow-md */
+  transform: translateY(-2px);
+}
+
 .search-card, .operation-card {
   margin-bottom: 24px;
+}
+
+/* 按钮高级化 */
+:deep(.ant-btn-primary) {
+  background: #2563EB !important;
+  color: white !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  transition: all 200ms ease !important;
+  border: none !important;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+  height: 38px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.ant-btn-primary:hover) {
+  background: #1E40AF !important;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 15px rgba(0,0,0,0.1) !important;
+}
+
+:deep(.ant-btn:not(.ant-btn-primary):not(.ant-btn-link)) {
+  background-color: transparent !important;
+  color: #2563EB !important;
+  border: 1px solid #2563EB !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  transition: all 200ms ease !important;
+  height: 38px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.ant-btn:not(.ant-btn-primary):not(.ant-btn-link):hover) {
+  background-color: #FAFBFC !important;
+  transform: translateY(-1px);
+}
+
+/* 操作列链接按钮 */
+:deep(.ant-btn-link) {
+  height: auto;
+  padding: 4px 8px;
+  font-weight: 600;
+  color: #2563EB;
+  transition: all 200ms ease;
+  border-radius: 6px;
+}
+
+:deep(.ant-btn-link:not([disabled]):hover) {
+  background-color: #FAFBFC;
+}
+
+:deep(.ant-btn-link.ant-btn-dangerous) {
+  color: #ef4444;
+}
+
+:deep(.ant-btn-link.ant-btn-dangerous:not([disabled]):hover) {
+  background-color: #fef2f2;
+}
+
+/* 表格视觉优化 */
+:deep(.ant-table) {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:deep(.ant-table-thead > tr > th) {
+  background-color: #FAFBFC !important;
+  font-weight: 600;
+  color: #1E40AF;
+  font-size: 14px;
+  border-bottom: 2px solid #E2E8F0;
+}
+
+:deep(.ant-table-row:hover > td) {
+  background-color: #F8FAFC !important;
+}
+
+/* Form inputs & Selects */
+:deep(.ant-input), :deep(.ant-input-number), :deep(.ant-select-selector), :deep(.ant-input-affix-wrapper) {
+  border-radius: 8px !important;
+  border: 1px solid #E2E8F0;
+  transition: all 200ms ease;
+}
+
+:deep(.ant-input:focus), :deep(.ant-input-number:focus), :deep(.ant-select-focused .ant-select-selector) {
+  border-color: #2563EB !important;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.2) !important;
 }
 </style>

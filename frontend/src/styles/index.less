@@ -1,51 +1,44 @@
 @import 'ant-design-vue/dist/reset.css';
 @import './animations.less';
 
-// Plus Jakarta Sans — 专为 SaaS / Dashboard 设计的现代字体
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+// Lexend (Heading) & Source Sans 3 (Body) — 极简瑞士风格专业字体
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
 
 // ========================================
-// 设计系统 — 全局 Design Tokens
+// 设计系统 — 全局 Design Tokens (Swiss Style)
 // ========================================
 :root {
-  // ---- 色彩 (Scheme D - Corporate Blue) ----
-  --color-primary:       #1E40AF;
-  --color-primary-light: #3B82F6;
-  --color-primary-dark:  #1e3a8a;
-  --color-violet:        #6366F1;
-  --color-violet-light:  #8B5CF6;
-  --color-emerald:       #10B981;
-  --color-amber:         #F59E0B;
-  --color-rose:          #F43F5E;
-  --color-sky:           #38bdf8;
+  // ---- 色彩 (基于 MASTER.md - 专业蓝 & 物流橙) ----
+  --color-primary:       #2563EB;
+  --color-primary-light: #FFFFFF; // 修改为白色
+  --color-primary-dark:  #1D4ED8;
+  --color-accent:        #F97316; // 物流橙
+  --color-success:       #10B981;
+  --color-warning:       #F59E0B;
+  --color-danger:        #EF4444;
+  --color-info:          #3B82F6;
 
-  // 渐变
-  --primary-gradient:    linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
-  --secondary-gradient:  linear-gradient(135deg, #3B82F6 0%, #60a5fa 100%);
-  --success-gradient:    linear-gradient(135deg, #10B981 0%, #34D399 100%);
-  --warning-gradient:    linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%);
-  --danger-gradient:     linear-gradient(135deg, #F43F5E 0%, #FB7185 100%);
+  // 渐变 (移除紫色，改为极简蓝)
+  --primary-gradient:    linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
+  --secondary-gradient:  linear-gradient(135deg, #3B82F6 0%, #60A5FA 100%);
+  --cta-gradient:        linear-gradient(135deg, #F97316 0%, #FB923C 100%);
 
-  // 表面 & 毛玻璃
+  // 表面 & 背景 (均改为白色以符合用户要求)
   --surface-primary:     #FFFFFF;
-  --surface-secondary:   #F8FAFC;
-  --surface-hover:       #F1F5F9;
-  --glass-bg:            rgba(255, 255, 255, 0.85);
-  --glass-bg-light:      rgba(255, 255, 255, 0.6);
-  --glass-border:        rgba(255, 255, 255, 0.25);
-  --glass-shadow:        0 8px 32px rgba(79, 70, 229, 0.08);
-
+  --surface-secondary:   #FFFFFF;
+  --surface-tertiary:    #F8FAFC; // 极浅灰用于微弱区分 (Slate-50)
+  --surface-hover:       #FAFBFC;
+  
   // 文字
   --text-primary:        #0F172A;
   --text-secondary:      #475569;
   --text-muted:          #94A3B8;
 
-  // ---- 圆角 ----
-  --radius-sm:  8px;
-  --radius-md:  12px;
-  --radius-lg:  16px;
-  --radius-xl:  20px;
-  --radius-2xl: 24px;
+  // ---- 圆角 (标准 8px) ----
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
 
   // ---- 间距 ----
   --space-xs: 4px;
@@ -53,20 +46,11 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
-  --space-2xl: 48px;
 
-  // ---- 过渡 ----
-  --transition-fast:    all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-base:    all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-ease:    all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-bounce:  all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-
-  // ---- 阴影 ----
-  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md:   0 4px 12px rgba(79, 70, 229, 0.08);
-  --shadow-lg:   0 8px 24px rgba(79, 70, 229, 0.12);
-  --shadow-xl:   0 12px 40px rgba(79, 70, 229, 0.16);
-  --shadow-glow: 0 0 20px rgba(79, 70, 229, 0.25);
+  // ---- 阴影 (轻量化) ----
+  --shadow-sm:   0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md:   0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg:   0 10px 15px -3px rgba(37, 99, 235, 0.1);
 }
 
 // ========================================
@@ -76,15 +60,15 @@ html, body, #app {
   height: 100%;
   margin: 0;
   padding: 0;
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  color: var(--text-primary);
+  background-color: var(--surface-secondary);
 }
 
-.ant-layout {
-  min-height: 100vh;
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Lexend', sans-serif;
+  color: var(--text-primary);
 }
 
 // ========================================
@@ -92,20 +76,18 @@ html, body, #app {
 // ========================================
 .layout-wrapper {
   height: 100vh;
-  background: linear-gradient(145deg, #F8FAFC 0%, #EEF2FF 50%, #E0E7FF 100%);
+  background-color: var(--surface-secondary);
   overflow-x: hidden;
 }
 
 .sider {
-  overflow: hidden;
   height: 100vh;
   position: fixed;
   left: 0;
   top: 0;
   bottom: 0;
-  background: linear-gradient(180deg, #1e1b4b 0%, #312e81 50%, #3730a3 100%) !important;
-  box-shadow: 4px 0 24px rgba(30, 27, 75, 0.15);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: #0F172A !important; // 深邃蓝黑 (Slate-900)
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
 }
 
 .logo {
@@ -114,180 +96,75 @@ html, body, #app {
   align-items: center;
   justify-content: center;
   margin: var(--space-md);
-  border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: var(--transition-ease);
-  flex-shrink: 0;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.12);
-    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2);
-  }
 }
 
 .logo-text {
   color: white;
+  font-family: 'Lexend', sans-serif;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.5px;
-  background: linear-gradient(135deg, #E0E7FF, #C7D2FE, #A5B4FC);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.logo-mini {
-  color: white;
-  font-size: 18px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #C7D2FE, #A5B4FC);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .header {
-  background: var(--glass-bg);
+  background: white;
   padding: 0 var(--space-lg);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), var(--shadow-sm);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+  border-bottom: 1px solid var(--surface-tertiary);
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: 64px;
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-}
-
-.trigger {
-  font-size: 18px;
-  line-height: 64px;
-  padding: 0 16px;
-  cursor: pointer;
-  transition: var(--transition-base);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-
-  &:hover {
-    color: var(--color-primary);
-    background: rgba(79, 70, 229, 0.06);
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
-}
-
-.breadcrumb {
-  margin-left: var(--space-md);
-}
-
 .content {
   margin: var(--space-lg);
   padding: var(--space-lg);
-  background: var(--surface-primary);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
-  border: 1px solid rgba(226, 232, 240, 0.5);
+  background: white;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--surface-tertiary);
   min-height: calc(100vh - 64px - 64px - 48px);
-  transition: var(--transition-ease);
-  box-sizing: border-box;
-  overflow-x: hidden;
-}
-
-@media (max-width: 768px) {
-  .content {
-    margin: var(--space-md);
-    padding: var(--space-md);
-    border-radius: var(--radius-lg);
-  }
-}
-
-.footer {
-  text-align: center;
-  padding: 20px var(--space-lg);
-  color: var(--text-muted);
-  font-size: 13px;
-  background: transparent;
-  letter-spacing: 0.3px;
 }
 
 // ========================================
-// Ant Design 组件覆盖
+// Ant Design 组件深度适配
 // ========================================
 
 // 侧栏菜单
 .ant-menu {
   background: transparent !important;
-  border: none !important;
-
   .ant-menu-item {
     margin: 4px 12px !important;
-    border-radius: var(--radius-md) !important;
-    transition: var(--transition-base) !important;
+    border-radius: var(--radius-sm) !important;
     color: rgba(255, 255, 255, 0.65) !important;
-    height: 42px !important;
-    line-height: 42px !important;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.08) !important;
-      color: rgba(255, 255, 255, 0.95) !important;
-    }
-
+    
     &.ant-menu-item-selected {
-      background: var(--primary-gradient) !important;
+      background-color: var(--color-primary) !important;
       color: white !important;
-      box-shadow: 0 4px 16px rgba(79, 70, 229, 0.35) !important;
-      font-weight: 600 !important;
     }
-  }
-
-  .ant-menu-submenu-title {
-    margin: 4px 12px !important;
-    border-radius: var(--radius-md) !important;
-    transition: var(--transition-base) !important;
-    color: rgba(255, 255, 255, 0.65) !important;
-    height: 42px !important;
-    line-height: 42px !important;
-
-    &:hover {
+    
+    &:hover:not(.ant-menu-item-selected) {
+      color: white !important;
       background: rgba(255, 255, 255, 0.08) !important;
-      color: rgba(255, 255, 255, 0.95) !important;
     }
-  }
-
-  .ant-menu-submenu-arrow {
-    color: rgba(255, 255, 255, 0.4) !important;
   }
 }
 
 // 卡片
 .ant-card {
-  border-radius: var(--radius-lg) !important;
-  overflow: hidden !important;
-  border: 1px solid rgba(226, 232, 240, 0.6) !important;
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--surface-tertiary) !important;
   box-shadow: var(--shadow-sm) !important;
-  transition: var(--transition-base) !important;
-
-  &:hover {
-    box-shadow: var(--shadow-md) !important;
-  }
-
+  
   .ant-card-head {
-    background: var(--surface-secondary) !important;
-    border-bottom: 1px solid #EEF2FF !important;
-    padding: 16px 24px !important;
-    min-height: auto !important;
-
+    background: white !important;
+    border-bottom: 1px solid var(--surface-tertiary) !important;
+    padding: 12px 24px !important;
     .ant-card-head-title {
-      font-weight: 600 !important;
-      color: var(--text-primary) !important;
+      font-family: 'Lexend', sans-serif;
       font-size: 15px !important;
     }
   }
@@ -295,68 +172,35 @@ html, body, #app {
 
 // 按钮
 .ant-btn {
-  border-radius: var(--radius-md) !important;
+  border-radius: var(--radius-sm) !important;
   font-weight: 500 !important;
-  transition: var(--transition-base) !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
-
-  &:hover {
-    transform: translateY(-1px) !important;
-  }
-
-  &:active {
-    transform: translateY(0) !important;
-  }
-
+  
   &.ant-btn-primary {
-    background: var(--primary-gradient) !important;
-    border: none !important;
-    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25) !important;
-
-    &:hover {
-      box-shadow: 0 4px 16px rgba(79, 70, 229, 0.35) !important;
-    }
-  }
-}
-
-// 输入框
-.ant-input,
-.ant-select-selector,
-.ant-picker {
-  border-radius: var(--radius-md) !important;
-  transition: var(--transition-base) !important;
-
-  &:focus,
-  &.ant-select-focused,
-  &.ant-picker-focused {
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12) !important;
+    background-color: var(--color-primary) !important;
     border-color: var(--color-primary) !important;
+    &:hover {
+      background-color: var(--color-primary-dark) !important;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2) !important;
+    }
   }
 }
 
 // 表格
 .ant-table {
-  background: white !important;
   border-radius: var(--radius-lg) !important;
-  overflow: hidden !important;
-  box-shadow: none !important;
+  overflow: hidden;
 
   .ant-table-thead > tr > th {
-    background: var(--surface-secondary) !important;
+    background: #FAFBFC !important;
+    font-family: 'Lexend', sans-serif;
     font-weight: 600 !important;
-    color: var(--text-primary) !important;
-    border-bottom: 1px solid #EEF2FF !important;
+    color: var(--color-primary) !important;
     font-size: 13px !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
+    border-bottom: 2px solid #E2E8F0 !important;
   }
-
-  .ant-table-tbody > tr {
-    transition: var(--transition-fast) !important;
-
-    &:hover > td {
-      background-color: #F8FAFF !important;
-    }
+  
+  .ant-table-tbody > tr:hover > td {
+    background-color: #FAFBFC !important;
   }
 }
 
@@ -364,49 +208,122 @@ html, body, #app {
 .ant-tag {
   border-radius: 6px !important;
   font-weight: 500 !important;
-  font-size: 12px !important;
+  padding: 2px 10px !important;
+  border: none !important;
 }
 
-// 模态框
-.ant-modal-content {
-  border-radius: var(--radius-xl) !important;
-  overflow: hidden !important;
+// Link 按钮 (表格操作列)
+.ant-btn-link {
+  height: auto !important;
+  padding: 4px 8px !important;
+  font-weight: 500 !important;
+  color: var(--color-primary) !important;
+  transition: all 0.2s ease !important;
+
+  &:hover {
+    color: var(--color-primary-dark) !important;
+    background-color: #FAFBFC !important;
+    border-radius: var(--radius-sm) !important;
+  }
+
+  &.ant-btn-dangerous {
+    color: var(--color-danger) !important;
+    &:hover {
+      color: #DC2626 !important;
+      background-color: #FEF2F2 !important;
+    }
+  }
 }
 
-.ant-modal-header {
-  border-bottom: 1px solid #EEF2FF !important;
+// 非主要按钮统一
+.ant-btn:not(.ant-btn-primary):not(.ant-btn-link):not(.ant-btn-dangerous) {
+  border-radius: var(--radius-md) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: #E2E8F0 !important;
 }
 
-// ========================================
+// Modal
+.ant-modal {
+  .ant-modal-content {
+    border-radius: var(--radius-xl) !important;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15) !important;
+  }
+  .ant-modal-header {
+    background: white !important;
+    border-bottom: 1px solid var(--surface-tertiary) !important;
+    .ant-modal-title {
+      font-family: 'Lexend', sans-serif;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+  }
+}
+
+// Tabs
+.ant-tabs {
+  .ant-tabs-nav {
+    margin-bottom: var(--space-md) !important;
+    &::before {
+      border-bottom-color: var(--surface-tertiary) !important;
+    }
+  }
+  .ant-tabs-tab-active .ant-tabs-tab-btn {
+    color: var(--color-primary) !important;
+    font-weight: 600 !important;
+  }
+  .ant-tabs-ink-bar {
+    background: var(--color-primary) !important;
+  }
+}
+
+// Descriptions (详情描述列表)
+.ant-descriptions {
+  .ant-descriptions-item-label {
+    font-weight: 600 !important;
+    color: var(--text-secondary) !important;
+    background: #FAFBFC !important;
+  }
+}
+
+// Form 标签
+.ant-form-item-label > label {
+  font-weight: 600 !important;
+  color: var(--text-secondary) !important;
+}
+
+// 搜索区域卡片
+.search-card {
+  margin-bottom: var(--space-lg) !important;
+  background: #FAFBFC !important;
+}
+
+// 操作按钮区域卡片
+.operation-card {
+  margin-bottom: var(--space-lg) !important;
+}
+
+// 表单内嵌卡片
+.section-card {
+  margin-bottom: var(--space-lg) !important;
+  border: 1px solid #E2E8F0 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden;
+  background: white !important;
+}
+
 // 滚动条
-// ========================================
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
 ::-webkit-scrollbar-thumb {
-  background: rgba(79, 70, 229, 0.2);
+  background: var(--surface-tertiary);
   border-radius: 3px;
-
   &:hover {
-    background: rgba(79, 70, 229, 0.35);
-  }
-}
-
-// ========================================
-// 响应式
-// ========================================
-@media (max-width: 768px) {
-  .header {
-    padding: 0 var(--space-md);
-  }
-
-  .logo {
-    margin: 12px;
+    background: var(--text-muted);
   }
 }

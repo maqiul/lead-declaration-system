@@ -269,8 +269,8 @@ const fetchProcessData = async () => {
   processLoading.value = true
   try {
     const res: any = await getMyProcessInstances()
-    if (res.data?.code === 200 && Array.isArray(res.data.data)) {
-      const instances: ProcessInstance[] = res.data.data
+    if (res.data?.code === 200) {
+      const instances: ProcessInstance[] = res.data.data?.records || []
       // 取最近5条数据，添加空值检查
       processData.value = instances.slice(0, 5).map((item, index) => ({
         key: String(index + 1),
@@ -294,8 +294,8 @@ const fetchTaskData = async () => {
   taskLoading.value = true
   try {
     const res: any = await getMyAssignedTasks()
-    if (res.data?.code === 200 && Array.isArray(res.data.data)) {
-      const tasks: TaskInstance[] = res.data.data
+    if (res.data?.code === 200) {
+      const tasks: TaskInstance[] = res.data.data?.records || []
       // 取最近5条数据，添加空值检查
       taskData.value = tasks.slice(0, 5).map((item) => ({
         id: item?.id || 0,
@@ -430,6 +430,7 @@ onUnmounted(() => {
 <style scoped>
 .dashboard {
   min-height: 100%;
+  background-color: white;
 }
 
 /* 欢迎横幅 */
@@ -603,11 +604,17 @@ onUnmounted(() => {
 /* 图表卡片 */
 .chart-card {
   background: white;
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 24px;
-  border: 1px solid rgba(226, 232, 240, 0.6);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
   height: 100%;
+  transition: all 0.25s ease;
+}
+
+.chart-card:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
 }
 
 .chart-header {
@@ -643,7 +650,7 @@ onUnmounted(() => {
 }
 
 .task-link:hover {
-  color: #4F46E5;
+  color: var(--color-primary);
 }
 
 /* 快捷操作 */
@@ -668,8 +675,8 @@ onUnmounted(() => {
 }
 
 .action-card:hover {
-  border-color: rgba(79, 70, 229, 0.2);
-  box-shadow: 0 4px 16px rgba(79, 70, 229, 0.08);
+  border-color: rgba(37, 99, 235, 0.2);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.08);
   transform: translateY(-2px);
 }
 
@@ -684,29 +691,13 @@ onUnmounted(() => {
 
 .action-icon {
   font-size: 22px;
-  color: #4F46E5;
+  color: var(--color-primary);
 }
 
 .action-label {
   font-size: 13px;
   font-weight: 500;
   color: #475569;
-}
-
-/* 覆盖 Ant Design */
-:deep(.ant-table) {
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-:deep(.ant-table-thead > tr > th) {
-  background: #F8FAFC !important;
-  font-weight: 600;
-  color: #475569;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid #EEF2FF !important;
 }
 
 :deep(.ant-list-item) {

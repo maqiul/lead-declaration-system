@@ -50,7 +50,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     public Set<String> getUserPermissions(Long userId) {
         String cacheKey = PERMISSION_CACHE_PREFIX + userId;
-        
+
         // 先从缓存获取
         Object cachedData = redisTemplate.opsForValue().get(cacheKey);
         if (cachedData != null) {
@@ -70,46 +70,43 @@ public class PermissionServiceImpl implements PermissionService {
                 log.warn("缓存数据类型不匹配，已清除缓存: {}", cacheKey);
             }
         }
-        
+
         // 查询用户角色
         List<UserRole> userRoles = userRoleDao.selectList(
-            new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId)
-        );
-        
+                new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
+
         Set<String> permissions;
         if (CollUtil.isEmpty(userRoles)) {
             permissions = new HashSet<>();
         } else {
             // 查询角色对应的菜单权限
             List<Long> roleIds = userRoles.stream()
-                .map(UserRole::getRoleId)
-                .collect(Collectors.toList());
-            
+                    .map(UserRole::getRoleId)
+                    .collect(Collectors.toList());
+
             List<RoleMenu> roleMenus = roleMenuDao.selectList(
-                new LambdaQueryWrapper<RoleMenu>().in(RoleMenu::getRoleId, roleIds)
-            );
-            
+                    new LambdaQueryWrapper<RoleMenu>().in(RoleMenu::getRoleId, roleIds));
+
             if (CollUtil.isNotEmpty(roleMenus)) {
                 List<Long> menuIds = roleMenus.stream()
-                    .map(RoleMenu::getMenuId)
-                    .collect(Collectors.toList());
-                
+                        .map(RoleMenu::getMenuId)
+                        .collect(Collectors.toList());
+
                 List<Menu> menus = menuDao.selectList(
-                    new LambdaQueryWrapper<Menu>()
-                        .in(Menu::getId, menuIds)
-                        .eq(Menu::getStatus, 1)
-                        .isNotNull(Menu::getPermission)
-                        .ne(Menu::getPermission, "")
-                );
-                
+                        new LambdaQueryWrapper<Menu>()
+                                .in(Menu::getId, menuIds)
+                                .eq(Menu::getStatus, 1)
+                                .isNotNull(Menu::getPermission)
+                                .ne(Menu::getPermission, ""));
+
                 permissions = menus.stream()
-                    .map(Menu::getPermission)
-                    .collect(Collectors.toSet());
+                        .map(Menu::getPermission)
+                        .collect(Collectors.toSet());
             } else {
                 permissions = new HashSet<>();
             }
         }
-        
+
         // 缓存权限数据
         redisTemplate.opsForValue().set(cacheKey, permissions, CACHE_EXPIRE_TIME, TimeUnit.MINUTES);
         return permissions;
@@ -118,7 +115,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     public Set<String> getUserRoles(Long userId) {
         String cacheKey = ROLE_CACHE_PREFIX + userId;
-        
+
         // 先从缓存获取
         Object cachedData = redisTemplate.opsForValue().get(cacheKey);
         if (cachedData != null) {
@@ -138,50 +135,47 @@ public class PermissionServiceImpl implements PermissionService {
                 log.warn("角色缓存数据类型不匹配，已清除缓存: {}", cacheKey);
             }
         }
-        
+
         // 查询用户角色
         List<UserRole> userRoles = userRoleDao.selectList(
-            new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId)
-        );
-        
+                new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
+
         Set<String> roles;
         if (CollUtil.isEmpty(userRoles)) {
             roles = new HashSet<>();
         } else {
             List<Long> roleIds = userRoles.stream()
-                .map(UserRole::getRoleId)
-                .collect(Collectors.toList());
-            
+                    .map(UserRole::getRoleId)
+                    .collect(Collectors.toList());
+
             List<Role> roleList = roleDao.selectList(
-                new LambdaQueryWrapper<Role>()
-                    .in(Role::getId, roleIds)
-                    .eq(Role::getStatus, 1)
-            );
-            
+                    new LambdaQueryWrapper<Role>()
+                            .in(Role::getId, roleIds)
+                            .eq(Role::getStatus, 1));
+
             roles = roleList.stream()
-                .map(Role::getRoleCode)
-                .collect(Collectors.toSet());
+                    .map(Role::getRoleCode)
+                    .collect(Collectors.toSet());
         }
-        
+
         // 缓存角色数据
         redisTemplate.opsForValue().set(cacheKey, roles, CACHE_EXPIRE_TIME, TimeUnit.MINUTES);
         return roles;
     }
-    
+
     @Override
     public List<Long> getUserRoleIds(Long userId) {
         // 查询用户角色
         List<UserRole> userRoles = userRoleDao.selectList(
-            new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId)
-        );
-        
+                new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
+
         if (CollUtil.isEmpty(userRoles)) {
             return new ArrayList<>();
         }
-        
+
         return userRoles.stream()
-            .map(UserRole::getRoleId)
-            .collect(Collectors.toList());
+                .map(UserRole::getRoleId)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -189,43 +183,40 @@ public class PermissionServiceImpl implements PermissionService {
         // 管理员拥有所有菜单权限
         if (userId != null && userId == 1L) {
             List<Menu> allMenus = menuDao.selectList(
-                new LambdaQueryWrapper<Menu>()
-                    .eq(Menu::getStatus, 1)
-                    .eq(Menu::getIsShow, 1)  // 过滤隐藏菜单
-                    .orderByAsc(Menu::getSort)
-            );
+                    new LambdaQueryWrapper<Menu>()
+                            .eq(Menu::getStatus, 1)
+                            .eq(Menu::getIsShow, 1) // 过滤隐藏菜单
+                            .orderByAsc(Menu::getSort));
             return buildMenuTree(allMenus);
         }
-        
+
         // 1. 查询用户的所有角色ID
         List<Long> roleIds = getUserRoleIds(userId);
         if (roleIds == null || roleIds.isEmpty()) {
             return new ArrayList<>();
         }
-        
+
         // 2. 通过 sys_role_menu 查询用户角色关联的所有菜单ID
         List<RoleMenu> roleMenus = roleMenuDao.selectList(
-            new LambdaQueryWrapper<RoleMenu>().in(RoleMenu::getRoleId, roleIds)
-        );
-        
+                new LambdaQueryWrapper<RoleMenu>().in(RoleMenu::getRoleId, roleIds));
+
         if (roleMenus == null || roleMenus.isEmpty()) {
             return new ArrayList<>();
         }
-        
+
         List<Long> menuIds = roleMenus.stream()
-            .map(RoleMenu::getMenuId)
-            .distinct()
-            .collect(Collectors.toList());
-        
+                .map(RoleMenu::getMenuId)
+                .distinct()
+                .collect(Collectors.toList());
+
         // 3. 查询这些菜单的详细信息（只查启用+显示的）
         List<Menu> userMenus = menuDao.selectList(
-            new LambdaQueryWrapper<Menu>()
-                .in(Menu::getId, menuIds)
-                .eq(Menu::getStatus, 1)
-                .eq(Menu::getIsShow, 1)  // 过滤隐藏菜单
-                .orderByAsc(Menu::getSort)
-        );
-        
+                new LambdaQueryWrapper<Menu>()
+                        .in(Menu::getId, menuIds)
+                        .eq(Menu::getStatus, 1)
+                        .eq(Menu::getIsShow, 1) // 过滤隐藏菜单
+                        .orderByAsc(Menu::getSort));
+
         // 4. 构建菜单树
         return buildMenuTree(userMenus);
     }
@@ -236,16 +227,16 @@ public class PermissionServiceImpl implements PermissionService {
         if (userId != null && userId == 1L) {
             return true;
         }
-        
+
         if (permissions == null || permissions.length == 0) {
             return true;
         }
-        
+
         Set<String> userPermissions = getUserPermissions(userId);
         if (CollUtil.isEmpty(userPermissions)) {
             return false;
         }
-        
+
         if (logical == RequiresPermissions.Logical.AND) {
             // AND逻辑：必须拥有所有权限
             for (String permission : permissions) {
@@ -271,16 +262,16 @@ public class PermissionServiceImpl implements PermissionService {
         if (userId != null && userId == 1L) {
             return true;
         }
-        
+
         if (roles == null || roles.length == 0) {
             return true;
         }
-        
+
         Set<String> userRoles = getUserRoles(userId);
         if (CollUtil.isEmpty(userRoles)) {
             return false;
         }
-        
+
         if (logical == RequiresRoles.Logical.AND) {
             // AND逻辑：必须拥有所有角色
             for (String role : roles) {
@@ -311,9 +302,9 @@ public class PermissionServiceImpl implements PermissionService {
      */
     private List<Menu> filterMenusByPermissions(List<Menu> menus, Set<String> permissions) {
         return menus.stream()
-            .filter(menu -> menu.getMenuType() != 3 || // 非按钮类型直接显示
-                permissions.contains(menu.getPermission())) // 按钮类型需要有对应权限
-            .collect(Collectors.toList());
+                .filter(menu -> menu.getMenuType() != 3 || // 非按钮类型直接显示
+                        permissions.contains(menu.getPermission())) // 按钮类型需要有对应权限
+                .collect(Collectors.toList());
     }
 
     /**
@@ -321,10 +312,10 @@ public class PermissionServiceImpl implements PermissionService {
      */
     private List<Menu> buildMenuTree(List<Menu> menus) {
         List<Menu> tree = menus.stream()
-            .filter(menu -> menu.getParentId() == null || menu.getParentId() == 0)
-            .peek(menu -> menu.setChildren(getChildren(menu, menus)))
-            .collect(Collectors.toList());
-        
+                .filter(menu -> menu.getParentId() == null || menu.getParentId() == 0)
+                .peek(menu -> menu.setChildren(getChildren(menu, menus)))
+                .collect(Collectors.toList());
+
         return tree;
     }
 
@@ -333,13 +324,13 @@ public class PermissionServiceImpl implements PermissionService {
      */
     private List<Menu> getChildren(Menu parent, List<Menu> menus) {
         return menus.stream()
-            .filter(menu -> menu.getParentId() != null && menu.getParentId().equals(parent.getId()))
-            .peek(menu -> menu.setChildren(getChildren(menu, menus)))
-            .sorted((m1, m2) -> {
-                int sort1 = m1.getSort() == null ? 0 : m1.getSort();
-                int sort2 = m2.getSort() == null ? 0 : m2.getSort();
-                return Integer.compare(sort1, sort2);
-            })
-            .collect(Collectors.toList());
+                .filter(menu -> menu.getParentId() != null && menu.getParentId().equals(parent.getId()))
+                .peek(menu -> menu.setChildren(getChildren(menu, menus)))
+                .sorted((m1, m2) -> {
+                    int sort1 = m1.getSort() == null ? 0 : m1.getSort();
+                    int sort2 = m2.getSort() == null ? 0 : m2.getSort();
+                    return Integer.compare(sort1, sort2);
+                })
+                .collect(Collectors.toList());
     }
 }

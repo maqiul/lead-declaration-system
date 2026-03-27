@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.declaration.dao.UserOrgDao.CityInfoMapper">
+
+    <resultMap id="CityInfoResultMap" type="com.declaration.entity.CityInfo">
+        <id property="id" column="id"/>
+        <result property="cityName" column="city_name"/>
+        <result property="cityEnglishName" column="city_english_name"/>
+        <result property="provinceName" column="province_name"/>
+        <result property="provinceEnglishName" column="province_english_name"/>
+        <result property="countryName" column="country_name"/>
+        <result property="countryEnglishName" column="country_english_name"/>
+        <result property="cityCode" column="city_code"/>
+        <result property="sort" column="sort"/>
+        <result property="status" column="status"/>
+        <result property="remarks" column="remarks"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="orgId" column="org_id"/>
+    </resultMap>
+
+    <select id="selectProvinceList" resultType="java.lang.String">
+        SELECT DISTINCT province_name
+        FROM city_info
+        WHERE province_name IS NOT NULL AND province_name != ''
+        ORDER BY province_name
+    </select>
+
+    <select id="searchCities" parameterType="java.lang.String" resultMap="CityInfoResultMap">
+        SELECT *
+        FROM city_info
+        WHERE 1=1
+        <if test="keyword != null and keyword != ''">
+            AND (
+                city_name LIKE CONCAT('%', #{keyword}, '%')
+                OR city_english_name LIKE CONCAT('%', #{keyword}, '%')
+                OR province_name LIKE CONCAT('%', #{keyword}, '%')
+                OR province_english_name LIKE CONCAT('%', #{keyword}, '%')
+                OR country_name LIKE CONCAT('%', #{keyword}, '%')
+                OR country_english_name LIKE CONCAT('%', #{keyword}, '%')
+                OR city_code LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        ORDER BY sort ASC, id DESC
+    </select>
+
+</mapper>

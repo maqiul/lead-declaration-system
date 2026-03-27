@@ -1,7 +1,7 @@
 <template>
   <div class="system-config">
     <!-- 搜索区域 -->
-    <a-card class="search-card">
+    <a-card class="ui-card mb-4" :bordered="false">
       <a-form :model="searchForm" layout="inline">
         <a-form-item label="配置键">
           <a-input v-model:value="searchForm.configKey" placeholder="请输入配置键" />
@@ -10,20 +10,28 @@
           <a-input v-model:value="searchForm.configName" placeholder="请输入配置名称" />
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">搜索</a-button>
-          <a-button style="margin-left: 8px" @click="handleReset">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="handleSearch" class="ui-btn-primary">
+              <template #icon><search-outlined /></template>
+              搜索
+            </a-button>
+            <a-button @click="handleReset" class="ui-btn-secondary">
+              <template #icon><reload-outlined /></template>
+              重置
+            </a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
 
     <!-- 操作按钮区域 -->
-    <a-card class="operation-card">
+    <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="showAddModal">
+        <a-button type="primary" @click="showAddModal" v-permission="['system:config:add']" class="ui-btn-cta">
           <template #icon><plus-outlined /></template>
           新增配置
         </a-button>
-        <a-button @click="refreshData">
+        <a-button @click="refreshData" class="ui-btn-secondary">
           <template #icon><reload-outlined /></template>
           刷新
         </a-button>
@@ -33,7 +41,7 @@
     <!-- 配置分类区域 -->
     <a-tabs v-model:activeKey="activeTab" @change="handleTabChange">
       <a-tab-pane key="basic" tab="基本信息">
-        <a-card :loading="basicLoading">
+        <a-card :loading="basicLoading" class="ui-card" :bordered="false">
           <a-form
             :model="basicForm"
             :label-col="{ span: 4 }"
@@ -59,14 +67,14 @@
               <a-input v-model:value="basicForm['system.copyright']" placeholder="请输入版权信息" />
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit" :loading="basicSaving">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="basicSaving" v-permission="['system:config:update']" class="ui-btn-primary">保存</a-button>
             </a-form-item>
           </a-form>
         </a-card>
       </a-tab-pane>
 
       <a-tab-pane key="ui" tab="界面配置">
-        <a-card :loading="uiLoading">
+        <a-card :loading="uiLoading" class="ui-card" :bordered="false">
           <a-form
             :model="uiForm"
             :label-col="{ span: 4 }"
@@ -96,14 +104,14 @@
               <a-switch v-model:checked="uiForm['ui.sidebar.collapsed']" checked-children="是" un-checked-children="否" />
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit" :loading="uiSaving">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="uiSaving" v-permission="['system:config:update']" class="ui-btn-primary">保存</a-button>
             </a-form-item>
           </a-form>
         </a-card>
       </a-tab-pane>
 
       <a-tab-pane key="business" tab="业务配置">
-        <a-card :loading="businessLoading">
+        <a-card :loading="businessLoading" class="ui-card" :bordered="false">
           <a-form
             :model="businessForm"
             :label-col="{ span: 4 }"
@@ -127,14 +135,14 @@
               <a-switch v-model:checked="businessForm['business.notification.email-enabled']" checked-children="是" un-checked-children="否" />
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit" :loading="businessSaving">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="businessSaving" v-permission="['system:config:update']" class="ui-btn-primary">保存</a-button>
             </a-form-item>
           </a-form>
         </a-card>
       </a-tab-pane>
 
       <a-tab-pane key="file-upload" tab="文件上传">
-        <a-card :loading="fileUploadLoading">
+        <a-card :loading="fileUploadLoading" class="ui-card" :bordered="false">
           <a-form
             :model="fileUploadForm"
             :label-col="{ span: 4 }"
@@ -160,14 +168,14 @@
               </div>
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit" :loading="fileUploadSaving">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="fileUploadSaving" v-permission="['system:config:update']" class="ui-btn-primary">保存</a-button>
             </a-form-item>
           </a-form>
         </a-card>
       </a-tab-pane>
 
       <a-tab-pane key="all" tab="全部配置">
-        <a-card>
+        <a-card class="ui-card" :bordered="false">
           <a-table
             :dataSource="allConfigs"
             :columns="columns"
@@ -175,26 +183,27 @@
             :pagination="pagination"
             :scroll="{ x: 1000 }"
             rowKey="id"
+            class="ui-table"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'configType'">
-                <a-tag :color="getTypeColor((record as any).configType)">
+                <a-tag :color="getTypeColor((record as any).configType)" class="ui-tag">
                   {{ getTypeLabel((record as any).configType) }}
                 </a-tag>
               </template>
               <template v-else-if="column.key === 'status'">
-                <a-tag :color="(record as any).status === 1 ? 'green' : 'red'">
+                <a-tag :color="(record as any).status === 1 ? 'success' : 'error'" class="ui-tag">
                   {{ (record as any).status === 1 ? '启用' : '禁用' }}
                 </a-tag>
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
-                  <a-button type="link" size="small" @click="editConfig(record)">编辑</a-button>
+                  <a-button type="link" size="small" @click="editConfig(record)" v-permission="['system:config:update']" class="text-blue-600 font-medium">编辑</a-button>
                   <a-popconfirm
                     title="确定要删除这个配置吗？"
                     @confirm="deleteConfig((record as any).id)"
                   >
-                    <a-button type="link" size="small" danger>删除</a-button>
+                    <a-button type="link" size="small" danger v-permission="['system:config:delete']" class="font-medium">删除</a-button>
                   </a-popconfirm>
                 </a-space>
               </template>
@@ -913,60 +922,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 页面特有样式已由全局 index.less 覆盖 */
 .system-config {
   height: 100%;
   overflow-x: hidden;
-}
-
-.search-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
-}
-
-.operation-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
-}
-
-:deep(.ant-card) {
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-:deep(.ant-card-body) {
-  padding: 24px;
-}
-
-:deep(.ant-table) {
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-:deep(.ant-table-thead > tr > th) {
-  background-color: #fafafa;
-  font-weight: 600;
-}
-
-:deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-}
-
-:deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
-
-:deep(.ant-input-affix-wrapper:focus),
-:deep(.ant-input:focus) {
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
-  border-color: #667eea;
-}
-
-:deep(.ant-select-focused:not(.ant-select-disabled).ant-select:not(.ant-select-customize-input) .ant-select-selector) {
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
-  border-color: #667eea;
 }
 
 .select-options-editor {

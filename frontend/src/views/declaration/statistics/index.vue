@@ -20,13 +20,13 @@
             />
           </div>
           <div class="filter-actions">
-            <a-button type="primary" @click="loadStatistics" :loading="loading">
+            <a-button type="primary" @click="loadStatistics" :loading="loading" v-permission="['business:declaration:statistics']">
               <template #icon>
                 <ReloadOutlined />
               </template>
               刷新数据
             </a-button>
-            <a-button @click="exportData">
+            <a-button @click="exportData" v-permission="['business:declaration:export']">
               <template #icon>
                 <DownloadOutlined />
               </template>

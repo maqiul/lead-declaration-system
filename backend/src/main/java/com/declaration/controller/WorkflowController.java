@@ -135,6 +135,7 @@ public class WorkflowController {
 
     @GetMapping("/definition/xml/{processKey}")
     @Operation(summary = "获取流程定义XML内容")
+    @RequiresPermissions("workflow:definition:view")
     public Result<String> getProcessDefinitionXml(@PathVariable String processKey) {
         String xml = processDefinitionService.getProcessDefinitionXml(processKey);
         return Result.success(xml);
@@ -154,48 +155,75 @@ public class WorkflowController {
     @GetMapping("/instances/my")
     @Operation(summary = "获取我的流程实例")
     @RequiresPermissions("workflow:instance:list")
-    public Result<List<ProcessInstance>> getMyProcessInstances() {
+    public Result<IPage<ProcessInstance>> getMyProcessInstances(
+            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "10") Integer pageSize,
+            @Parameter(description = "流程名称") @RequestParam(required = false) String processName) {
         if (!StpUtil.isLogin()) {
             return Result.fail("用户未登录");
         }
         
         Long userId = StpUtil.getLoginIdAsLong();
         List<ProcessInstance> instances = processInstanceService.getProcessInstancesByStarter(userId);
-        return Result.success(instances);
+        
+        // 过滤条件
+        Stream<ProcessInstance> stream = instances.stream();
+        if (processName != null && !processName.isEmpty()) {
+            stream = stream.filter(instance -> instance.getProcessName() != null && 
+                    instance.getProcessName().contains(processName));
+        }
+        
+        List<ProcessInstance> filtered = stream.collect(Collectors.toList());
+        int total = filtered.size();
+        int fromIndex = (pageNum - 1) * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, total);
+        List<ProcessInstance> pagedData = fromIndex < total ? filtered.subList(fromIndex, toIndex) : new ArrayList<>();
+
+        Page<ProcessInstance> page = new Page<>(pageNum, pageSize, total);
+        page.setRecords(pagedData);
+        
+        return Result.success(page);
     }
     
     @GetMapping("/instances/running")
     @Operation(summary = "获取运行中的流程实例")
     @RequiresPermissions("workflow:instance:list")
-    public Result<List<ProcessInstance>> getRunningProcessInstances(
+    public Result<IPage<ProcessInstance>> getRunningProcessInstances(
+            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "10") Integer pageSize,
             @Parameter(description = "流程名称") @RequestParam(required = false) String processName,
             @Parameter(description = "发起人姓名") @RequestParam(required = false) String starterName,
             @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
         List<ProcessInstance> instances = processInstanceService.getRunningProcessInstances();
         
         // 过滤条件
+        Stream<ProcessInstance> stream = instances.stream();
         if (processName != null && !processName.isEmpty()) {
-            instances = instances.stream()
-                .filter(instance -> instance.getProcessName() != null && 
-                    instance.getProcessName().contains(processName))
-                .collect(Collectors.toList());
+            stream = stream.filter(instance -> instance.getProcessName() != null && 
+                    instance.getProcessName().contains(processName));
         }
         
         if (starterName != null && !starterName.isEmpty()) {
-            instances = instances.stream()
-                .filter(instance -> instance.getStarterName() != null && 
-                    instance.getStarterName().contains(starterName))
-                .collect(Collectors.toList());
+            stream = stream.filter(instance -> instance.getStarterName() != null && 
+                    instance.getStarterName().contains(starterName));
         }
         
         if (status != null) {
-            instances = instances.stream()
-                .filter(instance -> instance.getStatus() != null && 
-                    instance.getStatus().equals(status))
-                .collect(Collectors.toList());
+            stream = stream.filter(instance -> instance.getStatus() != null && 
+                    instance.getStatus().equals(status));
         }
         
-        return Result.success(instances);
+        List<ProcessInstance> filtered = stream.collect(Collectors.toList());
+        int total = filtered.size();
+        
+        int fromIndex = (pageNum - 1) * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, total);
+        List<ProcessInstance> pagedData = fromIndex < total ? filtered.subList(fromIndex, toIndex) : new ArrayList<>();
+
+        Page<ProcessInstance> page = new Page<>(pageNum, pageSize, total);
+        page.setRecords(pagedData);
+        
+        return Result.success(page);
     }
 
     @PostMapping("/instance/suspend/{instanceId}")
@@ -226,18 +254,49 @@ public class WorkflowController {
 
     @GetMapping("/tasks/assigned")
     @Operation(summary = "获取我的待办任务")
-    public Result<List<TaskInstance>> getMyAssignedTasks() {
+    @RequiresPermissions("workflow:task:list")
+    public Result<IPage<TaskInstance>> getMyAssignedTasks(
+            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "10") Integer pageSize,
+            @Parameter(description = "任务名称") @RequestParam(required = false) String taskName,
+            @Parameter(description = "流程名称") @RequestParam(required = false) String processName) {
         if (!StpUtil.isLogin()) {
             return Result.fail("未登录");
         }
         Long userId = StpUtil.getLoginIdAsLong();
         List<TaskInstance> tasks = taskService.getAssignedTasks(userId);
-        return Result.success(tasks);
+        
+        // 过滤条件
+        Stream<TaskInstance> stream = tasks.stream();
+        if (taskName != null && !taskName.isEmpty()) {
+            stream = stream.filter(task -> task.getTaskName() != null && 
+                    task.getTaskName().contains(taskName));
+        }
+        if (processName != null && !processName.isEmpty()) {
+            stream = stream.filter(task -> task.getProcessDefinitionName() != null && 
+                    task.getProcessDefinitionName().contains(processName));
+        }
+        
+        List<TaskInstance> filtered = stream.collect(Collectors.toList());
+        int total = filtered.size();
+        int fromIndex = (pageNum - 1) * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, total);
+        List<TaskInstance> pagedData = fromIndex < total ? filtered.subList(fromIndex, toIndex) : new ArrayList<>();
+
+        Page<TaskInstance> page = new Page<>(pageNum, pageSize, total);
+        page.setRecords(pagedData);
+        
+        return Result.success(page);
     }
 
     @GetMapping("/tasks/candidate")
     @Operation(summary = "获取我的候选任务")
-    public Result<List<TaskInstance>> getMyCandidateTasks() {
+    @RequiresPermissions("workflow:task:list")
+    public Result<IPage<TaskInstance>> getMyCandidateTasks(
+            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "10") Integer pageSize,
+            @Parameter(description = "任务名称") @RequestParam(required = false) String taskName,
+            @Parameter(description = "流程名称") @RequestParam(required = false) String processName) {
         if (!StpUtil.isLogin()) {
             return Result.fail("未登录");
         }
@@ -246,22 +305,70 @@ public class WorkflowController {
         List<String> roleKeys = StpUtil.getRoleList();
         
         List<TaskInstance> tasks = taskService.getCandidateTasks(userId, roleKeys);
-        return Result.success(tasks);
+        
+        // 过滤条件
+        Stream<TaskInstance> stream = tasks.stream();
+        if (taskName != null && !taskName.isEmpty()) {
+            stream = stream.filter(task -> task.getTaskName() != null && 
+                    task.getTaskName().contains(taskName));
+        }
+        if (processName != null && !processName.isEmpty()) {
+            stream = stream.filter(task -> task.getProcessDefinitionName() != null && 
+                    task.getProcessDefinitionName().contains(processName));
+        }
+        
+        List<TaskInstance> filtered = stream.collect(Collectors.toList());
+        int total = filtered.size();
+        int fromIndex = (pageNum - 1) * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, total);
+        List<TaskInstance> pagedData = fromIndex < total ? filtered.subList(fromIndex, toIndex) : new ArrayList<>();
+
+        Page<TaskInstance> page = new Page<>(pageNum, pageSize, total);
+        page.setRecords(pagedData);
+        
+        return Result.success(page);
     }
 
     @GetMapping("/tasks/completed")
     @Operation(summary = "获取我的已完成任务")
-    public Result<List<TaskInstance>> getMyCompletedTasks() {
+    @RequiresPermissions("workflow:task:list")
+    public Result<IPage<TaskInstance>> getMyCompletedTasks(
+            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "10") Integer pageSize,
+            @Parameter(description = "任务名称") @RequestParam(required = false) String taskName,
+            @Parameter(description = "流程名称") @RequestParam(required = false) String processName) {
         if (!StpUtil.isLogin()) {
             return Result.fail("未登录");
         }
         Long userId = StpUtil.getLoginIdAsLong();
         List<TaskInstance> tasks = taskService.getCompletedTasks(userId);
-        return Result.success(tasks);
+        
+        // 过滤条件
+        Stream<TaskInstance> stream = tasks.stream();
+        if (taskName != null && !taskName.isEmpty()) {
+            stream = stream.filter(task -> task.getTaskName() != null && 
+                    task.getTaskName().contains(taskName));
+        }
+        if (processName != null && !processName.isEmpty()) {
+            stream = stream.filter(task -> task.getProcessDefinitionName() != null && 
+                    task.getProcessDefinitionName().contains(processName));
+        }
+        
+        List<TaskInstance> filtered = stream.collect(Collectors.toList());
+        int total = filtered.size();
+        int fromIndex = (pageNum - 1) * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, total);
+        List<TaskInstance> pagedData = fromIndex < total ? filtered.subList(fromIndex, toIndex) : new ArrayList<>();
+
+        Page<TaskInstance> page = new Page<>(pageNum, pageSize, total);
+        page.setRecords(pagedData);
+        
+        return Result.success(page);
     }
 
     @PostMapping("/task/claim/{taskId}")
     @Operation(summary = "签收任务")
+    @RequiresPermissions("workflow:task:claim")
     public Result<Boolean> claimTask(@Parameter(description = "任务ID") @PathVariable String taskId) {
         if (!StpUtil.isLogin()) {
             return Result.fail("未登录");
@@ -273,6 +380,7 @@ public class WorkflowController {
 
     @PostMapping("/task/complete/{taskId}")
     @Operation(summary = "完成任务")
+    @RequiresPermissions("workflow:task:complete")
     public Result<Boolean> completeTask(
             @Parameter(description = "任务ID") @PathVariable String taskId,
             @Parameter(description = "任务变量") @RequestBody(required = false) Map<String, Object> variables) {
@@ -324,8 +432,34 @@ public class WorkflowController {
     @GetMapping("/monitor/tasks")
     @Operation(summary = "获取全系统所有活跃任务")
     @RequiresPermissions("workflow:monitor:view")
-    public Result<List<TaskInstance>> getAllActiveTasks() {
-        return Result.success(taskService.getAllActiveTasks());
+    public Result<IPage<TaskInstance>> getAllActiveTasks(
+            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "10") Integer pageSize,
+            @Parameter(description = "任务名称") @RequestParam(required = false) String taskName,
+            @Parameter(description = "流程名称") @RequestParam(required = false) String processName) {
+        List<TaskInstance> tasks = taskService.getAllActiveTasks();
+        
+        // 过滤条件
+        Stream<TaskInstance> stream = tasks.stream();
+        if (taskName != null && !taskName.isEmpty()) {
+            stream = stream.filter(task -> task.getTaskName() != null && 
+                    task.getTaskName().contains(taskName));
+        }
+        if (processName != null && !processName.isEmpty()) {
+            stream = stream.filter(task -> task.getProcessDefinitionName() != null && 
+                    task.getProcessDefinitionName().contains(processName));
+        }
+        
+        List<TaskInstance> filtered = stream.collect(Collectors.toList());
+        int total = filtered.size();
+        int fromIndex = (pageNum - 1) * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, total);
+        List<TaskInstance> pagedData = fromIndex < total ? filtered.subList(fromIndex, toIndex) : new ArrayList<>();
+
+        Page<TaskInstance> page = new Page<>(pageNum, pageSize, total);
+        page.setRecords(pagedData);
+        
+        return Result.success(page);
     }
 
     @GetMapping("/monitor/charts")

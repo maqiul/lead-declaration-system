@@ -1,5 +1,5 @@
 <template>
-  <div class="declaration-manage">
+  <div class="declaration-manage bg-white p-6 min-h-full">
     <!-- 搜索区域 -->
     <a-card class="search-card">
       <a-form :model="searchForm" layout="inline">
@@ -20,12 +20,7 @@
             <a-select-option value="">全部</a-select-option>
             <a-select-option :value="0">草稿</a-select-option>
             <a-select-option :value="1">待初审</a-select-option>
-            <a-select-option :value="2">待付定金</a-select-option>
-            <a-select-option :value="3">定金待审</a-select-option>
-            <a-select-option :value="4">待付尾款</a-select-option>
-            <a-select-option :value="5">尾款待审</a-select-option>
-            <a-select-option :value="6">提货单待传</a-select-option>
-            <a-select-option :value="7">提货单待审</a-select-option>
+            <a-select-option :value="2">处理中</a-select-option>
             <a-select-option :value="8">已完成</a-select-option>
           </a-select>
         </a-form-item>
@@ -37,8 +32,10 @@
           />
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="loadData" v-permission="['business:declaration:list']">查询</a-button>
-          <a-button style="margin-left: 8px" @click="resetSearch">重置</a-button>
+          <a-space>
+            <a-button type="primary" @click="loadData" v-permission="['business:declaration:list']">查询</a-button>
+            <a-button @click="resetSearch">重置</a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-card>
@@ -57,8 +54,7 @@
       </a-space>
     </a-card>
 
-    <!-- 数据表格 -->
-    <a-card>
+    <a-card class="ui-card">
       <a-table 
         :dataSource="dataSource" 
         :columns="columns" 
@@ -67,6 +63,7 @@
         :scroll="{ x: 1500 }"
         rowKey="id"
         @change="handleTableChange"
+        class="ui-table"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'formNo'">
@@ -79,77 +76,144 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record as any)" v-permission="['business:declaration:view']">
-                <template #icon><EyeOutlined /></template>
-                查看
-              </a-button>
-              <!-- 只有草稿状态才显示数据提交和编辑按钮 -->
-              <a-button v-if="record.status === 0" type="link" size="small" @click="handleStatusSubmit(record as any)" v-permission="['business:declaration:submit']">
-                <template #icon><SendOutlined /></template>
-                提交
-              </a-button>
-              <a-button v-if="record.status === 0" type="link" size="small" @click="handleEdit(record as any)" v-permission="['business:declaration:update']">
-                <template #icon><EditOutlined /></template>
-                编辑
-              </a-button>
-              <a-button v-if="[1, 3, 5].includes(record.status)" type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any)" v-permission="['business:declaration:audit']">
-                <template #icon><CheckCircleOutlined /></template>
-                {{ getAuditBtnText(record.status) }}
-              </a-button>
-              <!-- 状态 2(待付定金) 或状态 4(待付尾款) 显示付款按钮 -->
-              <a-button v-if="record.status === 2" type="link" size="small" style="color: #52c41a;" @click="handlePayment(record as any)" v-permission="['business:declaration:payment']">
-                <template #icon><DollarOutlined /></template>
-                付定金
-              </a-button>
-              <a-button v-if="record.status === 4" type="link" size="small" style="color: #52c41a;" @click="handlePayment(record as any)" v-permission="['business:declaration:payment']">
-                <template #icon><DollarOutlined /></template>
-                付尾款
-              </a-button>
-              <!-- 提货单待传状态显示提交提货单按钮 -->
-              <a-button v-if="record.status === 6" type="link" size="small" style="color: #1890ff;" @click="handlePickupSubmit(record as any)" v-permission="['business:declaration:pickup-submit']">
-                <template #icon><UploadOutlined /></template>
-                提交提货单
-              </a-button>
-              <!-- 提货单待审状态显示审核按钮 -->
-              <a-button 
-                v-if="record.status === 7" 
-                type="link" 
-                size="small" 
-                style="color: #faad14;" 
-                @click="handleAudit(record as any)"
-                v-permission="['business:declaration:pickup-audit']"
-              >
-                <template #icon><CheckCircleOutlined /></template>
-                提货单审核
-              </a-button>
-              <!-- 生成合同按钮 - 初审通过后且无合同时显示 -->
-              <a-button 
-                v-if="record.status >= 1 && !record.hasContract" 
-                type="link" 
-                size="small" 
-                style="color: #722ed1;" 
-                @click="handleOpenGenerate(record)" 
-                v-permission="['business:declaration:audit']"
-              >
-                <template #icon><FileTextOutlined /></template>
-                生成合同
-              </a-button>
-
-              <a-button v-if="record.status >= 2" type="link" size="small" @click="handleDownload(record as any)" v-permission="['business:declaration:download']">
-                <template #icon><DownloadOutlined /></template>
-                单证
-              </a-button>
-              <!-- 只有草稿状态才显示删除按钮 -->
-              <a-popconfirm
-                v-if="record.status === 0"
-                title="确定要删除该申报单吗？"
-                @confirm="handleDelete(record as any)"
-              >
-                <a-button type="link" size="small" danger v-permission="['business:declaration:delete']">
-                  <template #icon><DeleteOutlined /></template>
-                  删除
+              <!-- 
+                操作按钮逻辑:
+                - 草稿状态(status=0):显示2个按钮(编辑、提交)
+                - 其他状态:根据可用按钮数量决定
+                  * 如果可用按钮 <= 3个,全部显示
+                  * 如果可用按钮 > 3个,只显示前2个,其余折叠到"更多"菜单
+              -->
+              <template v-if="record.status === 0">
+                <!-- 草稿状态: 编辑、提交 (2个按钮) -->
+                <a-button type="link" size="small" @click="handleEdit(record as any)" v-permission="['business:declaration:update']">
+                  <template #icon><EditOutlined /></template>
+                  编辑
                 </a-button>
-              </a-popconfirm>
+                <a-button type="link" size="small" @click="handleStatusSubmit(record as any)" v-permission="['business:declaration:submit']">
+                  <template #icon><SendOutlined /></template>
+                  提交
+                </a-button>
+              </template>
+          
+              <template v-else>
+                <!-- 
+                  已提交状态按钮计数逻辑:
+                  按钮列表(按优先级):
+                  1. 初审 (status=1) - 必需
+                  2. 上传定金水单 (status=2) - 必需
+                  3. 定金审核 - 条件显示
+                  4. 上传尾款水单 (status=4) - 必需
+                  5. 尾款审核 - 条件显示
+                  6. 上传提货单 (status=6) - 必需
+                  7. 提货单审核 - 条件显示
+                  
+                  规则:
+                  - 主按钮最多显示3个
+                  - 财务补充按钮总是显示(不计入3个限制)
+                  - 其余按钮全部折叠到"更多"菜单
+                -->
+                
+                <!-- 定义显示的主按钮 -->
+                <template v-if="record.status === 1">
+                  <!-- 状态1:只有1个主按钮(初审) -->
+                  <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'deptAudit')" v-permission="['business:declaration:audit']">
+                    <template #icon><CheckCircleOutlined /></template>
+                    初审
+                  </a-button>
+                </template>
+                
+                <template v-if="record.status === 2">
+                  <!-- 状态2:只有1个主按钮(上传定金水单) -->
+                  <a-button type="link" size="small" style="color: #1890ff;" @click="handlePayment(record as any, 'deposit')" v-permission="['business:declaration:payment']">
+                    <template #icon><DollarOutlined /></template>
+                    上传定金水单
+                  </a-button>
+                </template>
+                
+                <template v-if="record.activeTasks?.includes('depositAudit')">
+                  <!-- 定金审核:1个主按钮 -->
+                  <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'depositAudit')" v-permission="['business:declaration:audit']">
+                    <template #icon><CheckCircleOutlined /></template>
+                    定金审核
+                  </a-button>
+                </template>
+                
+                <template v-if="record.status === 4">
+                  <!-- 状态4:只有1个主按钮(上传尾款水单) -->
+                  <a-button type="link" size="small" style="color: #1890ff;" @click="handlePayment(record as any, 'balance')" v-permission="['business:declaration:payment']">
+                    <template #icon><DollarOutlined /></template>
+                    上传尾款水单
+                  </a-button>
+                </template>
+                
+                <template v-if="record.activeTasks?.includes('balanceAudit')">
+                  <!-- 尾款审核:1个主按钮 -->
+                  <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'balanceAudit')" v-permission="['business:declaration:audit']">
+                    <template #icon><CheckCircleOutlined /></template>
+                    尾款审核
+                  </a-button>
+                </template>
+                
+                <template v-if="record.status === 6">
+                  <!-- 状态6:只有1个主按钮(上传提货单) -->
+                  <a-button type="link" size="small" style="color: #1890ff;" @click="handlePickupSubmit(record as any)" v-permission="['business:declaration:pickup-submit']">
+                    <template #icon><UploadOutlined /></template>
+                    上传提货单
+                  </a-button>
+                </template>
+                
+                <template v-if="record.activeTasks?.includes('pickupListAudit')">
+                  <!-- 提货单审核:1个主按钮 -->
+                  <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'pickupListAudit')" v-permission="['business:declaration:audit']">
+                    <template #icon><CheckCircleOutlined /></template>
+                    提货单审核
+                  </a-button>
+                </template>
+                
+                <!-- 财务补充按钮:总是显示(不计入3个主按钮限制) -->
+                <a-button type="link" size="small" @click="handleFinanceUpload(record as any)" v-permission="['business:declaration:financeSupplement']">
+                  <template #icon><MoneyCollectOutlined /></template>
+                  财务补充
+                </a-button>
+                
+                <!-- 折叠菜单:包含所有其他操作 -->
+                <a-dropdown>
+                  <a-button type="link" size="small">
+                    更多
+                    <DownOutlined />
+                  </a-button>
+                  <template #overlay>
+                    <a-menu>
+                      <!-- 单证下载 -->
+                      <a-menu-item key="download" @click="handleDownload(record as any)">
+                        <DownloadOutlined /> 单证
+                      </a-menu-item>
+                                
+                      <!-- 生成合同 -->
+                      <a-menu-item 
+                        v-if="!record.hasContract" 
+                        key="contract" 
+                        @click="handleOpenGenerate(record)"
+                      >
+                        <FileTextOutlined /> 生成合同
+                      </a-menu-item>
+                                
+                      <!-- 删除 (仅草稿) -->
+                      <a-menu-item v-if="record.status === 0" key="delete" danger>
+                        <a-popconfirm
+                          title="确定要删除该申报单吗?"
+                          @confirm="handleDelete(record as any)"
+                          placement="left"
+                        >
+                          <span v-permission="['business:declaration:delete']">
+                            <DeleteOutlined /> 删除
+                          </span>
+                        </a-popconfirm>
+                      </a-menu-item>
+                    </a-menu>
+                  </template>
+                </a-dropdown>
+              </template>
             </a-space>
           </template>
         </template>
@@ -352,6 +416,14 @@
         </a-form-item>
       </a-form>
     </a-modal>
+    
+    <!-- 财务补充弹窗 -->
+    <FinanceModal
+      v-model:visible="financeModalVisible"
+      :form-id="currentRecordForFinance?.id || 0"
+      :form-no="currentRecordForFinance?.formNo || ''"
+      @save-success="handleFinanceSaveSuccess"
+    />
   </div>
 </template>
 
@@ -359,7 +431,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
-import { PlusOutlined, DownloadOutlined, EyeOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, DollarOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, DollarOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined } from '@ant-design/icons-vue'
 import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList,
@@ -369,12 +441,15 @@ import {
   getDeclarationAttachments,
   regenerateDocuments,
   regenerateAllDocuments,
-  regenerateRemittanceReport
+  regenerateRemittanceReport,
+  getBatchActiveTasks
 } from '@/api/business/declaration'
 import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile } from '@/api/business/contract'
 import { h } from 'vue'
 
 import { useRoute } from 'vue-router'
+
+import FinanceModal from '../finance/components/FinanceModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -395,6 +470,11 @@ interface DeclarationRecord {
   totalCartons?: number
   status: number
   createTime?: string
+  financeUploadPending?: boolean
+  attachments?: any[]
+  hasContract?: boolean
+  regenerateButtons?: any[]
+  activeTasks?: string[]
 }
 
 const dataSource = ref<DeclarationRecord[]>([])
@@ -433,7 +513,7 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 300,
+    width: 240,
     fixed: 'right' as const
   }
 ]
@@ -445,6 +525,10 @@ const currentAttachments = ref<any[]>([])
 const currentContracts = ref<any[]>([]) // 新增：合同列表
 const currentContractsLoading = ref(false) // 合同数据加载状态
 const currentDeclaration = ref<DeclarationRecord | null>(null)
+
+// 财务补充弹窗
+const financeModalVisible = ref(false)
+const currentRecordForFinance = ref<DeclarationRecord | null>(null)
 
 // 附件替换弹窗
 const replaceModalVisible = ref(false)
@@ -473,12 +557,13 @@ const loadData = async () => {
     const response = await getDeclarationList(params)
     
     if (response.data.code === 200) {
-      // 预加载附件信息
-      const records = response.data.data.records as any[]
+      // 增加数组安全性检查
+      const rawRecords = response.data.data?.records
+      const records = Array.isArray(rawRecords) ? rawRecords : []
       const recordsWithAttachments = await Promise.all(
         records.map(async (record) => {
           // 预加载附件信息
-          if (record.status >= 2) { // 只为需要显示按钮的记录加载附件
+          if (record.status >= 1) { // 只为需要显示按钮的记录加载附件（status>=1时已生成预录入单）
             try {
               const attachmentResponse = await getDeclarationAttachments(record.id)
               if (attachmentResponse.data && attachmentResponse.data.code === 200) {
@@ -520,6 +605,30 @@ const loadData = async () => {
       
       dataSource.value = recordsWithAttachments
       pagination.total = response.data.data.total
+      
+      // 批量获取需要显示审核按钮的记录的活跃任务（状态2,3,4,5,7）
+      const processingIds = dataSource.value
+        .filter((r: any) => [2, 3, 4, 5, 7].includes(r.status))
+        .map((r: any) => r.id)
+      
+      if (processingIds.length > 0) {
+        try {
+          console.log('获取批量任务，IDs:', processingIds.join(','))
+          const taskRes = await getBatchActiveTasks(processingIds.join(','))
+          console.log('批量任务响应:', taskRes)
+          if (taskRes.data && taskRes.data.code === 200 && taskRes.data.data) {
+            dataSource.value.forEach((r: any) => {
+              r.activeTasks = taskRes.data.data[String(r.id)] || []
+            })
+          } else {
+            console.warn('批量任务API返回异常:', taskRes.data)
+            message.warning('获取任务信息失败')
+          }
+        } catch (e: any) {
+          console.error('获取批量任务失败:', e)
+          message.error('获取任务信息失败: ' + (e.response?.data?.message || e.message || '未知错误'))
+        }
+      }
     } else {
       dataSource.value = []
       pagination.total = 0
@@ -533,6 +642,43 @@ const loadData = async () => {
     pagination.total = 0
   } finally {
     loading.value = false
+  }
+}
+
+// 定时刷新活跃任务信息（每30秒刷新一次）
+let refreshTimer: number | null = null
+const startAutoRefresh = () => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  refreshTimer = window.setInterval(() => {
+    // 只刷新需要显示审核按钮的记录的活跃任务（状态2,3,4,5,7）
+    const processingIds = dataSource.value
+      .filter((r: any) => [2, 3, 4, 5, 7].includes(r.status))
+      .map((r: any) => r.id)
+    
+    if (processingIds.length > 0) {
+      getBatchActiveTasks(processingIds.join(','))
+        .then(taskRes => {
+          if (taskRes.data && taskRes.data.code === 200 && taskRes.data.data) {
+            dataSource.value.forEach((r: any) => {
+              const newTasks = taskRes.data.data[String(r.id)] || []
+              // 只有当任务列表发生变化时才更新，避免不必要的重新渲染
+              if (JSON.stringify(r.activeTasks || []) !== JSON.stringify(newTasks)) {
+                r.activeTasks = newTasks
+              }
+            })
+          }
+        })
+        .catch(e => {
+          console.warn('定时刷新任务失败:', e)
+        })
+    }
+  }, 30000) // 30秒刷新一次
+}
+
+const stopAutoRefresh = () => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
   }
 }
 
@@ -591,8 +737,16 @@ const handleEdit = (record: DeclarationRecord) => {
 }
 
 // 付款操作（定金/尾款）- 跳转到水单提交模式
-const handlePayment = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=payment`)
+const handlePayment = (record: DeclarationRecord, type?: 'deposit' | 'balance') => {
+  console.log('handlePayment called with:', { record, type })
+  const query: Record<string, any> = { 
+    id: record.id, 
+    status: record.status, 
+    mode: 'payment' 
+  }
+  if (type) query.type = type
+  console.log('Router push query:', query)
+  router.push({ path: '/declaration/form', query })
 }
 
 // 提货单提交操作 - 跳转到申报单详情页的提货单上传模式
@@ -601,8 +755,22 @@ const handlePickupSubmit = (record: DeclarationRecord) => {
 }
 
 // 审核申报单
-const handleAudit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&mode=audit`)
+const handleAudit = (record: DeclarationRecord, taskKey?: string) => {
+  const query: Record<string, any> = { id: record.id, mode: 'audit' }
+  if (taskKey) query.taskKey = taskKey
+  router.push({ path: '/declaration/form', query })
+}
+
+// 财务补充 - 弹窗模式（有数据则编辑，无数据则新增）
+const handleFinanceUpload = (record: DeclarationRecord) => {
+  currentRecordForFinance.value = record
+  financeModalVisible.value = true
+}
+
+// 财务补充保存成功
+const handleFinanceSaveSuccess = () => {
+  message.success('财务补充保存成功')
+  loadData()
 }
 
 // 下载单证
@@ -781,25 +949,17 @@ const handleConfirmGenerate = async () => {
   }
 }
 
-// 获取审核按钮文本
-const getAuditBtnText = (status: number) => {
-  if (status === 1) return '初审'
-  if (status === 3) return '定金审核'
-  if (status === 5) return '尾款审核'
-  return '审核'
-}
-
 // 获取状态文本
 const getStatusText = (status: number) => {
   const statusMap: Record<number, string> = {
     0: '草稿',
     1: '待初审',
-    2: '待付定金',
-    3: '定金待审',
-    4: '定金已过/待尾款',
-    5: '尾款待审',
-    6: '提货单待传',
-    7: '提货单待审',
+    2: '待上传定金水单',
+    3: '定金待审核',
+    4: '待上传尾款水单',
+    5: '尾款待审核',
+    6: '待上传提货单',
+    7: '提货单待审核',
     8: '已完成'
   }
   return statusMap[status] || '未知'
@@ -808,15 +968,15 @@ const getStatusText = (status: number) => {
 // 获取状态颜色
 const getStatusColor = (status: number) => {
   const colorMap: Record<number, string> = {
-    0: 'default',
-    1: 'processing',
-    2: 'warning',
-    3: 'processing',
-    4: 'warning',
-    5: 'processing',
-    6: 'warning',
-    7: 'processing',
-    8: 'success'
+    0: 'default',      // 草稿
+    1: 'processing',   // 待初审
+    2: 'blue',         // 待上传定金水单
+    3: 'orange',       // 定金待审核
+    4: 'blue',         // 待上传尾款水单
+    5: 'orange',       // 尾款待审核
+    6: 'blue',         // 待上传提货单
+    7: 'orange',       // 提货单待审核
+    8: 'success'       // 已完成
   }
   return colorMap[status] || 'default'
 }
@@ -940,17 +1100,17 @@ const handleRegenerateSimple = async (attachment: any) => {
   try {
     let response
     switch (fileType) {
-      case 'standard':
+      case 'FullDocuments':
         response = await regenerateDocuments(declaration.id)
         break
-      case 'all':
+      case 'AllDocuments':
         response = await regenerateAllDocuments(declaration.id)
         break
-      case 'deposit':
+      case 'Remittance_Deposit':
         // 定金水单 - type=1
         response = await regenerateRemittanceReport(declaration.id, 1)
         break
-      case 'balance':
+      case 'Remittance_Balance':
         // 尾款水单 - type=2
         response = await regenerateRemittanceReport(declaration.id, 2)
         break
@@ -1151,6 +1311,7 @@ const handleReplaceAttachment = async () => {
 // 页面加载
 onMounted(() => {
   loadData()
+  startAutoRefresh() // 启动自动刷新
   
   // 拦截来自工作台待办任务的特定参数，并自动开启审核弹窗/进入审核流程
   if (route.query.action === 'audit' && route.query.id) {
@@ -1163,75 +1324,13 @@ onMounted(() => {
     }
   }
 })
+
+onUnmounted(() => {
+  stopAutoRefresh() // 停止自动刷新
+})
 </script>
 
 <style scoped>
-/* 列表页面样式 */
-:deep(.ant-card) {
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(79, 70, 229, 0.04);
-  border: 1px solid rgba(226, 232, 240, 0.6);
-}
-
-:deep(.ant-card-body) {
-  padding: 20px;
-}
-
-:deep(.ant-card-head) {
-  border-bottom: 1px solid #f1f5f9;
-  border-radius: 16px 16px 0 0;
-  background: #f8fafc;
-}
-
-:deep(.ant-card-head-title) {
-  font-weight: 600;
-  font-size: 15px;
-  color: #1e293b;
-}
-
-/* 表格样式 */
-:deep(.ant-table) {
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-:deep(.ant-table-thead > tr > th) {
-  background-color: #f8fafc !important;
-  font-weight: 600;
-  color: #475569;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-:deep(.ant-table-row:hover > td) {
-  background-color: #f8faff !important;
-}
-
-/* 主按钮样式 */
-:deep(.ant-btn-primary) {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-  border: none;
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
-  border-radius: 10px;
-}
-
-:deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
-  transform: translateY(-1px);
-}
-
-/* 搜索卡片 & 操作按钮卡片样式 */
-:deep(.ant-card.search-card),
-:deep(.ant-card.operation-card) {
-  margin-bottom: 16px;
-  border: 1px solid rgba(226, 232, 240, 0.6);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
 .declaration-manage {
   height: 100%;
   overflow-x: hidden;

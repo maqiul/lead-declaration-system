@@ -541,8 +541,8 @@ onMounted(() => {
 }
 
 .action-card:hover {
-  border-color: rgba(79, 70, 229, 0.2);
-  box-shadow: 0 4px 16px rgba(79, 70, 229, 0.08);
+  border-color: rgba(37, 99, 235, 0.2);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.08);
   transform: translateY(-2px);
 }
 
@@ -557,7 +557,7 @@ onMounted(() => {
 
 .action-icon {
   font-size: 22px;
-  color: #4F46E5;
+  color: #2563EB;
 }
 
 .action-label {
