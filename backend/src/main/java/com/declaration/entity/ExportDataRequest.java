@@ -59,11 +59,11 @@ public class ExportDataRequest {
         private Integer cartonQuantity;
         private BigDecimal cartonVolume;
         private String contonEN;
-        public String getCartonType() {
+        public String getContonEN() {
             return contonEN;
         }
-        public void setCartonType(String cartonType) {
-            this.contonEN = cartonType;
+        public void setContonEN(String ContonEN) {
+            this.contonEN = ContonEN;
         }
      
         

@@ -2,6 +2,7 @@ package com.declaration.controller;
 
 import cn.dev33.satoken.annotation.SaIgnore;
 import cn.dev33.satoken.stp.StpUtil;
+import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -784,7 +785,7 @@ public class DeclarationFormController {
     @PostMapping("/draft")
     @Operation(summary = "保存草稿")
     @RequiresPermissions("business:declaration:add")
-    public Result<Long> saveDraft(@RequestBody DeclarationForm form) {
+    public Result<JSONObject> saveDraft(@RequestBody DeclarationForm form) {
         try {
             Long orgId = OrganizationUtils.getCurrentUserOrgId();
             if (form.getOrgId() == null) {
@@ -797,7 +798,10 @@ public class DeclarationFormController {
             } else {
                 declarationFormService.saveDeclarationForm(form);
             }
-            return Result.success(form.getId());
+            JSONObject json = new JSONObject();
+            json.put("formId",form.getId());
+            json.put("formNo",form.getFormNo());
+            return Result.success(json);
         } catch (Exception e) {
             log.error("保存草稿失败", e);
             return Result.fail("保存草稿失败: " + e.getMessage());

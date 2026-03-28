@@ -24,10 +24,7 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * 合同生成服务实现类
@@ -125,22 +122,29 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             String productNameCn = "";
             String quantity = "0";
             String quantityUnit = "个";
-            
+            // 准备循环数据
+            List<Map<String, Object>> items = new ArrayList<>();
             // 获取第一个产品作为主要产品信息
             if (declarationForm.getProducts() != null && !declarationForm.getProducts().isEmpty()) {
-                DeclarationProduct mainProduct = declarationForm.getProducts().get(0);
-                productNameEn = mainProduct.getProductName() != null ? mainProduct.getProductName() : "";
-                ProductTypeConfig productTypeConfig = productTypeConfigService.getByHsCode(mainProduct.getHsCode());
-                productNameCn = productTypeConfig.getChineseName() != null ? mainProduct.getProductName() : "";
-                quantity = mainProduct.getQuantity() != null ? mainProduct.getQuantity().toString() : "0";
-                quantityUnit =  "个";
+                for (DeclarationProduct mainProduct : declarationForm.getProducts()){
+                    Map<String,Object> map = new HashMap<>();
+//                DeclarationProduct mainProduct = declarationForm.getProducts().get(0);
+                    productNameEn = mainProduct.getProductEnglishName() != null ? mainProduct.getProductEnglishName() : "";
+//                ProductTypeConfig productTypeConfig = productTypeConfigService.getByHsCode(mainProduct.getHsCode());
+                    productNameCn = mainProduct.getProductChineseName() != null ? mainProduct.getProductChineseName() : "";
+                    quantity = mainProduct.getQuantity() != null ? mainProduct.getQuantity().toString() : "0";
+                    quantityUnit =  "个";
+                    map.put("productNameEn", productNameEn);
+                    map.put("productNameCn", productNameCn);
+                    map.put("quantity", quantity);
+                    map.put("quantityUnit", quantityUnit);
+                    items.add(map);
+                }
+
             }
             
-            templateData.put("productNameEn", productNameEn);
-            templateData.put("productNameCn", productNameCn);
-            templateData.put("quantity", quantity);
-            templateData.put("quantityUnit", quantityUnit);
-            
+
+            templateData.put("items", items);
             // 金额信息
             String totalAmount = declarationForm.getTotalAmount() != null ? 
                 declarationForm.getTotalAmount().toString() : "0";
@@ -322,7 +326,7 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             // 这里应该是从数据库获取序列号，简化处理
             String serial = String.format("%06d", System.currentTimeMillis() % 1000000);
 
-            return prefix + dateStr + serial;
+            return "合同"+prefix + dateStr + serial;
 
         } catch (Exception e) {
             log.error("合同编号生成失败", e);
