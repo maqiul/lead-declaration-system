@@ -1120,27 +1120,27 @@ const handleRegenerateSimple = async (attachment: any) => {
     }
     
     if (response.data && response.data.code === 200) {
-      message.success(`${getFileTypeName(fileType)}重新生成成功`)
+      message.success(`重新生成成功`)
       // 重新加载附件列表
       await loadAttachmentsForDeclaration(declaration)
     } else {
-      message.error(`${getFileTypeName(fileType)}重新生成失败: ${response.data?.message || '未知错误'}`)
+      message.error(`重新生成失败: ${response.data?.message || '未知错误'}`)
     }
   } catch (error: any) {
-    message.error(`${getFileTypeName(fileType)}重新生成失败: ${error.message || '网络错误'}`)
+    message.error(`重新生成失败: ${error.message || '网络错误'}`)
   }
 }
 
-// 获取文件类型名称
-const getFileTypeName = (fileType: string) => {
-  const typeMap: Record<string, string> = {
-    'standard': '标准单证',
-    'all': '全套单证',
-    'deposit': '定金水单',
-    'balance': '尾款水单'
-  }
-  return typeMap[fileType] || fileType
-}
+// // 获取文件类型名称
+// const getFileTypeName = (fileType: string) => {
+//   const typeMap: Record<string, string> = {
+//     'standard': '标准单证',
+//     'all': '全套单证',
+//     'deposit': '定金水单',
+//     'balance': '尾款水单'
+//   }
+//   return typeMap[fileType] || fileType
+// }
 
 // 为申报单重新加载附件
 const loadAttachmentsForDeclaration = async (declaration: any) => {

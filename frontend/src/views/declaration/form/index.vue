@@ -2160,7 +2160,7 @@ const loadTransportModes = async () => {
     if (response.data.code === 200 && response.data.data.length > 0) {
       transportModeOptions.value = response.data.data.map((item: any) => ({
         label: item.chineseName || item.name,
-        value: item.code || item.name
+        value: item.name || item.name
       }))
       console.log('加载运输方式成功:', transportModeOptions.value)
     }
@@ -2766,6 +2766,22 @@ const handleSaveDraft = async () => {
       }
     })
     
+    // 确保所有产品的金额都已计算，但保留手动输入的金额
+    productList.value.forEach(product => {
+      // 如果金额是手动设置的，保留手动输入的值
+      if (product._amountManuallySet && product.amount !== undefined) {
+        // 保持手动输入的金额
+        product.amount = parseFloat(product.amount).toFixed(2)
+      } else {
+        // 否则按单价*数量计算
+        if (product.unitPrice !== undefined && product.quantity !== undefined) {
+          product.amount = (product.unitPrice * product.quantity).toFixed(2)
+        } else {
+          product.amount = '0.00'
+        }
+      }
+    })
+
     // 构建保存数据
     const draftData = {
       ...formData,
@@ -2803,9 +2819,14 @@ const handleSaveDraft = async () => {
       const newDraftId = response.data.data
       message.success('草稿保存成功')
       
+      console.log('新草稿ID:', newDraftId.formId)
+      console.log('当前草稿ID:', formId.value)
       // 如果是新草稿，更新ID和URL，避免重复创建
       if (!formId.value) {
-        formId.value = newDraftId
+        console.log('更新草稿ID:', newDraftId.formId)
+        formId.value = newDraftId.formId
+        console.log('当前草稿ID:', formId.value)
+        formData.formNo = newDraftId.formNo
         formStatus.value = 0
         router.replace({
           path: route.path,
@@ -2842,7 +2863,27 @@ const handleSubmit = async () => {
       message.error('请填写收货人地址')
       return
     }
-    
+    if (!formData.destinationCountry) {
+      message.error('请选择目的地国家')
+      return
+    }
+    if (!formData.tradeCountry) {
+      message.error('请选择贸易国家')
+      return
+    }
+    if (!formData.transportMode) {
+      message.error('请选择运输方式')
+      return
+    }
+    if (!formData.departureCity) {
+      message.error('请选择出发城市')
+      return
+    }
+    if(!formData.currency){
+      message.error('请选择货币')
+      return
+    }
+
     if (productList.value.length === 0) {
       message.error('请至少添加一个产品')
       return
@@ -2867,12 +2908,19 @@ const handleSubmit = async () => {
     
     submitting.value = true
     
-    // 确保所有产品的金额都已计算
+    // 确保所有产品的金额都已计算，但保留手动输入的金额
     productList.value.forEach(product => {
-      if (product.unitPrice !== undefined && product.quantity !== undefined) {
-        product.amount = (product.unitPrice * product.quantity).toFixed(2)
+      // 如果金额是手动设置的，保留手动输入的值
+      if (product._amountManuallySet && product.amount !== undefined) {
+        // 保持手动输入的金额
+        product.amount = parseFloat(product.amount).toFixed(2)
       } else {
-        product.amount = '0.00'
+        // 否则按单价*数量计算
+        if (product.unitPrice !== undefined && product.quantity !== undefined) {
+          product.amount = (product.unitPrice * product.quantity).toFixed(2)
+        } else {
+          product.amount = '0.00'
+        }
       }
     })
     
@@ -2917,24 +2965,41 @@ const handleSubmit = async () => {
       totalVolume: totals.value.totalVolume,
       totalAmount: totals.value.totalAmount,
       status: 0, // 初始保存为草稿状态，由后续 /submit 启动流程并改为1
-      products: productList.value.map((product: any) => ({
-        ...product,
-        elementValues: (product.declarationElements || []).map((elem: any) => ({
-          elementName: elem.label,
-          elementValue: elem.value && elem.value.trim() ? elem.value : '无'
-        }))
-      })),
+      products: productList.value.map((product: any) => {
+        // 如果金额是手动设置的，保留手动输入的值
+        let finalAmount = product.amount;
+        if (product._amountManuallySet && product.amount !== undefined) {
+          finalAmount = parseFloat(product.amount).toFixed(2);
+        } else {
+          // 否则按单价*数量计算
+          if (product.unitPrice !== undefined && product.quantity !== undefined) {
+            finalAmount = (product.unitPrice * product.quantity).toFixed(2);
+          } else {
+            finalAmount = '0.00';
+          }
+        }
+        return {
+          ...product,
+          amount: finalAmount,
+          elementValues: (product.declarationElements || []).map((elem: any) => ({
+            elementName: elem.label,
+            elementValue: elem.value && elem.value.trim() ? elem.value : '无'
+          }))
+        };
+      }),
       cartons: cartonList.value,
       cartonProducts: cartonProducts 
     }
     
     console.log('提交的数据:', submitData)
+    console.log('表单ID:', formId.value)
+    console.log('表单状态:', formStatus.value)
     
     // 如果是从草稿提交，我们需要告诉后端这个表单原本在草稿表
     // 或者后端可以在 submit 逻辑中自动处理
     
     let finalId = formId.value
-    if (formId.value && formStatus.value !== 0) {
+    if (formId.value && formStatus.value == 0) {
       // 更新正式表单
       await updateDeclaration(formId.value, submitData as any)
       message.success('申报单更新成功')
@@ -3057,6 +3122,8 @@ const loadData = async () => {
         if (Array.isArray(productsRaw)) {
           productList.value = productsRaw.map((product: any) => ({
             ...product,
+            // 初始化手动金额设置标记 - 智能判断金额是否为手动设置
+            _amountManuallySet: Math.abs(((product.unitPrice || 0) * (product.quantity || 0)) - (product.amount || 0)) > 0.01, // 如果金额与单价*数量计算结果差异大于0.01，则认为是手动设置的
             // 处理申报要素值 - 注意后端字段名是 elementName 和 elementValue
             declarationElements: (product.elementValues || []).map((ev: any) => ({
               id: ev.id,
