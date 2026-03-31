@@ -5,19 +5,28 @@
         <a-space>
           <a-button @click="goBack">返回列表</a-button>
           
+          <!-- 审核详情按钮 - 所有状态都显示 -->
+          <a-button 
+            @click="showAuditHistory" 
+            v-permission="['business:declaration:query']"
+          >
+            <template #icon><HistoryOutlined /></template>
+            审核详情
+          </a-button>
+          
           <!-- 审核模式下的按钮 -->
           <template v-if="isAudit">
             <a-button 
               type="primary" 
               @click="handleApprove" 
               :loading="submitting"
-              v-permission="['business:declaration:audit']"
+              v-permission="['business:declaration:audit', 'business:declaration:return-audit']"
             >{{ getAuditActionText() }}通过</a-button>
             <a-button 
               danger 
               @click="handleReject" 
               :loading="submitting"
-              v-permission="['business:declaration:audit']"
+              v-permission="['business:declaration:audit', 'business:declaration:return-audit']"
             >{{ getAuditActionText() }}驳回</a-button>
           </template>
           
@@ -72,6 +81,16 @@
           </template>
         </a-space>
       </template>
+      
+      <!-- 退回原因提示 -->
+      <a-alert
+        v-if="formStatus === 9 && returnReason"
+        message="退回申请原因"
+        :description="returnReason"
+        type="warning"
+        show-icon
+        class="mb-4"
+      />
       
       <!-- 基本信息 -->
       <a-card title="基本信息" size="small" class="section-card">
@@ -160,7 +179,7 @@
         </a-row>
         
         <a-row :gutter="16">
-        <a-col :span="8">
+          <a-col :span="4">
             <a-form-item label="运输方式">
               <a-select 
                 v-model:value="formData.transportMode" 
@@ -168,6 +187,18 @@
                 placeholder="请选择运输方式" 
                 :disabled="isFormReadonly"
                 style="width: 100%"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :span="6">
+            <a-form-item label="支付方式">
+              <a-select 
+                v-model:value="formData.paymentMethod" 
+                :options="paymentMethodOptions"
+                placeholder="请选择支付方式" 
+                :disabled="isFormReadonly"
+                style="width: 100%"
+                allow-clear
               />
             </a-form-item>
           </a-col>
@@ -180,7 +211,7 @@
               />
             </a-form-item>
           </a-col>
-          <a-col :span="8">
+          <a-col :span="6">
             <a-form-item label="币种">
               <a-select 
                 v-model:value="formData.currency" 
@@ -662,7 +693,7 @@
 
             <template v-else-if="column.key === 'action'">
               <a-space v-if="isDepositEditable">
-                <a-button type="link" size="small" @click="handleSaveRemittance(record)">{{ record.id ? '更新' : '保存' }}</a-button>
+                <a-button type="link" size="small" :loading="submitting" @click="handleSaveRemittance(record)">{{ record.id ? '更新' : '保存' }}</a-button>
                 <a-popconfirm title="确定要删除这条水单吗？" @confirm="handleDeleteRemittance(record)">
                   <a-button type="link" size="small" danger>删除</a-button>
                 </a-popconfirm>
@@ -676,7 +707,7 @@
       </a-card>
 
       <!-- 尾款水单 (定金水单审核通过后显示，提货单模式下只读展示，水单提交模式下也显示，审核模式下也显示) -->
-      <a-card v-if="formStatus && (formStatus >= 4 || isPaymentOnlyMode || isAudit)" title="尾款水单" size="small" class="section-card">
+      <a-card v-if="formStatus && formStatus !== 1 && (formStatus >= 4 || (isPaymentOnlyMode && route.query.type === 'balance') || isAudit)" title="尾款水单" size="small" class="section-card">
         <template #extra>
           <a-button v-if="isBalanceEditable" type="primary" size="small" @click="handleAddRemittance(2)">
             <template #icon><PlusOutlined /></template>
@@ -753,7 +784,7 @@
 
             <template v-else-if="column.key === 'action'">
               <a-space v-if="isBalanceEditable">
-                <a-button type="link" size="small" @click="handleSaveRemittance(record)">{{ record.id ? '更新' : '保存' }}</a-button>
+                <a-button type="link" size="small" :loading="submitting" @click="handleSaveRemittance(record)">{{ record.id ? '更新' : '保存' }}</a-button>
                 <a-popconfirm title="确定要删除这条水单吗？" @confirm="handleDeleteRemittance(record)">
                   <a-button type="link" size="small" danger>删除</a-button>
                 </a-popconfirm>
@@ -767,7 +798,7 @@
       </a-card>
 
       <!-- 提货单 (尾款审核通过后显示，在提货单上传模式下也显示，在审核模式下也显示) -->
-      <a-card v-if="(formStatus && formStatus >= 2 && balanceApproved && !isPaymentOnlyMode) || isPickupMode || isAudit" title="提货单" size="small" class="section-card">
+      <a-card v-if="formStatus !== 1 && ((formStatus && formStatus >= 2 && balanceApproved && !isPaymentOnlyMode) || isPickupMode || isAudit)" title="提货单" size="small" class="section-card">
         <template #extra>
           <a-button 
             v-if="(formStatus === 2 || isPickupMode) && !isReadonly" 
@@ -1220,6 +1251,56 @@
       </a-card>
 
     </a-card>
+    <a-modal
+  v-model:open="auditHistoryVisible"
+  title="审核历史详情"
+  width="1200px"
+  :footer="null"
+>
+  <a-table
+    :dataSource="auditHistoryList"
+    :columns="auditHistoryColumns"
+    :loading="auditHistoryLoading"
+    rowKey="id"
+    size="small"
+    :scroll="{ x: 1100 }"
+  >
+    <template #bodyCell="{ column, record }">
+      <template v-if="column.key === 'auditStatus'">
+        <a-tag :color="record.auditStatus === 1 ? 'success' : record.auditStatus === 2 ? 'error' : 'processing'">
+          {{ record.auditStatus === 1 ? '通过' : record.auditStatus === 2 ? '驳回' : '待审核' }}
+        </a-tag>
+      </template>
+      <template v-else-if="column.key === 'businessType'">
+        <a-tag color="blue">{{ getBusinessTypeText(record.businessType) }}</a-tag>
+      </template>
+      <template v-else-if="column.key === 'preStatus'">
+        <a-tag>{{ getStatusText(record.preStatus) }}</a-tag>
+      </template>
+    </template>
+  </a-table>
+</a-modal>
+
+<!-- 审核意见弹窗 -->
+<a-modal
+  v-model:open="remarkModalVisible"
+  :title="`${remarkAction}审核`"
+  width="500px"
+  :confirm-loading="remarkSubmitting"
+  @ok="handleRemarkSubmit"
+>
+  <a-form layout="vertical">
+    <a-form-item label="审核意见" required>
+      <a-textarea
+        v-model:value="remarkValue"
+        placeholder="请输入审核意见"
+        :rows="4"
+        :auto-size="{ minRows: 4, maxRows: 8 }"
+      />
+    </a-form-item>
+  </a-form>
+</a-modal>
+
   </div>
 </template>
 
@@ -1228,7 +1309,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import type { SelectValue } from 'ant-design-vue/lib/select';
-import { PlusOutlined, UploadOutlined, CameraOutlined, DownloadOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, UploadOutlined, CameraOutlined, DownloadOutlined, HistoryOutlined } from '@ant-design/icons-vue'
 import dayjs, { Dayjs } from 'dayjs'
 import {
   getDeclarationDetail, 
@@ -1252,10 +1333,13 @@ import {
   getDeliveryOrders,
   updateDeliveryOrder,
   deleteDeliveryOrder,
-  getEnabledBankAccounts
+  getEnabledBankAccounts,
+  auditReturnToDraft,
+  getReturnAuditHistory
 } from '@/api/business/declaration'
 import { getProductTypes } from '@/api/system/product'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
+import { getEnabledPaymentMethods } from '@/api/system/paymentMethod'
 import { getEnabledCountries } from '@/api/system'
 import { getEnabledCurrencies } from '@/api/system/currency'
 
@@ -1276,6 +1360,28 @@ const isReadonly = ref(route.query.readonly === 'true' || isAudit.value)
 const formId = ref(route.query.id ? Number(route.query.id) : null)
 const formStatus = ref<number | null>(route.query.status ? Number(route.query.status) : null)
 const submitting = ref(false)
+const returnReason = ref('')
+const auditHistoryVisible = ref(false)
+const auditHistoryList = ref<any[]>([])
+const auditHistoryLoading = ref(false)
+
+// 审核意见相关
+const remarkModalVisible = ref(false)
+const remarkAction = ref('') // '通过' 或 '驳回'
+const remarkValue = ref('')
+const remarkSubmitting = ref(false)
+let handleRemarkSubmit = () => {} // 占位函数，会被 showRemarkModal 动态替换
+const auditHistoryColumns = [
+  { title: '状态', key: 'auditStatus', width: 70 },
+  { title: '业务类型', key: 'businessType', width: 120 },
+  { title: '申请人', dataIndex: 'applicantName', key: 'applicantName', width: 90 },
+  { title: '原因', dataIndex: 'applyReason', key: 'applyReason', ellipsis: true, minWidth: 150 },
+  { title: '申请时间', dataIndex: 'applyTime', key: 'applyTime', width: 160 },
+  { title: '审核人', dataIndex: 'auditorName', key: 'auditorName', width: 90 },
+  { title: '备注', dataIndex: 'auditRemark', key: 'auditRemark', ellipsis: true, minWidth: 150 },
+  { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 },
+  { title: '原状态', key: 'preStatus', width: 70 }
+]
 
 // 活跃任务状态（用于任务驱动的UI判断）
 const activeTasks = ref<any[]>([])
@@ -1316,12 +1422,42 @@ const getAuditActionText = () => {
     }
     return map[taskKey] || '审批'
   }
-  // 兼容: 如果没有 taskKey 参数，从活跃任务中推断
+  // 兼容：如果没有 taskKey 参数，从活跃任务中推断
   if (formStatus.value === 1) return '初审'
+  if (formStatus.value === 9) return '退回'
   if (activeTaskKeys.value.includes('depositAudit')) return '定金审核'
   if (activeTaskKeys.value.includes('balanceAudit')) return '尾款审核'
   if (activeTaskKeys.value.includes('pickupListAudit')) return '提货单审核'
   return '审批'
+}
+
+// 获取业务类型文本
+const getBusinessTypeText = (type: string) => {
+  const map: Record<string, string> = {
+    'DECLARATION_RETURN': '退回草稿',
+    'DECLARATION_AUDIT': '申报审核',
+    'REMittance_AUDIT': '水单审核',
+    'DELIVERY_ORDER_AUDIT': '提货单审核',
+    'DECLARATION_SUBMIT': '申报提交'
+  }
+  return map[type] || type
+}
+
+// 获取状态文本
+const getStatusText = (status: number) => {
+  const statusMap: Record<number, string> = {
+    0: '草稿',
+    1: '待初审',
+    2: '待上传定金水单',
+    3: '定金待审核',
+    4: '待上传尾款水单',
+    5: '尾款待审核',
+    6: '待上传提货单',
+    7: '提货单待审核',
+    8: '已完成',
+    9: '退回待审'
+  }
+  return statusMap[status] || '未知'
 }
 
 // 财务补充模式逻辑
@@ -1572,17 +1708,29 @@ const handleSubmitAudit = async (type: 'deposit' | 'balance' | 'pickup') => {
 // 审核通过
 const handleApprove = async () => {
   if (!formId.value) return
+  
+  // 显示审核意见输入框
+  const remark = await showRemarkModal('通过', '已核对数据，通过')
+  if (!remark) return // 用户取消
+  
   submitting.value = true
   try {
-    const taskKey = route.query.taskKey as string
-    console.log('执行审核通过操作:', { formId: formId.value, taskKey, result: 1 })
-    await auditDeclaration(formId.value, 1, '', taskKey)
-    message.success(`${getAuditActionText()}已通过`)
-    if (formStatus.value === 1) {
-      message.info('全套单证已自动生成')
+    if (formStatus.value === 9) {
+      // 退回申请审核通过
+      console.log('执行退回申请审核通过:', { formId: formId.value, remark })
+      await auditReturnToDraft(formId.value, { approved: true, remark })
+      message.success('退回审核已通过，单据已重置为草稿')
+    } else {
+      // 普通业务审核通过
+      const taskKey = route.query.taskKey as string
+      console.log('执行审核通过操作:', { formId: formId.value, taskKey, result: 1, remark })
+      await auditDeclaration(formId.value, 1, remark, taskKey)
+      message.success(`${getAuditActionText()}已通过`)
+      if (formStatus.value === 1) {
+        message.info('全套单证已自动生成')
+      }
     }
-    // 刷新页面状态
-    await loadData()
+    // 直接跳转到列表页，无需刷新当前页面数据
     goBack()
   } catch (error) {
     console.error('审核操作失败:', error)
@@ -1595,14 +1743,26 @@ const handleApprove = async () => {
 // 驳回
 const handleReject = async () => {
   if (!formId.value) return
+  
+  // 显示审核意见输入框
+  const remark = await showRemarkModal('驳回', '数据填写错误')
+  if (!remark) return // 用户取消
+  
   submitting.value = true
   try {
-    const taskKey = route.query.taskKey as string
-    console.log('执行驳回操作:', { formId: formId.value, taskKey, result: 2 })
-    await auditDeclaration(formId.value, 2, '', taskKey)
-    message.success(`${getAuditActionText()}已驳回`)
-    // 驳回后刷新状态并返回列表
-    await loadData()
+    if (formStatus.value === 9) {
+      // 退回申请审核驳回
+      console.log('执行退回申请审核驳回:', { formId: formId.value, remark })
+      await auditReturnToDraft(formId.value, { approved: false, remark })
+      message.success('退回审核已驳回，单据恢复原状态')
+    } else {
+      // 普通业务审核驳回
+      const taskKey = route.query.taskKey as string
+      console.log('执行驳回操作:', { formId: formId.value, taskKey, result: 2, remark })
+      await auditDeclaration(formId.value, 2, remark, taskKey)
+      message.success(`${getAuditActionText()}已驳回`)
+    }
+    // 直接跳转到列表页，无需刷新当前页面数据
     goBack()
   } catch (error) {
     console.error('驳回操作失败:', error)
@@ -1616,6 +1776,9 @@ const handleReject = async () => {
 // 保存水单
 const handleSaveRemittance = async (record: any) => {
   if (!formId.value) return
+  if (record.saving) return // 防止连续点击重复提交
+  
+  record.saving = true
   submitting.value = true
   try {
     const data = {
@@ -1639,6 +1802,7 @@ const handleSaveRemittance = async (record: any) => {
     message.error('操作失败')
   } finally {
     submitting.value = false
+    record.saving = false // 释放锁
   }
 }
 
@@ -2056,6 +2220,7 @@ const formData = reactive({
   consigneeAddress: '',
   invoiceNo: '',
   transportMode: undefined as string | undefined,
+  paymentMethod: undefined as string | undefined,
   departureCity: '',
   departureCityChinese: '',
   departureCityEnglish: '',
@@ -2077,6 +2242,9 @@ const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/jpg', 'image/png']
 
 // HS编码选项
 const hsOptions = ref<any[]>([])
+
+// 支付方式选项
+const paymentMethodOptions = ref<any[]>([])
 
 // 运输方式选项
 const transportModeOptions = ref<any[]>([])
@@ -2172,6 +2340,29 @@ const loadTransportModes = async () => {
       { label: '空运', value: 'AIR' },
       { label: '陆运', value: 'LAND' },
       { label: '快递', value: 'EXPRESS' }
+    ]
+  }
+}
+
+// 加载支付方式选项
+const loadPaymentMethods = async () => {
+  try {
+    const response = await getEnabledPaymentMethods()
+    if (response.data.code === 200 && response.data.data.length > 0) {
+      paymentMethodOptions.value = response.data.data.map((item: any) => ({
+        label: item.code ? `${item.code} (${item.chineseName || item.name})` : (item.chineseName || item.name),
+        value: item.code || item.name
+      }))
+      console.log('加载支付方式成功:', paymentMethodOptions.value)
+    }
+  } catch (error) {
+    console.warn('加载支付方式失败:', error)
+    // 使用默认支付方式
+    paymentMethodOptions.value = [
+      { label: 'T/T (电汇)', value: 'T/T' },
+      { label: 'L/C (信用证)', value: 'L/C' },
+      { label: 'D/P (付款交单)', value: 'D/P' },
+      { label: 'D/A (承兑交单)', value: 'D/A' }
     ]
   }
 }
@@ -3048,6 +3239,7 @@ const loadData = async () => {
   await Promise.all([
     loadProductTypes(),
     loadTransportModes(),
+    loadPaymentMethods(),
     loadCountries(),
     loadCurrencies(),
     loadCities()
@@ -3056,7 +3248,7 @@ const loadData = async () => {
   if (formId.value) {
     try {
       const response = await getDeclarationDetail(formId.value, formStatus.value ?? undefined)
-      console.log('=== 申报单详情API响应 ===', response)
+      console.log('=== 申报单详情 API 响应 ===', response)
       console.log('response.data:', response.data)
       
       // 处理返回的数据
@@ -3069,7 +3261,7 @@ const loadData = async () => {
         // 更新状态和只读模式
         const submittedStatus = detailData.status || 0
         formStatus.value = submittedStatus
-        console.log('🔄 更新formStatus为:', submittedStatus)
+        console.log('🔄 更新 formStatus 为:', submittedStatus)
         
         // 如果申报单已提交（status >= 1），查询活跃任务
         if (submittedStatus >= 1 && formId.value) {
@@ -3110,10 +3302,12 @@ const loadData = async () => {
         formData.consigneeAddress = detailData.consigneeAddress || ''
         formData.invoiceNo = detailData.invoiceNo || ''
         formData.transportMode = detailData.transportMode
+        formData.paymentMethod = detailData.paymentMethod
         formData.departureCity = detailData.departureCity || 'SHANGHAI, CHINA'
                 formData.departureCityChinese = detailData.departureCityChinese || '上海'
                 formData.departureCityEnglish = detailData.departureCityEnglish || 'SHANGHAI, CHINA'
         formData.destinationCountry = detailData.destinationCountry || ''
+        formData.tradeCountry = detailData.tradeCountry || ''
         formData.currency = detailData.currency || 'USD'
         formData.declarationDate = detailData.declarationDate ? dayjs(detailData.declarationDate) : undefined
         
@@ -3244,9 +3438,27 @@ const loadData = async () => {
           loadFinancialSupplement()
         }
         
-        // 加载提货单列表（状态>=2可创建和查看提货单，或者在审核模式下也需要加载）
+        // 加载提货单列表（状态>=2 可创建和查看提货单，或者在审核模式下也需要加载）
         if (formId.value && (submittedStatus >= 2 || isAudit.value)) {
           loadDeliveryOrders()
+        }
+                
+        // 如果是退回待审状态（status=9），加载最新的退回申请原因
+        if (formId.value && submittedStatus === 9) {
+          try {
+            const historyRes = await getReturnAuditHistory(formId.value)
+            if (historyRes.data && historyRes.data.code === 200) {
+              const historyList = historyRes.data.data || []
+              // 获取最新的待审核记录（auditStatus=0）或最后一条记录
+              const latestRecord = historyList.find((r: any) => r.auditStatus === 0) || historyList[0]
+              if (latestRecord) {
+                returnReason.value = latestRecord.applyReason || '未填写原因'
+                console.log('加载退回原因成功:', returnReason.value)
+              }
+            }
+          } catch (e) {
+            console.warn('加载退回原因失败:', e)
+          }
         }
         
         // 根据已加载的国家信息加载对应的城市
@@ -3264,19 +3476,55 @@ const loadData = async () => {
       }
     } catch (error: any) {
       console.error('加载申报单详情失败:', error)
-      message.error('加载数据失败: ' + (error.message || '未知错误'))
+      message.error('加载数据失败：' + (error.message || '未知错误'))
     }
   }
 }
 
-// 移除不再使用的变量和方法，解决 lint 警告
-// const MAX_PHOTO_SIZE = 2 * 1024 * 1024 (已删除)
-// const getSelectedProductNames = ... (删除)
-// const removeProductFromCarton = ... (删除)
-// const getSelectOptions = ... (删除)
-// const toggleElements = ... (删除)
+// 显示审核历史
+const showAuditHistory = async () => {
+  if (!formId.value) {
+    message.warning('请先选择申报单')
+    return
+  }
+  
+  auditHistoryVisible.value = true
+  auditHistoryLoading.value = true
+  try {
+    const res = await getReturnAuditHistory(formId.value)
+    if (res.data && res.data.code === 200) {
+      auditHistoryList.value = res.data.data || []
+    }
+  } catch (error) {
+    console.error('加载审核历史失败:', error)
+    message.error('加载审核历史失败')
+  } finally {
+    auditHistoryLoading.value = false
+  }
+}
 
-
+// 显示审核意见弹窗
+const showRemarkModal = (action: string, defaultRemark: string): Promise<string> => {
+  return new Promise((resolve) => {
+    remarkAction.value = action
+    remarkValue.value = defaultRemark
+    remarkModalVisible.value = true
+    
+    // 临时覆盖 handleRemarkSubmit 函数，用于当前 promise 的 resolve
+    const originalHandleRemarkSubmit = handleRemarkSubmit
+    handleRemarkSubmit = () => {
+      if (!remarkValue.value.trim()) {
+        message.warning('请输入审核意见')
+        return
+      }
+      resolve(remarkValue.value.trim())
+      remarkModalVisible.value = false
+      remarkValue.value = ''
+      // 恢复原始函数
+      handleRemarkSubmit = originalHandleRemarkSubmit
+    }
+  })
+}
 
 // 测试申报要素数据结构
 const testDataStructure = (elements: any[]) => {

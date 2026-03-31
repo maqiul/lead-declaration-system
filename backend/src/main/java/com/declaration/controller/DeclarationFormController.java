@@ -4,13 +4,17 @@ import cn.dev33.satoken.annotation.SaIgnore;
 import cn.dev33.satoken.stp.StpUtil;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.declaration.dao.BusinessAuditRecordDao;
+import com.declaration.entity.BusinessAuditRecord;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.declaration.annotation.RequiresPermissions;
 import com.declaration.common.PageParam;
 import com.declaration.common.Result;
+import com.declaration.dto.AuditHistoryDTO;
 import com.declaration.dto.DeclarationStatisticsDTO;
 import com.declaration.entity.*;
+import com.declaration.dao.BusinessAuditRecordDao;
 import com.declaration.service.*;
 import com.declaration.utils.OrganizationUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,7 +31,7 @@ import org.flowable.engine.TaskService;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
-import org.springframework.jdbc.core.JdbcTemplate;
+// import org.springframework.jdbc.core.JdbcTemplate; // Removed unused
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -61,6 +65,7 @@ public class DeclarationFormController {
     private final TaskService flowableTaskService;
     private final ObjectMapper objectMapper;
     private final UserService userService;
+    private final BusinessAuditRecordDao auditRecordDao;
 
     /**
      * 获取申报单统计数据
@@ -79,7 +84,7 @@ public class DeclarationFormController {
     @PostMapping("/{id}/remittance")
     @Operation(summary = "保存水单信息")
     @RequiresPermissions("business:declaration:edit")
-    public Result<Void> saveRemittance(
+    public Result<DeclarationRemittance> saveRemittance(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody DeclarationRemittance remittance) {
         
@@ -98,7 +103,7 @@ public class DeclarationFormController {
             log.warn("生成水单导出文件失败（不影响水单数据保存）: {}", e.getMessage());
         }
         
-        return Result.success();
+        return Result.success(remittance);
     }
 
     /**
@@ -264,8 +269,13 @@ public class DeclarationFormController {
                 return Result.fail("申报单不存在");
             }
 
-            Object resultObj = auditData.get("result"); // 1-通过, 2-驳回
-            boolean isApproved = resultObj != null && ("1".equals(resultObj.toString()) || Boolean.TRUE.equals(resultObj));
+            Object resultObj = auditData.get("result"); // 1-通过，2-驳回
+            boolean isApproved = false;
+            if(resultObj != null && "1".equals(resultObj.toString())) {
+                isApproved = true;
+            }
+                        
+            log.info("审核申报单 - id={}, resultObj={}, isApproved={}", id, resultObj, isApproved);
             
             // 支持通过 taskKey 参数精确指定要完成的任务（用于并行流程）
             String taskKey = auditData.get("taskKey") != null ? auditData.get("taskKey").toString() : null;
@@ -348,6 +358,70 @@ public class DeclarationFormController {
 
             Map<String, Object> variables = new HashMap<>();
             variables.put("approved", isApproved);
+            System.out.println("variables: " + variables.get("approved"));
+            // 先创建或更新审核历史记录（在流程流转之前记录审核结果）
+            try {
+                // 查询申报提交时创建的记录（不限制 auditStatus，找最新的）
+                BusinessAuditRecord latestRecord = auditRecordDao.selectOne(
+                    new LambdaQueryWrapper<BusinessAuditRecord>()
+                        .eq(BusinessAuditRecord::getBusinessId, id)
+                        // .eq(BusinessAuditRecord::getBusinessType, "DECLARATION_SUBMIT")
+                        .orderByDesc(BusinessAuditRecord::getApplyTime)
+                        .last("limit 1")
+                );
+                
+                if (latestRecord != null) {
+                    // 所有审核节点都更新同一条记录
+                    latestRecord.setAuditStatus(isApproved ? 1 : 2); // 1-通过，2-驳回
+                    if (StpUtil.isLogin()) {
+                        latestRecord.setAuditorId(StpUtil.getLoginIdAsLong());
+                    }
+                    String remark = auditData.get("remark") != null ? auditData.get("remark").toString() : "";
+                    
+                    // 根据 taskKey 确定审核类型名称
+                    String taskNameMap;
+                    if ("deptAudit".equals(taskKey)) {
+                        taskNameMap = "初审";
+                    } else if ("depositAudit".equals(taskKey)) {
+                        taskNameMap = "定金审核";
+                    } else if ("balanceAudit".equals(taskKey)) {
+                        taskNameMap = "尾款审核";
+                    } else if ("pickupListAudit".equals(taskKey)) {
+                        taskNameMap = "提货单审核";
+                    } else {
+                        taskNameMap = taskKey + "审核";
+                    }
+                    
+                    latestRecord.setAuditRemark(remark.isEmpty() ? (taskNameMap + (isApproved ? "通过" : "驳回")) : remark);
+                    latestRecord.setAuditTime(LocalDateTime.now());
+                    auditRecordDao.updateById(latestRecord);
+                    log.info("申报单 {} {}记录已更新：{}", form.getFormNo(), taskNameMap, isApproved ? "通过" : "驳回");
+                } else {
+                    // 如果没有找到记录，创建新的（兼容情况）
+                    BusinessAuditRecord record = new BusinessAuditRecord();
+                    record.setBusinessId(id);
+                    record.setBusinessType("DECLARATION_SUBMIT");
+                    if (StpUtil.isLogin()) {
+                        record.setApplicantId(StpUtil.getLoginIdAsLong());
+                    }
+                    record.setApplyReason(taskKey + "审核");
+                    record.setApplyTime(LocalDateTime.now());
+                    record.setAuditStatus(isApproved ? 1 : 2);
+                    if (StpUtil.isLogin()) {
+                        record.setAuditorId(StpUtil.getLoginIdAsLong());
+                    }
+                    String remark = auditData.get("remark") != null ? auditData.get("remark").toString() : "";
+                    record.setAuditRemark(remark.isEmpty() ? (isApproved ? "审核通过" : "审核驳回") : remark);
+                    record.setAuditTime(LocalDateTime.now());
+                    auditRecordDao.insert(record);
+                    log.info("申报单 {} 审核记录创建成功：{}", form.getFormNo(), isApproved ? "通过" : "驳回");
+                }
+            } catch (Exception e) {
+                log.error("申报单 {} 更新审核记录失败", form.getFormNo(), e);
+                // 审核记录更新失败不影响主流程，继续执行
+            }
+            
+            // 然后调用 Flowable complete，触发流程流转和状态更新
             flowableTaskService.complete(activeTask.getId(), variables);
 
             String taskName = activeTask.getName() != null ? activeTask.getName() : activeTask.getTaskDefinitionKey();
@@ -443,21 +517,21 @@ public class DeclarationFormController {
     @Operation(summary = "提交到下一步审核")
     @RequiresPermissions("business:declaration:submit")
     public Result<Void> submitForAudit(
-            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @Parameter(description = "申报单 ID") @PathVariable Long id,
             @RequestParam String auditType) {
         DeclarationForm form = declarationFormService.getById(id);
         if (form == null) {
             return Result.fail("申报单不存在");
         }
-
+    
         List<Task> activeTasks = flowableTaskService.createTaskQuery()
                 .processInstanceBusinessKey(String.valueOf(id))
                 .list();
-                
+                    
         if (activeTasks == null || activeTasks.isEmpty()) {
             return Result.fail("找不到待办的流程任务");
         }
-        
+            
         // 根据 auditType 映射到具体的 taskDefinitionKey
         // deposit -> depositPayment (业务员提交定金凭证)
         // balance -> balancePayment (业务员提交尾款凭证)
@@ -486,7 +560,7 @@ public class DeclarationFormController {
                 // 如果是直接传入 taskKey，也支持
                 targetTaskKey = auditType;
         }
-        
+            
         Task activeTask = null;
         for (Task t : activeTasks) {
             if (targetTaskKey.equals(t.getTaskDefinitionKey())) {
@@ -494,16 +568,54 @@ public class DeclarationFormController {
                 break;
             }
         }
-
+    
         if (activeTask == null) {
             String availableTasks = activeTasks.stream()
                     .map(Task::getTaskDefinitionKey)
                     .collect(Collectors.joining(", "));
-            return Result.fail("找不到对应类型的流程任务 (auditType=" + auditType + ", targetTaskKey=" + targetTaskKey + ")。当前可用任务: [" + availableTasks + "]");
+            return Result.fail("找不到对应类型的流程任务 (auditType=" + auditType + ", targetTaskKey=" + targetTaskKey + ")。当前可用任务：[" + availableTasks + "]");
         }
-
-        log.info("申报单 {} 提交任务: {} (auditType={})", id, activeTask.getTaskDefinitionKey(), auditType);
+    
+        log.info("申报单 {} 提交任务：{} (auditType={})", id, activeTask.getTaskDefinitionKey(), auditType);
         flowableTaskService.complete(activeTask.getId());
+            
+        // 创建审核历史记录（在提交申请时）
+        try {
+            BusinessAuditRecord record = new BusinessAuditRecord();
+            record.setBusinessId(id);
+                
+            // 根据提交的类型设置业务类型
+            String businessType;
+            String applyReason;
+            switch (auditType) {
+                case "deposit":
+                    businessType = "REMITTANCE_AUDIT";
+                    applyReason = "定金水单审核申请";
+                    break;
+                case "balance":
+                    businessType = "REMITTANCE_AUDIT";
+                    applyReason = "尾款水单审核申请";
+                    break;
+                case "pickup":
+                    businessType = "DELIVERY_ORDER_AUDIT";
+                    applyReason = "提货单审核申请";
+                    break;
+                default:
+                    businessType = "DECLARATION_AUDIT";
+                    applyReason = "申报审核申请";
+            }
+                
+            record.setBusinessType(businessType);
+            record.setApplicantId(StpUtil.getLoginIdAsLong());
+            record.setApplyReason(applyReason);
+            record.setApplyTime(LocalDateTime.now());
+            record.setPreStatus(form.getStatus());
+            declarationFormService.saveAuditRecord(record);
+        } catch (Exception e) {
+            log.error("创建审核历史记录失败", e);
+            // 不影响主流程
+        }
+            
         return Result.success();
     }
 
@@ -929,8 +1041,29 @@ public class DeclarationFormController {
                 form.setOrgId(currentOrgId);
             }
             
-            form.setStatus(1); // 已提交状态
+            form.setStatus(1); // 已提交状态 - 待初审
             declarationFormService.updateById(form);
+            
+            // 创建审核历史记录（申报提交 - 待审核状态）
+            try {
+                BusinessAuditRecord record = new BusinessAuditRecord();
+                record.setBusinessId(id);
+                record.setBusinessType("DECLARATION_SUBMIT");
+                if (StpUtil.isLogin()) {
+                    record.setApplicantId(StpUtil.getLoginIdAsLong());
+                }
+                record.setApplyReason("申报提交");
+                record.setApplyTime(LocalDateTime.now());
+                record.setAuditStatus(0); // 0-待审核
+                record.setPreStatus(0); // 从草稿状态提交
+                // auditorId、auditRemark、auditTime 在审核时填充
+                
+                auditRecordDao.insert(record);
+                log.info("申报单 {} 审核记录创建成功（待审核），recordId={}", form.getFormNo(), record.getId());
+            } catch (Exception e) {
+                log.error("申报单 {} 创建审核记录失败", form.getFormNo(), e);
+                // 审核记录创建失败不影响主流程，继续执行
+            }
             
             // 在提交时生成Excel文件（Service 内部已处理保存/替换逻辑）
             try {
@@ -951,10 +1084,13 @@ public class DeclarationFormController {
                 variables.put("orgId", form.getOrgId());
                 variables.put("formNo", form.getFormNo());
                 
-                processInstanceService.startProcessInstance("declarationProcess", String.valueOf(id), variables);
-                log.info("申报单 {} 流程启动成功", form.getFormNo());
+                log.info("准备启动流程：key={}, businessKey={}, variables={}", "declarationProcess", String.valueOf(id), variables);
+                
+                com.declaration.entity.ProcessInstance processInstance = processInstanceService.startProcessInstance("declarationProcess", String.valueOf(id), variables);
+                
+                log.info("申报单 {} 流程启动成功，instanceId={}", form.getFormNo(), processInstance.getInstanceId());
             } catch (Exception e) {
-                log.error("申报单 {} 流程启动失败", form.getFormNo(), e);
+                log.error("申报单 {} 流程启动失败，formNo={}, createBy={}, orgId={}", form.getFormNo(), form.getFormNo(), form.getCreateBy(), form.getOrgId(), e);
                 
                 // 流程启动失败时进行手动状态补偿回滚，防止该单据卡死在状态 1 (无对应流程任务)
                 form.setStatus(0);
@@ -1458,6 +1594,57 @@ public class DeclarationFormController {
             return Result.success();
         }
         return Result.fail("审核提货单失败");
+    }
+    /**
+     * 申请退回草稿
+     */
+    @PostMapping("/{id}/apply-return")
+    @Operation(summary = "申请退回草稿")
+    @RequiresPermissions("business:declaration:return-apply")
+    public Result<Void> applyReturnToDraft(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @RequestBody Map<String, String> params) {
+        
+        String reason = params.get("reason");
+        boolean result = declarationFormService.applyReturnToDraft(id, reason);
+        if (result) {
+            return Result.success();
+        }
+        return Result.fail("申请失败");
+    }
+
+    /**
+     * 审核退回草稿申请
+     */
+    @PostMapping("/{id}/audit-return")
+    @Operation(summary = "审核退回草稿申请")
+    @RequiresPermissions("business:declaration:return-audit")
+    public Result<Void> auditReturnToDraft(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @RequestBody Map<String, Object> params) {
+        
+        Object approvedObj = params.get("approved");
+        boolean approved = approvedObj != null && (Boolean.TRUE.equals(approvedObj) || "true".equals(approvedObj.toString()));
+        String remark = params.get("remark") != null ? params.get("remark").toString() : "";
+        
+        boolean result = declarationFormService.auditReturnToDraft(id, approved, remark);
+        if (result) {
+            return Result.success();
+        }
+        return Result.fail("操作失败");
+    }
+
+    /**
+     * 获取退回申请审核历史
+     */
+    @GetMapping("/{id}/return-history")
+    @Operation(summary = "获取退回申请审核历史")
+    @RequiresPermissions("business:declaration:query")
+    public Result<List<AuditHistoryDTO>> getReturnAuditHistory(
+            @Parameter(description = "申报单 ID") @PathVariable Long id) {
+            
+        List<AuditHistoryDTO> history = declarationFormService.getReturnAuditHistory(id);
+        return Result.success(history);
     }
     
     /**

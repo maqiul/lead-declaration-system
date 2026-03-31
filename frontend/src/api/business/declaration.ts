@@ -524,3 +524,36 @@ export function getRemittanceListByFormId(formId: number) {
     method: 'get'
   })
 }
+// === 退回草稿相关 API ===
+
+/**
+ * 申请退回草稿
+ */
+export function applyReturnToDraft(id: number, reason: string) {
+  return request({
+    url: `/v1/declarations/${id}/apply-return`,
+    method: 'post',
+    data: { reason }
+  })
+}
+
+/**
+ * 审核退回草稿申请
+ */
+export function auditReturnToDraft(id: number, data: { approved: boolean; remark: string }) {
+  return request({
+    url: `/v1/declarations/${id}/audit-return`,
+    method: 'post',
+    data
+  })
+}
+
+/**
+ * 获取退回申请审核历史
+ */
+export function getReturnAuditHistory(id: number) {
+  return request({
+    url: `/v1/declarations/${id}/return-history`,
+    method: 'get'
+  })
+}

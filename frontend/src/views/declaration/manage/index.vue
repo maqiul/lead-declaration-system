@@ -21,6 +21,7 @@
             <a-select-option :value="0">草稿</a-select-option>
             <a-select-option :value="1">待初审</a-select-option>
             <a-select-option :value="2">处理中</a-select-option>
+            <a-select-option :value="9">退回待审</a-select-option>
             <a-select-option :value="8">已完成</a-select-option>
           </a-select>
         </a-form-item>
@@ -169,6 +170,18 @@
                     提货单审核
                   </a-button>
                 </template>
+
+                <!-- 退回审核按钮 (status=9) -->
+                <template v-if="record.status === 9">
+                  <!-- <a-button type="link" size="small" style="color: #ff4d4f;" @click="handleReturnAudit(record as any)" v-permission="['business:declaration:return-audit']">
+                    <template #icon><CheckCircleOutlined /></template>
+                    弹窗审核
+                  </a-button> -->
+                  <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any)" v-permission="['business:declaration:return-audit']">
+                    <template #icon><CheckCircleOutlined /></template>
+                    详情审核
+                  </a-button>
+                </template>
                 
                 <!-- 财务补充按钮:总是显示(不计入3个主按钮限制) -->
                 <a-button type="link" size="small" @click="handleFinanceUpload(record as any)" v-permission="['business:declaration:financeSupplement']">
@@ -191,11 +204,29 @@
                                 
                       <!-- 生成合同 -->
                       <a-menu-item 
-                        v-if="!record.hasContract" 
+                        v-if="!record.hasContract && hasPermission('business:declaration:contract')" 
                         key="contract" 
                         @click="handleOpenGenerate(record)"
                       >
                         <FileTextOutlined /> 生成合同
+                      </a-menu-item>
+
+                      <!-- 退回草稿申请 (已初审且未完成) -->
+                      <a-menu-item 
+                        v-if="record.status >= 2 && record.status < 8" 
+                        key="returnApply"
+                        @click="handleReturnApply(record as any)"
+                        v-permission="['business:declaration:return-apply']"
+                      >
+                        <ReloadOutlined /> 申请退回草稿
+                      </a-menu-item>
+
+                      <!-- 查看审核历史 -->
+                      <a-menu-item 
+                        key="returnHistory"
+                        @click="viewReturnHistory(record as any)"
+                      >
+                        <HistoryOutlined /> 审核详情
                       </a-menu-item>
                                 
                       <!-- 删除 (仅草稿) -->
@@ -424,6 +455,72 @@
       :form-no="currentRecordForFinance?.formNo || ''"
       @save-success="handleFinanceSaveSuccess"
     />
+
+    <!-- 退回草稿申请弹窗 -->
+    <a-modal
+      v-model:open="returnApplyVisible"
+      title="申请退回草稿"
+      @ok="submitReturnApply"
+      :confirmLoading="returnApplyLoading"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="退回原因" required>
+          <a-textarea v-model:value="returnApplyForm.reason" placeholder="请输入退回草稿的原因" :rows="4" />
+          <div style="margin-top: 8px; color: #999; font-size: 12px;">注：申请后单据将进入“退回待审”状态。</div>
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 退回审核弹窗 -->
+    <a-modal
+      v-model:open="returnAuditVisible"
+      title="审核退回申请"
+      @ok="submitReturnAudit"
+      :confirmLoading="returnAuditLoading"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="审核结果" required>
+          <a-radio-group v-model:value="returnAuditForm.approved">
+            <a-radio :value="true">通过 (重置为草稿)</a-radio>
+            <a-radio :value="false">驳回 (恢复原状态)</a-radio>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item label="审核备注" required>
+          <a-textarea v-model:value="returnAuditForm.remark" placeholder="请输入审核备注" :rows="4" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 审核历史弹窗 -->
+    <a-modal
+      v-model:open="returnHistoryVisible"
+      title="审核历史详情"
+      width="1200px"
+      :footer="null"
+    >
+      <a-table
+        :dataSource="returnHistoryList"
+        :columns="returnHistoryColumns"
+        :loading="returnHistoryLoading"
+        rowKey="id"
+        size="small"
+        :scroll="{ x: 1100 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'auditStatus'">
+            <a-tag :color="record.auditStatus === 1 ? 'success' : record.auditStatus === 2 ? 'error' : 'processing'">
+              {{ record.auditStatus === 1 ? '通过' : record.auditStatus === 2 ? '驳回' : '待审核' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.key === 'businessType'">
+            <a-tag color="blue">{{ getBusinessTypeText(record.businessType) }}</a-tag>
+          </template>
+          <template v-else-if="column.key === 'preStatus'">
+            <a-tag>{{ getStatusText(record.preStatus) }}</a-tag>
+          </template>
+        </template>
+      </a-table>
+    </a-modal>
   </div>
 </template>
 
@@ -431,7 +528,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
-import { PlusOutlined, DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, DollarOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, DollarOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined } from '@ant-design/icons-vue'
 import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList,
@@ -442,10 +539,14 @@ import {
   regenerateDocuments,
   regenerateAllDocuments,
   regenerateRemittanceReport,
-  getBatchActiveTasks
+  getBatchActiveTasks,
+  applyReturnToDraft,
+  auditReturnToDraft,
+  getReturnAuditHistory
 } from '@/api/business/declaration'
 import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile } from '@/api/business/contract'
 import { h } from 'vue'
+import { hasPermission } from '@/utils/permission'
 
 import { useRoute } from 'vue-router'
 
@@ -541,6 +642,37 @@ const replaceContractModalVisible = ref(false)
 const replaceContractLoading = ref(false)
 const currentReplacingContract = ref<any>(null)
 const replaceContractFileList = ref<any[]>([])
+
+// 退回申请相关
+const returnApplyVisible = ref(false)
+const returnApplyLoading = ref(false)
+const returnApplyForm = reactive({
+  id: 0,
+  reason: '申报错误'
+})
+
+// 退回审核相关
+const returnAuditVisible = ref(false)
+const returnAuditLoading = ref(false)
+const returnAuditForm = reactive({
+  id: 0,
+  approved: true,
+  remark: '已核对数据，通过'
+})
+
+// 监听审核结果变化，自动更新默认备注
+watch(() => returnAuditForm.approved, (newVal) => {
+  if (newVal) {
+    returnAuditForm.remark = '已核对数据，通过'
+  } else {
+    returnAuditForm.remark = '数据填写错误'
+  }
+})
+
+// 审核详情相关
+const returnHistoryVisible = ref(false)
+const returnHistoryLoading = ref(false)
+const returnHistoryList = ref<any[]>([])
 
 // 加载数据
 const loadData = async () => {
@@ -960,7 +1092,8 @@ const getStatusText = (status: number) => {
     5: '尾款待审核',
     6: '待上传提货单',
     7: '提货单待审核',
-    8: '已完成'
+    8: '已完成',
+    9: '退回待审'
   }
   return statusMap[status] || '未知'
 }
@@ -976,7 +1109,8 @@ const getStatusColor = (status: number) => {
     5: 'orange',       // 尾款待审核
     6: 'blue',         // 待上传提货单
     7: 'orange',       // 提货单待审核
-    8: 'success'       // 已完成
+    8: 'success',      // 已完成
+    9: 'error'         // 退回待审 (用红色表示警告/待审核状态)
   }
   return colorMap[status] || 'default'
 }
@@ -1305,6 +1439,103 @@ const handleReplaceAttachment = async () => {
     message.error('替换失败: 网络错误')
   } finally {
     replaceLoading.value = false
+  }
+}
+
+// 退回草稿相关
+const returnHistoryColumns = [
+  { title: '状态', key: 'auditStatus', width: 70 },
+  { title: '业务类型', key: 'businessType', width: 120 },
+  { title: '申请人', dataIndex: 'applicantName', key: 'applicantName', width: 90 },
+  { title: '原因', dataIndex: 'applyReason', key: 'applyReason', ellipsis: true, minWidth: 150 },
+  { title: '申请时间', dataIndex: 'applyTime', key: 'applyTime', width: 160 },
+  { title: '审核人', dataIndex: 'auditorName', key: 'auditorName', width: 90 },
+  { title: '备注', dataIndex: 'auditRemark', key: 'auditRemark', ellipsis: true, minWidth: 150 },
+  { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 },
+  { title: '原状态', key: 'preStatus', width: 70 }
+]
+
+// 获取业务类型文本
+const getBusinessTypeText = (type: string) => {
+  const map: Record<string, string> = {
+    'DECLARATION_RETURN': '退回草稿',
+    'DECLARATION_AUDIT': '申报审核',
+    'REMittance_AUDIT': '水单审核',
+    'DELIVERY_ORDER_AUDIT': '提货单审核',
+    'DECLARATION_SUBMIT': '申报提交',
+    'REMITTANCE_AUDIT': '水单审核',
+  }
+  return map[type] || type
+}
+
+const handleReturnApply = (record: DeclarationRecord) => {
+  returnApplyForm.id = record.id
+  returnApplyForm.reason = '申报错误'
+  returnApplyVisible.value = true
+}
+
+const submitReturnApply = async () => {
+  if (!returnApplyForm.reason) {
+    message.warning('请输入退回原因')
+    return
+  }
+  returnApplyLoading.value = true
+  try {
+    const res = await applyReturnToDraft(returnApplyForm.id, returnApplyForm.reason)
+    if (res.data && res.data.code === 200) {
+      message.success('退回申请已提交，请等待审核')
+      returnApplyVisible.value = false
+      loadData()
+    } else {
+      message.error('申请失败: ' + (res.data?.message || '未知错误'))
+    }
+  } catch (error: any) {
+    message.error('申请过程发生错误')
+  } finally {
+    returnApplyLoading.value = false
+  }
+}
+
+
+const submitReturnAudit = async () => {
+  // 验证必填项
+  if (!returnAuditForm.remark || !returnAuditForm.remark.trim()) {
+    message.warning('请输入审核意见')
+    return
+  }
+  
+  returnAuditLoading.value = true
+  try {
+    const res = await auditReturnToDraft(returnAuditForm.id, {
+      approved: returnAuditForm.approved,
+      remark: returnAuditForm.remark.trim()
+    })
+    if (res.data && res.data.code === 200) {
+      message.success(returnAuditForm.approved ? '审核通过，已退回草稿' : '已驳回申请')
+      returnAuditVisible.value = false
+      loadData()
+    } else {
+      message.error('审核失败：' + (res.data?.message || '未知错误'))
+    }
+  } catch (error: any) {
+    message.error('审核过程发生错误')
+  } finally {
+    returnAuditLoading.value = false
+  }
+}
+
+const viewReturnHistory = async (record: DeclarationRecord) => {
+  returnHistoryVisible.value = true
+  returnHistoryLoading.value = true
+  try {
+    const res = await getReturnAuditHistory(record.id)
+    if (res.data && res.data.code === 200) {
+      returnHistoryList.value = res.data.data || []
+    }
+  } catch (error) {
+    message.error('加载审核历史失败')
+  } finally {
+    returnHistoryLoading.value = false
   }
 }
 

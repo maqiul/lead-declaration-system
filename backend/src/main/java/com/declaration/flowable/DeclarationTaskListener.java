@@ -34,7 +34,7 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
     public void notify(DelegateTask delegateTask) {
         String eventName = delegateTask.getEventName();
         String taskDefinitionKey = delegateTask.getTaskDefinitionKey();
-
+    
         // 核心修复：增加 null 检查，避免流程启动瞬时的查询失败导致 NPE
         String businessKey = null;
         try {
@@ -45,10 +45,10 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
                 businessKey = pi.getBusinessKey();
             }
         } catch (Exception e) {
-            log.warn("获取流程业务Key失败: {}", e.getMessage());
+            log.warn("获取流程业务 Key 失败：{}", e.getMessage());
         }
-
-        handleEvent(businessKey, taskDefinitionKey, eventName, false);
+    
+        handleEvent(businessKey, taskDefinitionKey, eventName, false, delegateTask);
     }
 
     @Override
@@ -57,10 +57,10 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
         String currentActivityId = execution.getCurrentActivityId();
         String businessKey = execution.getProcessInstanceBusinessKey();
 
-        handleEvent(businessKey, currentActivityId, eventName, true);
+        handleEvent(businessKey, currentActivityId, eventName, true, null);
     }
 
-    private void handleEvent(String businessKey, String nodeKey, String eventName, boolean isExecution) {
+    private void handleEvent(String businessKey, String nodeKey, String eventName, boolean isExecution, DelegateTask delegateTask) {
         if (businessKey == null || businessKey.isEmpty()) {
             return;
         }
@@ -78,7 +78,7 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
 
             // 处理不同类型的事件
             if ("create".equals(eventName) || "end".equals(eventName) || "complete".equals(eventName)) {
-                updateStatusByTask(form, nodeKey, eventName);
+                updateStatusByTask(form, nodeKey, eventName, delegateTask);
             }
         } catch (NumberFormatException e) {
             log.error("业务Key解析失败: {}", businessKey);
@@ -100,46 +100,91 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
      * 8 - 已完成
      * 
      * 完整流程控制：
-     * 1. 初审通过 → 待上传定金水单(2)
-     * 2. 用户上传定金 → 定金待审核(3)
-     * 3. 定金审核通过 → 待上传尾款水单(4)
-     * 4. 用户上传尾款 → 尾款待审核(5)
-     * 5. 尾款审核通过 → 待上传提货单(6)
-     * 6. 用户上传提货单 → 提货单待审核(7)
-     * 7. 提货单审核通过 → 已完成(8)
+     * 1. 初审通过 → 待上传定金水单 (2)
+     * 2. 用户上传定金 → 定金待审核 (3)
+     * 3. 定金审核通过 → 待上传尾款水单 (4)
+     * 4. 用户上传尾款 → 尾款待审核 (5)
+     * 5. 尾款审核通过 → 待上传提货单 (6)
+     * 6. 用户上传提货单 → 提货单待审核 (7)
+     * 7. 提货单审核通过 → 已完成 (8)
      * 
      * 驳回情况：
-     * - 任何审核驳回都会回到草稿状态(0)
+     * - 任何审核驳回都会回到上一个上传节点
+     * - 状态从审核状态回退到对应的待上传状态（3→2, 5→4, 7→6）
      */
-    private void updateStatusByTask(DeclarationForm form, String taskKey, String eventName) {
+    private void updateStatusByTask(DeclarationForm form, String taskKey, String eventName,DelegateTask delegateTask) {
         // 财务补充任务：自动初始化财务补充记录
         if ("financeUploadTask".equals(taskKey)) {
             initFinancialSupplementIfNeeded(form);
             // 财务补充任务也是并行任务之一，不单独更新主状态
             return;
         }
-
+    
         Integer newStatus = null;
-
+    
         // 根据事件类型处理不同逻辑
         if ("end".equals(eventName) || "complete".equals(eventName)) {
-            // 任务完成事件 - 处理审核通过后的状态更新
-            switch (taskKey) {
-                case "deptAudit":            // 部门初审完成
-                    newStatus = 2;           // 待上传定金水单
-                    break;
-                case "depositAudit":         // 财务确认定金完成
-                    newStatus = 4;           // 待上传尾款水单
-                    break;
-                case "balanceAudit":         // 财务确认尾款完成
-                    newStatus = 6;           // 待上传提货单
-                    break;
-                case "pickupListAudit":      // 财务确认提货单完成
-                    newStatus = 8;           // 已完成
-                    break;
+            // 任务完成事件 - 需要判断是通过还是驳回
+            Boolean approved = getApprovalVariable(delegateTask);
+                
+            if (approved == null || approved) {
+                // 通过场景：正常推进状态
+                switch (taskKey) {
+                    case "deptAudit":            // 部门初审完成
+                        newStatus = 2;           // 待上传定金水单
+                        break;
+                    case "depositAudit":         // 财务确认定金完成
+                        newStatus = 4;           // 待上传尾款水单
+                        break;
+                    case "balanceAudit":         // 财务确认尾款完成
+                        newStatus = 6;           // 待上传提货单
+                        break;
+                    case "pickupListAudit":      // 财务确认提货单完成
+                        newStatus = 8;           // 已完成
+                        break;
+                }
+            } else {
+                // 驳回场景：不更新状态，等待驳回到目标节点后的 create 事件来更新状态
+                // 例如：depositAudit 驳回后到 depositPayment，会在 depositPayment 的 create 事件中设置状态=2
+                log.info("节点 {} 驳回 (approved=false)，暂不更新状态，等待下一节点 create 事件处理", taskKey);
+                    // 任务创建事件 - 处理任务到达时的状态更新（包括驳回回来的情况）
+                switch (taskKey) {
+                    // === 初审阶段 ===
+                    case "deptAudit":            // 部门初审
+                        newStatus = 1;           // 待初审
+                        break;
+                    case "rejectHandler":        // 驳回修改
+                        newStatus = 0;           // 草稿（退回修改）
+                        break;
+                                
+                    // === 完整串行处理阶段 ===
+                    case "depositPayment":       // 上传定金凭证（可能是驳回回来的）
+                        newStatus = 2;           // 待上传定金水单
+                        break;
+                    case "depositAudit":         // 财务确认定金
+                        newStatus = 3;           // 定金待审核
+                        break;
+                    case "balancePayment":       // 上传尾款凭证（可能是驳回回来的）
+                        newStatus = 4;           // 待上传尾款水单
+                        break;
+                    case "balanceAudit":         // 财务确认尾款
+                        newStatus = 5;           // 尾款待审核
+                        break;
+                    case "pickupListUpload":     // 上传提货单（可能是驳回回来的）
+                        newStatus = 6;           // 待上传提货单
+                        break;
+                    case "pickupListAudit":      // 财务确认提货单
+                        newStatus = 7;           // 提货单待审核
+                        break;
+                                
+                    // === 流程结束 ===
+                    case "endEvent1":            // 流程完成
+                        newStatus = 8;           // 已完成
+                        break;
+                }
             }
         } else {
-            // 任务创建事件 - 处理任务到达时的状态更新
+            // 任务创建事件 - 处理任务到达时的状态更新（包括驳回回来的情况）
             switch (taskKey) {
                 // === 初审阶段 ===
                 case "deptAudit":            // 部门初审
@@ -148,27 +193,27 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
                 case "rejectHandler":        // 驳回修改
                     newStatus = 0;           // 草稿（退回修改）
                     break;
-                    
+                            
                 // === 完整串行处理阶段 ===
-                case "depositPayment":       // 上传定金凭证
-                    // 保持状态2，等待用户完成上传后再更新
+                case "depositPayment":       // 上传定金凭证（可能是驳回回来的）
+                    newStatus = 2;           // 待上传定金水单
                     break;
                 case "depositAudit":         // 财务确认定金
                     newStatus = 3;           // 定金待审核
                     break;
-                case "balancePayment":       // 上传尾款凭证
-                    // 保持状态4，等待用户完成上传后再更新
+                case "balancePayment":       // 上传尾款凭证（可能是驳回回来的）
+                    newStatus = 4;           // 待上传尾款水单
                     break;
                 case "balanceAudit":         // 财务确认尾款
                     newStatus = 5;           // 尾款待审核
                     break;
-                case "pickupListUpload":     // 上传提货单
-                    // 保持状态6，等待用户完成上传后再更新
+                case "pickupListUpload":     // 上传提货单（可能是驳回回来的）
+                    newStatus = 6;           // 待上传提货单
                     break;
                 case "pickupListAudit":      // 财务确认提货单
                     newStatus = 7;           // 提货单待审核
                     break;
-                    
+                            
                 // === 流程结束 ===
                 case "endEvent1":            // 流程完成
                     newStatus = 8;           // 已完成
@@ -199,11 +244,32 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
     }
     
     /**
+     * 从流程变量中获取 approved 标志
+     * @param delegateTask 任务委托对象
+     * @return true-通过，false-驳回，null-未知
+     */
+    private Boolean getApprovalVariable(DelegateTask delegateTask) {
+        try {
+            if (delegateTask != null && delegateTask.hasVariable("approved")) {
+                Object approvedObj = delegateTask.getVariable("approved");
+                if (approvedObj instanceof Boolean) {
+                    return (Boolean) approvedObj;
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("获取 approved 变量失败：{}", e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
      * 判断是否应该更新状态
      * 完整串行流程状态更新规则：
      * - 回到草稿（驳回场景）
      * - 进入待初审
      * - 按顺序推进状态：1→2→3→4→5→6→7→8
+     * - 驳回时允许回退到上一个"待上传"状态（如 3→2, 5→4, 7→6）
      * - 进入完成状态
      */
     private boolean shouldUpdateStatus(Integer currentStatus, Integer newStatus) {
@@ -218,6 +284,16 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
         
         // 进入待初审
         if (newStatus == 1) {
+            return true;
+        }
+        
+        // 驳回场景：允许从审核状态回退到待上传状态
+        // 3 (定金待审核) → 2 (待上传定金)
+        // 5 (尾款待审核) → 4 (待上传尾款)
+        // 7 (提货单待审核) → 6 (待上传提货单)
+        if ((currentStatus == 3 && newStatus == 2) ||
+            (currentStatus == 5 && newStatus == 4) ||
+            (currentStatus == 7 && newStatus == 6)) {
             return true;
         }
         

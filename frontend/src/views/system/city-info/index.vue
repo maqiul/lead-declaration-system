@@ -1,154 +1,101 @@
 <template>
-  <div class="city-info-container">
-    <a-card class="search-card" :bordered="false">
-      <div class="search-content">
-        <a-row :gutter="16">
-          <a-col :span="6">
-            <a-form-item label="城市名称">
-              <a-input 
-                v-model:value="queryParams.cityName" 
-                placeholder="请输入城市名称" 
-                @pressEnter="handleSearch" 
-              />
-            </a-form-item>
-          </a-col>
-          <a-col :span="6">
-            <a-form-item label="国家">
-              <a-input 
-                v-model:value="queryParams.countryName" 
-                placeholder="请输入国家名称" 
-                @pressEnter="handleSearch" 
-              />
-            </a-form-item>
-          </a-col>
-          <a-col :span="6">
-            <a-form-item label="状态">
-              <a-select 
-                v-model:value="queryParams.status" 
-                placeholder="请选择状态" 
-                allow-clear
-              >
-                <a-select-option :value="1">启用</a-select-option>
-                <a-select-option :value="0">禁用</a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <div class="search-actions">
+  <div class="system-city-info px-6 py-6 min-h-full">
+    <!-- 搜索区域 -->
+    <a-card class="ui-card mb-4" :bordered="false">
+      <a-form :model="queryParams" layout="inline" class="flex flex-wrap gap-4">
+        <a-form-item label="城市名称">
+          <a-input v-model:value="queryParams.cityName" placeholder="请输入城市名称" allow-clear class="ui-input" />
+        </a-form-item>
+        <a-form-item label="国家">
+          <a-input v-model:value="queryParams.countryName" placeholder="请输入国家名称" allow-clear class="ui-input" />
+        </a-form-item>
+        <a-form-item label="状态">
+          <a-select v-model:value="queryParams.status" style="width: 140px" placeholder="请选择状态" allow-clear class="ui-select">
+            <a-select-option :value="1">启用</a-select-option>
+            <a-select-option :value="0">禁用</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item>
           <a-space>
-            <a-button type="primary" @click="handleSearch">
+            <a-button type="primary" @click="handleSearch" class="ui-btn-primary">
               <template #icon><SearchOutlined /></template>
-              搜索
+              查询
             </a-button>
-            <a-button @click="handleReset">
+            <a-button @click="handleReset" class="ui-btn-secondary">
               <template #icon><ReloadOutlined /></template>
               重置
             </a-button>
-            <a-button 
-              v-hasPermi="['system:city-info:add']" 
-              type="primary" 
-              @click="handleAdd"
-            >
-              <template #icon><PlusOutlined /></template>
-              新增
-            </a-button>
           </a-space>
-        </div>
-      </div>
+        </a-form-item>
+      </a-form>
     </a-card>
 
-    <a-card :bordered="false">
+    <!-- 操作按钮区域 -->
+    <a-card class="ui-card mb-4" :bordered="false">
+      <a-space>
+        <a-button 
+          v-hasPermi="['system:city-info:add']" 
+          type="primary"
+          @click="handleAdd"
+          class="ui-btn-cta"
+        >
+          <template #icon><PlusOutlined /></template>
+          新增城市
+        </a-button>
+      </a-space>
+    </a-card>
+
+    <!-- 数据表格 -->
+    <a-card class="ui-card" :bordered="false">
       <a-table
         :columns="columns"
         :data-source="list"
         :loading="loading"
         :pagination="pagination"
         row-key="id"
+        class="ui-table"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'cityName'">
-            {{ record.cityName }}
-          </template>
-          
-          <template v-else-if="column.dataIndex === 'cityEnglishName'">
-            {{ record.cityEnglishName }}
-          </template>
-          
-          <template v-else-if="column.dataIndex === 'provinceName'">
-            {{ record.provinceName }}
-          </template>
-          
-          <template v-else-if="column.dataIndex === 'provinceEnglishName'">
-            {{ record.provinceEnglishName }}
-          </template>
-          
-          <template v-else-if="column.dataIndex === 'countryName'">
-            {{ record.countryName }}
-          </template>
-          
-          <template v-else-if="column.dataIndex === 'countryEnglishName'">
-            {{ record.countryEnglishName }}
-          </template>
-          
-          <template v-else-if="column.dataIndex === 'cityCode'">
-            {{ record.cityCode }}
+            <span class="font-medium text-slate-700">{{ record.cityName }}</span>
           </template>
           
           <template v-else-if="column.dataIndex === 'status'">
-            <a-tag :color="record.status === 1 ? 'green' : 'red'">
-              {{ record.status === 1 ? '启用' : '禁用' }}
+            <a-tag :color="record.status === 1 ? 'success' : 'error'" class="ui-tag">
+              {{ record.status === 1 ? '已启用' : '已禁用' }}
             </a-tag>
           </template>
           
-          <template v-else-if="column.dataIndex === 'createTime'">
-            {{ record.createTime }}
-          </template>
-          
           <template v-else-if="column.key === 'action'">
-            <a-space size="middle">
-              <a 
+            <a-space>
+              <a-button 
+                type="link" 
+                size="small"
                 v-hasPermi="['system:city-info:query']" 
                 @click="handleView(record)"
+                class="font-medium text-blue-600"
               >
-                <EyeOutlined />
                 详情
-              </a>
-              <a 
+              </a-button>
+              <a-button 
+                type="link" 
+                size="small"
                 v-hasPermi="['system:city-info:update']" 
                 @click="handleUpdate(record)"
+                class="font-medium text-blue-600"
               >
-                <EditOutlined />
                 修改
-              </a>
+              </a-button>
               <a-popconfirm
                 v-hasPermi="['system:city-info:delete']"
                 title="确定删除该城市信息吗？"
-                ok-text="确定"
-                cancel-text="取消"
                 @confirm="handleDelete(record.id)"
               >
-                <a class="danger-link">
-                  <DeleteOutlined />
+                <a-button type="link" size="small" danger class="font-medium">
                   删除
-                </a>
+                </a-button>
               </a-popconfirm>
-              <a 
-                v-if="record.status === 1"
-                v-hasPermi="['system:city-info:update']" 
-                @click="handleStatusChange(record, 0)"
-              >
-                <StopOutlined />
-                禁用
-              </a>
-              <a 
-                v-else
-                v-hasPermi="['system:city-info:update']" 
-                @click="handleStatusChange(record, 1)"
-              >
-                <CheckCircleOutlined />
-                启用
-              </a>
             </a-space>
           </template>
         </template>
@@ -266,20 +213,14 @@ import { message } from 'ant-design-vue'
 import { 
   SearchOutlined, 
   ReloadOutlined, 
-  PlusOutlined, 
-  EyeOutlined, 
-  EditOutlined, 
-  DeleteOutlined, 
-  StopOutlined, 
-  CheckCircleOutlined 
+  PlusOutlined
 } from '@ant-design/icons-vue'
 import { 
   getCityList, 
   getCityById, 
   addCity, 
   updateCity, 
-  deleteCity, 
-  updateCityStatus,
+  deleteCity
 //   getCityProvinces
 } from '@/api/system/city-info'
 
@@ -527,21 +468,6 @@ const handleDelete = async (id: number) => {
   }
 }
 
-// 状态变更
-const handleStatusChange = async (record: any, status: number) => {
-  try {
-    const response = await updateCityStatus(record.id, status)
-    if (response.data && response.data.code === 200) {
-      message.success(`${status === 1 ? '启用' : '禁用'}`)
-      getList()
-    } else {
-      message.error(response.data?.message || `操作失败`)
-    }
-  } catch (error) {
-    console.error(`切换状态失败:`, error)
-    message.error(`操作失败`)
-  }
-}
 
 // 提交
 const handleSubmit = async () => {
@@ -596,29 +522,16 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.city-info-container {
-  padding: 16px;
-  background-color: #fff;
+.system-city-info {
+  background-color: var(--bg-secondary);
 }
 
-.search-card {
-  margin-bottom: 16px;
+:deep(.ant-table-tbody > tr > td) {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
 }
 
-.search-content {
-  padding: 8px 0;
-}
-
-.search-actions {
-  margin-top: 16px;
-  text-align: right;
-}
-
-.danger-link {
-  color: #ff4d4f;
-}
-
-.danger-link:hover {
-  color: #ff7875;
+:deep(.ant-table-tbody > tr:hover > td) {
+  background-color: var(--bg-tertiary) !important;
 }
 </style>

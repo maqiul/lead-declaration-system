@@ -64,6 +64,11 @@ public class DeclarationForm {
     private String transportMode;
 
     /**
+     * 支付方式
+     */
+    private String paymentMethod;
+
+    /**
      * 出发城市
      */
     private String departureCity;

@@ -1,7 +1,9 @@
 package com.declaration.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.declaration.dto.AuditHistoryDTO;
 import com.declaration.dto.DeclarationStatisticsDTO;
+import com.declaration.entity.BusinessAuditRecord;
 import com.declaration.entity.DeclarationForm;
 import com.declaration.entity.DeliveryOrder;
 
@@ -98,4 +100,34 @@ public interface DeclarationFormService extends IService<DeclarationForm> {
      * @return 是否审核成功
      */
     boolean auditDeliveryOrder(Long id, boolean approved, String remark);
+
+    /**
+     * 申请退回草稿
+     * @param id 申报单ID
+     * @param reason 申请原因
+     * @return 是否成功
+     */
+    boolean applyReturnToDraft(Long id, String reason);
+
+    /**
+     * 审核退回草稿申请
+     * @param id 申报单ID
+     * @param approved 是否通过
+     * @param remark 审核备注
+     * @return 是否成功
+     */
+    boolean auditReturnToDraft(Long id, boolean approved, String remark);
+
+    /**
+     * 获取退回申请审核历史
+     * @param id 申报单 ID
+     * @return 审核记录列表（包含用户名）
+     */
+    List<AuditHistoryDTO> getReturnAuditHistory(Long id);
+    
+    /**
+     * 保存审核历史记录
+     * @param record 审核记录
+     */
+    void saveAuditRecord(BusinessAuditRecord record);
 }

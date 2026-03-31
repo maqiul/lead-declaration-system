@@ -5,24 +5,13 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.declaration.dao.DeclarationFormDao;
 import com.declaration.dao.DeclarationProductDao;
 import com.declaration.dao.DeliveryOrderDao;
+import com.declaration.dto.AuditHistoryDTO;
 import com.declaration.dto.DeclarationStatisticsDTO;
-import com.declaration.entity.DeclarationForm;
-import com.declaration.entity.DeclarationProduct;
-import com.declaration.entity.DeclarationCarton;
-import com.declaration.entity.DeclarationCartonProduct;
-import com.declaration.entity.DeclarationElementValue;
-import com.declaration.entity.DeclarationRemittance;
-import com.declaration.entity.DeclarationAttachment;
-import com.declaration.entity.DeliveryOrder;
-import com.declaration.entity.OperationLog;
-import com.declaration.service.DeclarationFormService;
-import com.declaration.service.DeclarationProductService;
-import com.declaration.service.DeclarationCartonService;
-import com.declaration.service.DeclarationCartonProductService;
-import com.declaration.service.DeclarationElementValueService;
-import com.declaration.service.DeclarationRemittanceService;
-import com.declaration.service.DeclarationAttachmentService;
-import com.declaration.service.OperationLogService;
+import com.declaration.entity.*;
+import com.declaration.dao.BusinessAuditRecordDao;
+import com.declaration.service.*;
+import org.flowable.engine.RuntimeService;
+import org.flowable.engine.runtime.ProcessInstance;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,6 +28,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 出口申报单服务实现类
@@ -60,6 +50,9 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     private final DeclarationProductDao declarationProductDao;
     private final DeliveryOrderDao deliveryOrderDao;
     private final OperationLogService operationLogService;
+    private final BusinessAuditRecordDao auditRecordDao;
+    private final RuntimeService runtimeService;
+    private final UserService userService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -577,6 +570,10 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                 throw new RuntimeException("水单不存在");
             }
             
+            // 获取申报单 ID 和水单类型
+            Long formId = remittance.getFormId();
+            Integer remittanceType = remittance.getRemittanceType(); // 1-定金 2-尾款
+            
             remittance.setStatus(approved ? 1 : 2); // 1-已审核 2-已驳回
             remittance.setAuditRemark(remark);
             if (StpUtil.isLogin()) {
@@ -586,7 +583,8 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             
             boolean result = remittanceService.updateById(remittance);
             
-            // 记录操作日志
+            // 注意：审核历史记录应该在提交申请时创建，不是在审核时
+            // 这里只需要更新水单状态即可
             recordAuditLog("水单审核", "AUDIT", approved ? "审核通过" : "审核驳回", 
                     "水单ID: " + id + ", 结果: " + (approved ? "通过" : "驳回") + ", 备注: " + remark);
             
@@ -617,7 +615,8 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             
             int result = deliveryOrderDao.updateById(deliveryOrder);
             
-            // 记录操作日志
+            // 注意：审核历史记录应该在提交申请时创建，不是在审核时
+            // 这里只需要更新提货单状态即可
             recordAuditLog("提货单审核", "AUDIT", approved ? "审核通过" : "审核驳回", 
                     "提货单ID: " + id + ", 结果: " + (approved ? "通过" : "驳回") + ", 备注: " + remark);
             
@@ -627,6 +626,168 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             log.error("审核提货单失败", e);
             throw new RuntimeException("审核提货单失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 实现申请退回草稿功能
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean applyReturnToDraft(Long id, String reason) {
+        DeclarationForm form = this.getById(id);
+        if (form == null) {
+            throw new RuntimeException("申报单不存在");
+        }
+        
+        // 校验状态：仅限初审之后 (status >= 2) 且非已完成 (status != 8) 且非草稿 (status != 0)
+        // 注意：status 1 为待初审，用户说初审阶段直接驳回即可，不走此流程
+        if (form.getStatus() < 2 || form.getStatus() == 8) {
+            throw new RuntimeException("当前申报单状态不支持申请退回草稿 (当前状态: " + form.getStatus() + ")");
+        }
+        
+        // 1. 创建审核历史记录
+        BusinessAuditRecord record = new BusinessAuditRecord();
+        record.setBusinessId(id);
+        record.setBusinessType("DECLARATION_RETURN");
+        if (StpUtil.isLogin()) {
+            record.setApplicantId(StpUtil.getLoginIdAsLong());
+        }
+        record.setApplyReason(reason == null || reason.isEmpty() ? "申报错误" : reason);
+        record.setApplyTime(LocalDateTime.now());
+        record.setAuditStatus(0); // 0-待审核
+        record.setPreStatus(form.getStatus()); // 记录申请前的原始状态，用于驳回后恢复
+        
+        auditRecordDao.insert(record);
+        
+        // 2. 更新单据状态为 9-退回待审
+        form.setStatus(9);
+        boolean result = this.updateById(form);
+        
+        // 3. 记录操作日志
+        recordAuditLog("申请退回草稿", "APPLY", "applyReturnToDraft", 
+                "申报单ID: " + id + ", 原因: " + record.getApplyReason());
+        
+        return result;
+    }
+
+    /**
+     * 实现审核退回草稿功能
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean auditReturnToDraft(Long id, boolean approved, String remark) {
+        DeclarationForm form = this.getById(id);
+        if (form == null || form.getStatus() != 9) {
+            throw new RuntimeException("申报单不存在或非退回待审状态");
+        }
+        
+        // 1. 获取最新的待审核记录
+        BusinessAuditRecord record = auditRecordDao.selectOne(new LambdaQueryWrapper<BusinessAuditRecord>()
+                .eq(BusinessAuditRecord::getBusinessId, id)
+                .eq(BusinessAuditRecord::getBusinessType, "DECLARATION_RETURN")
+                .eq(BusinessAuditRecord::getAuditStatus, 0)
+                .orderByDesc(BusinessAuditRecord::getApplyTime)
+                .last("limit 1"));
+        
+        if (record == null) {
+            throw new RuntimeException("未找到对应的申请记录");
+        }
+        
+        // 2. 更新审核历史记录
+        if (StpUtil.isLogin()) {
+            record.setAuditorId(StpUtil.getLoginIdAsLong());
+        }
+        record.setAuditStatus(approved ? 1 : 2); // 1-通过 2-驳回
+        record.setAuditRemark(remark == null || remark.isEmpty() ? (approved ? "通过" : "填写错误") : remark);
+        record.setAuditTime(LocalDateTime.now());
+        auditRecordDao.updateById(record);
+        
+        // 3. 更新单据状态
+        if (approved) {
+            // 通过：重置为草稿状态，并终止工作流
+            form.setStatus(0);
+            
+            // 终止 Flowable 任务
+            try {
+                List<ProcessInstance> instances = runtimeService.createProcessInstanceQuery()
+                        .processInstanceBusinessKey(String.valueOf(id))
+                        .list();
+                for (ProcessInstance instance : instances) {
+                    runtimeService.deleteProcessInstance(instance.getId(), "用户申请退回草稿并通过: " + record.getAuditRemark());
+                    log.info("已终止 Flowable 流程实例: {}", instance.getId());
+                }
+            } catch (Exception e) {
+                log.error("终止工作流失败", e);
+                // 这里可以选择是否抛出异常回滚状态，通常为了业务闭环建议回滚
+                throw new RuntimeException("终止工作流失败: " + e.getMessage());
+            }
+        } else {
+            // 驳回：恢复到之前的状态
+            form.setStatus(record.getPreStatus());
+        }
+        
+        boolean result = this.updateById(form);
+        
+        // 4. 记录操作日志
+        recordAuditLog("退回审核", "AUDIT", approved ? "审核通过" : "审核驳回", 
+                "申报单ID: " + id + ", 结果: " + (approved ? "通过" : "驳回") + ", 备注: " + record.getAuditRemark());
+        
+        return result;
+    }
+
+    /**
+     * 获取退回申请审核历史
+     */
+    @Override
+    public List<AuditHistoryDTO> getReturnAuditHistory(Long id) {
+        List<BusinessAuditRecord> records = auditRecordDao.selectList(
+            new LambdaQueryWrapper<BusinessAuditRecord>()
+                .eq(BusinessAuditRecord::getBusinessId, id)
+                // .eq(BusinessAuditRecord::getBusinessType, "DECLARATION_RETURN")
+                .orderByDesc(BusinessAuditRecord::getApplyTime)
+        );
+        
+        // 转换为 DTO 并填充用户名称
+        return records.stream().map(record -> {
+            AuditHistoryDTO dto = new AuditHistoryDTO();
+            dto.setId(record.getId());
+            dto.setBusinessId(record.getBusinessId());
+            dto.setBusinessType(record.getBusinessType());
+            dto.setApplicantId(record.getApplicantId());
+            dto.setApplyReason(record.getApplyReason());
+            dto.setApplyTime(record.getApplyTime());
+            dto.setAuditorId(record.getAuditorId());
+            dto.setAuditStatus(record.getAuditStatus());
+            dto.setAuditRemark(record.getAuditRemark());
+            dto.setAuditTime(record.getAuditTime());
+            dto.setPreStatus(record.getPreStatus());
+            
+            // 查询申请人名称
+            if (record.getApplicantId() != null) {
+                try {
+                    User applicant = userService.getById(record.getApplicantId());
+                    if (applicant != null) {
+                        dto.setApplicantName(applicant.getUsername());
+                    }
+                } catch (Exception e) {
+                    log.warn("查询申请人信息失败：{}", record.getApplicantId(), e);
+                }
+            }
+            
+            // 查询审核人名称
+            if (record.getAuditorId() != null) {
+                try {
+                    User auditor = userService.getById(record.getAuditorId());
+                    if (auditor != null) {
+                        dto.setAuditorName(auditor.getUsername());
+                    }
+                } catch (Exception e) {
+                    log.warn("查询审核人信息失败：{}", record.getAuditorId(), e);
+                }
+            }
+            
+            return dto;
+        }).collect(Collectors.toList());
     }
 
     /**
@@ -648,7 +809,18 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             operationLogService.saveOperationLog(log);
         } catch (Exception e) {
             // 日志记录失败不影响主流程
-            DeclarationFormServiceImpl.log.warn("记录审核日志失败: {}", e.getMessage());
+            DeclarationFormServiceImpl.log.warn("记录审核日志失败：{}", e.getMessage());
+        }
+    }
+    
+    @Override
+    public void saveAuditRecord(BusinessAuditRecord record) {
+        try {
+            auditRecordDao.insert(record);
+            log.info("保存审核历史记录成功，业务 ID: {}, 类型：{}", record.getBusinessId(), record.getBusinessType());
+        } catch (Exception e) {
+            log.error("保存审核历史记录失败", e);
+            throw new RuntimeException("保存审核历史记录失败：" + e.getMessage());
         }
     }
 }

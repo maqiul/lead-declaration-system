@@ -238,6 +238,97 @@ body {
 }
 
 /* ----------------------------------------------------------------
+   Premium Tags & Status
+   ---------------------------------------------------------------- */
+.ui-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  border: 1px solid transparent;
+  transition: var(--transition-fast);
+}
+
+.ui-tag-success {
+  background: #ECFDF5;
+  color: #059669;
+  border-color: #A7F3D0;
+}
+
+.ui-tag-warning {
+  background: #FFFBEB;
+  color: #D97706;
+  border-color: #FDE68A;
+}
+
+.ui-tag-error {
+  background: #FEF2F2;
+  color: #DC2626;
+  border-color: #FECACA;
+}
+
+.ui-tag-primary {
+  background: #EFF6FF;
+  color: #2563EB;
+  border-color: #BFDBFE;
+}
+
+/* ----------------------------------------------------------------
+   Table Actions
+   ---------------------------------------------------------------- */
+.ui-table-action {
+  color: var(--text-tertiary);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: var(--transition-fast);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ui-table-action:hover {
+  background: var(--bg-tertiary);
+  color: var(--primary-color);
+}
+
+.ui-table-action.danger:hover {
+  background: #FEF2F2;
+  color: var(--error-color);
+}
+
+/* ----------------------------------------------------------------
+   Form Refinement
+   ---------------------------------------------------------------- */
+.ant-form-item {
+  margin-bottom: 20px !important;
+}
+
+.ant-form-item-label > label {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--text-secondary) !important;
+}
+
+.ant-input, .ant-input-number, .ant-select-selector {
+  border-radius: var(--border-radius-sm) !important;
+  border-color: var(--border-color) !important;
+  transition: var(--transition-fast) !important;
+}
+
+.ant-input:hover, .ant-input:focus, 
+.ant-input-number:hover, .ant-input-number:focus,
+.ant-select-selector:hover, .ant-select-selector:focus {
+  border-color: var(--secondary-color) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* ----------------------------------------------------------------
    Premium Tabs - 胶囊式分段控制器 (Segmented Control)
    ---------------------------------------------------------------- */
 .ant-tabs {

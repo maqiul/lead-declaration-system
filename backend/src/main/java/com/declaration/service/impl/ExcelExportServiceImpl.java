@@ -240,7 +240,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         fillData.put("totalAmount", form.getTotalAmount());
         // 总金额英文大写
         if (form.getTotalAmount() != null) {
-            fillData.put("totalAmountWords", convertAmountToWords(form.getTotalAmount().doubleValue()));
+            fillData.put("totalAmountWords", convertAmountToWords(form.getTotalAmount().doubleValue(),form.getCurrency()));
         }
 
         // 从关联数据计算统计字段
@@ -252,6 +252,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         fillData.put("contonEN", getCaronsType(form).get("contonEN"));
         fillData.put("contonCH", getCaronsType(form).get("contonCH"));
         fillData.put("departureCityEnglish", form.getDepartureCityEnglish());
+        fillData.put("paymentMethod",form.getPaymentMethod());
         // fillData.put("contonEN",)
         return fillData;
     }
@@ -485,7 +486,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
         // 金额转英文大写
         if (remittance.getRemittanceAmount() != null) {
-            String amountInWords = convertAmountToWords(remittance.getRemittanceAmount().doubleValue());
+            String amountInWords = convertAmountToWords(remittance.getRemittanceAmount().doubleValue(),form.getCurrency());
             data.put("amountInWords", amountInWords);
         }
 
@@ -495,7 +496,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     /**
      * 金额转英文大写
      */
-    private String convertAmountToWords(double amount) {
+    private String convertAmountToWords(double amount,String currency) {
         String[] ones = { "", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE" };
         String[] teens = { "TEN", "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN",
                 "EIGHTEEN", "NINETEEN" };
@@ -503,7 +504,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         String[] thousands = { "", "THOUSAND", "MILLION", "BILLION" };
 
         if (amount == 0)
-            return "ZERO USD ONLY";
+            return "ZERO "+currency+" ONLY";
 
         long wholePart = (long) amount;
         int decimalPart = (int) Math.round((amount - wholePart) * 100);
@@ -1009,7 +1010,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         data.put("exemptionNature", "一般征税");
         data.put("licenseNo", "");
         data.put("contractNo", form.getInvoiceNo());
-
+        data.put("paymentMethod",form.getPaymentMethod());
         // 国家信息处理（安全方式）
         String destinationCountryDisplay = form.getDestinationCountry();
         try {
@@ -1085,7 +1086,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         // data.put("packageType", "CARTONS");
 
         if (form.getTotalAmount() != null) {
-            data.put("totalAmountWords", convertAmountToWords(form.getTotalAmount().doubleValue()));
+            data.put("totalAmountWords", convertAmountToWords(form.getTotalAmount().doubleValue(),form.getCurrency()));
         } else {
             data.put("totalAmountWords", "");
         }
