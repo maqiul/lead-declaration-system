@@ -13,9 +13,12 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -57,6 +60,7 @@ public class ProductTypeConfigServiceImpl extends ServiceImpl<ProductTypeConfigD
     }
 
     @Override
+    @Cacheable(value = "sys:dict:product-types")
     public List<ProductTypeConfig> getEnabledList() {
         LambdaQueryWrapper<ProductTypeConfig> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ProductTypeConfig::getStatus, 1);
@@ -68,6 +72,7 @@ public class ProductTypeConfigServiceImpl extends ServiceImpl<ProductTypeConfigD
     }
 
     @Override
+    @Cacheable(value = "sys:dict:product-types:hscode", key = "#hsCode")
     public ProductTypeConfig getByHsCode(String hsCode) {
         LambdaQueryWrapper<ProductTypeConfig> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ProductTypeConfig::getHsCode, hsCode);
@@ -94,5 +99,23 @@ public class ProductTypeConfigServiceImpl extends ServiceImpl<ProductTypeConfigD
                 log.error("解析申报要素JSON失败", e);
             }
         }
+    }
+
+    @Override
+    @CacheEvict(value = "sys:dict:product-types", allEntries = true)
+    public boolean save(ProductTypeConfig entity) {
+        return super.save(entity);
+    }
+
+    @Override
+    @CacheEvict(value = "sys:dict:product-types", allEntries = true)
+    public boolean updateById(ProductTypeConfig entity) {
+        return super.updateById(entity);
+    }
+
+    @Override
+    @CacheEvict(value = "sys:dict:product-types", allEntries = true)
+    public boolean removeById(Serializable id) {
+        return super.removeById(id);
     }
 }

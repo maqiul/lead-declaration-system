@@ -2,6 +2,7 @@ package com.declaration.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.declaration.entity.CurrencyInfo;
+import java.util.List;
 
 /**
  * 货币信息服务接口
@@ -24,4 +25,10 @@ public interface CurrencyInfoService extends IService<CurrencyInfo> {
      * @return 货币信息
      */
     CurrencyInfo getByChineseName(String chineseName);
+
+    /**
+     * 获取所有启用的货币信息
+     * @return 货币信息列表
+     */
+    List<CurrencyInfo> getEnabledList();
 }

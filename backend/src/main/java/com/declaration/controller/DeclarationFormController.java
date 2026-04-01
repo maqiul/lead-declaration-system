@@ -2,10 +2,10 @@ package com.declaration.controller;
 
 import cn.dev33.satoken.annotation.SaIgnore;
 import cn.dev33.satoken.stp.StpUtil;
+import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.declaration.dao.BusinessAuditRecordDao;
-import com.declaration.entity.BusinessAuditRecord;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.declaration.annotation.RequiresPermissions;
@@ -87,22 +87,22 @@ public class DeclarationFormController {
     public Result<DeclarationRemittance> saveRemittance(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody DeclarationRemittance remittance) {
-        
+
         DeclarationForm form = declarationFormService.getById(id);
         if (form == null) {
             return Result.fail("申报单不存在");
         }
-        
+
         remittance.setFormId(id);
         remittanceService.saveOrUpdate(remittance);
-        
+
         try {
             // 自动生成水单记录导出文件（Service 内部已处理保存/替换逻辑）
             excelExportService.generateAndSaveRemittanceReport(remittance, form);
         } catch (Exception e) {
             log.warn("生成水单导出文件失败（不影响水单数据保存）: {}", e.getMessage());
         }
-        
+
         return Result.success(remittance);
     }
 
@@ -116,25 +116,25 @@ public class DeclarationFormController {
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Parameter(description = "附件ID") @PathVariable Long attachmentId,
             @RequestParam("file") MultipartFile file) {
-        
+
         try {
             // 验证申报单是否存在
             DeclarationForm form = declarationFormService.getById(id);
             if (form == null) {
                 return Result.fail("申报单不存在");
             }
-            
+
             // 验证附件是否存在
             DeclarationAttachment oldAttachment = attachmentService.getById(attachmentId);
             if (oldAttachment == null) {
                 return Result.fail("附件不存在");
             }
-            
+
             // 验证附件属于该申报单
             if (!oldAttachment.getFormId().equals(id)) {
                 return Result.fail("附件不属于该申报单");
             }
-            
+
             // 校验文件格式必须一致
             String originalFileName = oldAttachment.getFileName();
             String newFileName = file.getOriginalFilename();
@@ -145,33 +145,33 @@ public class DeclarationFormController {
                     return Result.fail("文件格式必须与原文件一致 (原格式: " + originalExt + ")");
                 }
             }
-            
+
             // 上传新文件
             DeclarationAttachment newAttachment = attachmentService.uploadFile(file, oldAttachment.getFileType());
             if (newAttachment == null) {
                 return Result.fail("文件上传失败");
             }
-            
+
             // 更新附件关联关系
             newAttachment.setFormId(id);
             newAttachment.setId(oldAttachment.getId()); // 保持原ID，实现替换而不是新增
             newAttachment.setCreateTime(oldAttachment.getCreateTime()); // 保持原始创建时间
-            
+
             // 更新数据库记录
             boolean updated = attachmentService.updateById(newAttachment);
             if (!updated) {
                 return Result.fail("附件替换失败");
             }
-            
+
             log.info("申报单 {} 的附件 {} 替换成功", id, attachmentId);
             return Result.success(newAttachment);
-            
+
         } catch (Exception e) {
             log.error("替换附件失败", e);
             return Result.fail("替换附件失败: " + e.getMessage());
         }
     }
-    
+
     /**
      * 获取申报单附件列表
      */
@@ -180,11 +180,11 @@ public class DeclarationFormController {
     @RequiresPermissions("business:declaration:view")
     public Result<List<DeclarationAttachment>> getAttachments(
             @Parameter(description = "申报单ID") @PathVariable Long id) {
-        
+
         LambdaQueryWrapper<DeclarationAttachment> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(DeclarationAttachment::getFormId, id);
         wrapper.orderByDesc(DeclarationAttachment::getCreateTime);
-        
+
         List<DeclarationAttachment> attachments = attachmentService.list(wrapper);
         return Result.success(attachments);
     }
@@ -227,17 +227,17 @@ public class DeclarationFormController {
     public Result<Void> updateRemittance(
             @PathVariable Long remittanceId,
             @RequestBody DeclarationRemittance remittance) {
-        
+
         DeclarationRemittance existing = remittanceService.getById(remittanceId);
         if (existing == null) {
             return Result.fail("水单不存在");
         }
-        
+
         // 保持原有的formId不变
         remittance.setId(remittanceId);
         remittance.setFormId(existing.getFormId());
         remittanceService.updateById(remittance);
-        
+
         return Result.success();
     }
 
@@ -252,7 +252,7 @@ public class DeclarationFormController {
         if (remittance == null) {
             return Result.fail("水单不存在");
         }
-        
+
         remittanceService.removeById(remittanceId);
         return Result.success();
     }
@@ -271,12 +271,12 @@ public class DeclarationFormController {
 
             Object resultObj = auditData.get("result"); // 1-通过，2-驳回
             boolean isApproved = false;
-            if(resultObj != null && "1".equals(resultObj.toString())) {
+            if (resultObj != null && "1".equals(resultObj.toString())) {
                 isApproved = true;
             }
-                        
+
             log.info("审核申报单 - id={}, resultObj={}, isApproved={}", id, resultObj, isApproved);
-            
+
             // 支持通过 taskKey 参数精确指定要完成的任务（用于并行流程）
             String taskKey = auditData.get("taskKey") != null ? auditData.get("taskKey").toString() : null;
 
@@ -289,24 +289,25 @@ public class DeclarationFormController {
                 HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
                         .processInstanceBusinessKey(String.valueOf(id))
                         .singleResult();
-                
+
                 String diagnostic = "找不到待办任务。";
                 if (hpi != null) {
                     if (hpi.getEndTime() != null) {
-                        diagnostic += " 该流程已于 " + hpi.getEndTime() + " 结束 (EndActivity=" + hpi.getEndActivityId() + ")。";
+                        diagnostic += " 该流程已于 " + hpi.getEndTime() + " 结束 (EndActivity=" + hpi.getEndActivityId()
+                                + ")。";
                     } else {
                         diagnostic += " 流程实例存在 (ID=" + hpi.getId() + ") 但当前节点不是 UserTask。";
                     }
                 } else {
                     diagnostic += " 未在系统中找到该业务 Key 的任何流程记录。";
                 }
-                
+
                 log.warn("业务Key={}审核失败: {}", id, diagnostic);
                 return Result.fail(diagnostic);
             }
 
             Task activeTask = null;
-            
+
             // 如果指定了 taskKey，精确匹配任务
             if (taskKey != null && !taskKey.isEmpty()) {
                 for (Task t : activeTasks) {
@@ -325,7 +326,7 @@ public class DeclarationFormController {
             } else {
                 // 智能匹配：优先处理审核类任务（按优先级排序）
                 // 优先级: deptAudit > depositAudit > balanceAudit > pickupListAudit > 其他
-                String[] priorityOrder = {"deptAudit", "depositAudit", "balanceAudit", "pickupListAudit"};
+                String[] priorityOrder = { "deptAudit", "depositAudit", "balanceAudit", "pickupListAudit" };
                 for (String key : priorityOrder) {
                     for (Task t : activeTasks) {
                         if (key.equals(t.getTaskDefinitionKey())) {
@@ -333,9 +334,10 @@ public class DeclarationFormController {
                             break;
                         }
                     }
-                    if (activeTask != null) break;
+                    if (activeTask != null)
+                        break;
                 }
-                
+
                 // 如果没有匹配优先级任务，选择第一个非财务补充任务
                 if (activeTask == null) {
                     for (Task t : activeTasks) {
@@ -345,13 +347,13 @@ public class DeclarationFormController {
                         }
                     }
                 }
-                
+
                 // 最后兜底：取第一个任务
                 if (activeTask == null) {
                     activeTask = activeTasks.get(0);
                 }
             }
-            
+
             if (activeTasks.size() > 1) {
                 log.info("业务Key={}有{}个并行任务，当前处理的节点为: {}", id, activeTasks.size(), activeTask.getTaskDefinitionKey());
             }
@@ -363,13 +365,12 @@ public class DeclarationFormController {
             try {
                 // 查询申报提交时创建的记录（不限制 auditStatus，找最新的）
                 BusinessAuditRecord latestRecord = auditRecordDao.selectOne(
-                    new LambdaQueryWrapper<BusinessAuditRecord>()
-                        .eq(BusinessAuditRecord::getBusinessId, id)
-                        // .eq(BusinessAuditRecord::getBusinessType, "DECLARATION_SUBMIT")
-                        .orderByDesc(BusinessAuditRecord::getApplyTime)
-                        .last("limit 1")
-                );
-                
+                        new LambdaQueryWrapper<BusinessAuditRecord>()
+                                .eq(BusinessAuditRecord::getBusinessId, id)
+                                // .eq(BusinessAuditRecord::getBusinessType, "DECLARATION_SUBMIT")
+                                .orderByDesc(BusinessAuditRecord::getApplyTime)
+                                .last("limit 1"));
+
                 if (latestRecord != null) {
                     // 所有审核节点都更新同一条记录
                     latestRecord.setAuditStatus(isApproved ? 1 : 2); // 1-通过，2-驳回
@@ -377,7 +378,7 @@ public class DeclarationFormController {
                         latestRecord.setAuditorId(StpUtil.getLoginIdAsLong());
                     }
                     String remark = auditData.get("remark") != null ? auditData.get("remark").toString() : "";
-                    
+
                     // 根据 taskKey 确定审核类型名称
                     String taskNameMap;
                     if ("deptAudit".equals(taskKey)) {
@@ -391,7 +392,7 @@ public class DeclarationFormController {
                     } else {
                         taskNameMap = taskKey + "审核";
                     }
-                    
+
                     latestRecord.setAuditRemark(remark.isEmpty() ? (taskNameMap + (isApproved ? "通过" : "驳回")) : remark);
                     latestRecord.setAuditTime(LocalDateTime.now());
                     auditRecordDao.updateById(latestRecord);
@@ -420,7 +421,7 @@ public class DeclarationFormController {
                 log.error("申报单 {} 更新审核记录失败", form.getFormNo(), e);
                 // 审核记录更新失败不影响主流程，继续执行
             }
-            
+
             // 然后调用 Flowable complete，触发流程流转和状态更新
             flowableTaskService.complete(activeTask.getId(), variables);
 
@@ -428,7 +429,8 @@ public class DeclarationFormController {
             return Result.success("审核成功 (" + taskName + ")");
         } catch (Exception e) {
             log.error("审核申报单失败", e);
-            return Result.fail("审核失败内部异常: " + e.getMessage() + " | 原因: " + (e.getCause() != null ? e.getCause().getMessage() : "无"));
+            return Result.fail("审核失败内部异常: " + e.getMessage() + " | 原因: "
+                    + (e.getCause() != null ? e.getCause().getMessage() : "无"));
         }
     }
 
@@ -444,17 +446,17 @@ public class DeclarationFormController {
             if (form == null) {
                 return Result.fail("申报单不存在");
             }
-            
+
             // Service 内部已处理保存/替换逻辑，直接调用即可
             excelExportService.generateAndSaveExportDocuments(form);
             log.info("申报单 {} 标准单证重新生成成功", form.getFormNo());
-            
+
             return Result.success("标准单证重新生成成功");
         } catch (Exception e) {
             log.error("重新生成单据失败", e);
             return Result.fail("单据生成失败: " + e.getMessage());
         }
-        
+
     }
 
     @PostMapping("/{id}/regenerate-all-documents")
@@ -466,12 +468,12 @@ public class DeclarationFormController {
             if (form == null) {
                 return Result.fail("申报单不存在");
             }
-            
+
             // 生成全套单证（包含 standard 和 alltemple 两种模板）
-//            excelExportService.generateAndSaveExportDocuments(form);
+            // excelExportService.generateAndSaveExportDocuments(form);
             excelExportService.generateAndSaveAllTempleExportDocuments(form);
             log.info("申报单 {} 全套单证重新生成成功", form.getFormNo());
-            
+
             return Result.success("全套单证重新生成成功");
         } catch (Exception e) {
             log.error("重新生成全套单据失败", e);
@@ -490,22 +492,22 @@ public class DeclarationFormController {
             if (form == null) {
                 return Result.fail("申报单不存在");
             }
-            
+
             // 查找对应类型的水单记录
             LambdaQueryWrapper<DeclarationRemittance> query = new LambdaQueryWrapper<>();
             query.eq(DeclarationRemittance::getFormId, id)
-                 .eq(DeclarationRemittance::getRemittanceType, type);
-            
+                    .eq(DeclarationRemittance::getRemittanceType, type);
+
             DeclarationRemittance remittance = remittanceService.getOne(query);
             if (remittance == null) {
                 return Result.fail("未找到对应的水单记录");
             }
-            
+
             // 重新生成水单报告
             excelExportService.generateAndSaveRemittanceReport(remittance, form);
             String typeName = type == 1 ? "定金" : "尾款";
             log.info("申报单 {} {}水单重新生成成功", form.getFormNo(), typeName);
-            
+
             return Result.success(typeName + "水单重新生成成功");
         } catch (Exception e) {
             log.error("重新生成水单报告失败", e);
@@ -523,15 +525,15 @@ public class DeclarationFormController {
         if (form == null) {
             return Result.fail("申报单不存在");
         }
-    
+
         List<Task> activeTasks = flowableTaskService.createTaskQuery()
                 .processInstanceBusinessKey(String.valueOf(id))
                 .list();
-                    
+
         if (activeTasks == null || activeTasks.isEmpty()) {
             return Result.fail("找不到待办的流程任务");
         }
-            
+
         // 根据 auditType 映射到具体的 taskDefinitionKey
         // deposit -> depositPayment (业务员提交定金凭证)
         // balance -> balancePayment (业务员提交尾款凭证)
@@ -560,7 +562,7 @@ public class DeclarationFormController {
                 // 如果是直接传入 taskKey，也支持
                 targetTaskKey = auditType;
         }
-            
+
         Task activeTask = null;
         for (Task t : activeTasks) {
             if (targetTaskKey.equals(t.getTaskDefinitionKey())) {
@@ -568,22 +570,23 @@ public class DeclarationFormController {
                 break;
             }
         }
-    
+
         if (activeTask == null) {
             String availableTasks = activeTasks.stream()
                     .map(Task::getTaskDefinitionKey)
                     .collect(Collectors.joining(", "));
-            return Result.fail("找不到对应类型的流程任务 (auditType=" + auditType + ", targetTaskKey=" + targetTaskKey + ")。当前可用任务：[" + availableTasks + "]");
+            return Result.fail("找不到对应类型的流程任务 (auditType=" + auditType + ", targetTaskKey=" + targetTaskKey
+                    + ")。当前可用任务：[" + availableTasks + "]");
         }
-    
+
         log.info("申报单 {} 提交任务：{} (auditType={})", id, activeTask.getTaskDefinitionKey(), auditType);
         flowableTaskService.complete(activeTask.getId());
-            
+
         // 创建审核历史记录（在提交申请时）
         try {
             BusinessAuditRecord record = new BusinessAuditRecord();
             record.setBusinessId(id);
-                
+
             // 根据提交的类型设置业务类型
             String businessType;
             String applyReason;
@@ -604,7 +607,7 @@ public class DeclarationFormController {
                     businessType = "DECLARATION_AUDIT";
                     applyReason = "申报审核申请";
             }
-                
+
             record.setBusinessType(businessType);
             record.setApplicantId(StpUtil.getLoginIdAsLong());
             record.setApplyReason(applyReason);
@@ -615,7 +618,7 @@ public class DeclarationFormController {
             log.error("创建审核历史记录失败", e);
             // 不影响主流程
         }
-            
+
         return Result.success();
     }
 
@@ -628,17 +631,17 @@ public class DeclarationFormController {
     @RequiresPermissions("business:declaration:query")
     public Result<List<Map<String, Object>>> getActiveTasks(
             @Parameter(description = "申报单ID") @PathVariable Long id) {
-        
+
         List<Task> activeTasks = flowableTaskService.createTaskQuery()
                 .processInstanceBusinessKey(String.valueOf(id))
                 .list();
-        
+
         if (activeTasks == null || activeTasks.isEmpty()) {
             // 检查流程是否已结束
             HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
                     .processInstanceBusinessKey(String.valueOf(id))
                     .singleResult();
-            
+
             if (hpi != null && hpi.getEndTime() != null) {
                 // 流程已结束
                 List<Map<String, Object>> result = new ArrayList<>();
@@ -649,10 +652,10 @@ public class DeclarationFormController {
                 result.add(endInfo);
                 return Result.success(result);
             }
-            
+
             return Result.success(new ArrayList<>());
         }
-        
+
         List<Map<String, Object>> taskList = new ArrayList<>();
         for (Task task : activeTasks) {
             Map<String, Object> taskInfo = new HashMap<>();
@@ -661,22 +664,23 @@ public class DeclarationFormController {
             taskInfo.put("taskName", task.getName());
             taskInfo.put("assignee", task.getAssignee());
             taskInfo.put("createTime", task.getCreateTime());
-            
+
             // 根据 taskKey 添加任务分类
             String category = getTaskCategory(task.getTaskDefinitionKey());
             taskInfo.put("category", category);
-            
+
             taskList.add(taskInfo);
         }
-        
+
         return Result.success(taskList);
     }
-    
+
     /**
      * 根据任务Key获取任务分类
      */
     private String getTaskCategory(String taskKey) {
-        if (taskKey == null) return "unknown";
+        if (taskKey == null)
+            return "unknown";
         switch (taskKey) {
             case "deptAudit":
                 return "初审";
@@ -710,62 +714,62 @@ public class DeclarationFormController {
     @RequiresPermissions("business:declaration:query")
     public Result<Map<String, List<String>>> getBatchActiveTasks(
             @Parameter(description = "申报单ID列表，逗号分隔") @RequestParam String ids) {
-        
+
         log.info("批量获取任务请求，ids: {}", ids);
-        
+
         if (ids == null || ids.trim().isEmpty()) {
             log.info("IDs为空，返回空结果");
             return Result.success(new HashMap<>());
         }
-        
+
         try {
             List<String> idList = Arrays.asList(ids.split(","));
             log.info("解析得到 {} 个ID: {}", idList.size(), idList);
             Map<String, List<String>> result = new HashMap<>();
-            
+
             // 优化：先批量查询所有相关的流程实例，建立 processInstanceId -> businessKey 映射
             Map<String, String> processInstanceToBusinessKey = new HashMap<>();
             List<String> processInstanceIds = new ArrayList<>();
-            
+
             for (String businessKey : idList) {
                 String trimmedKey = businessKey.trim();
                 log.debug("查询流程实例，businessKey: {}", trimmedKey);
-                
+
                 // 使用list()而不是singleResult()来处理可能的多个结果
                 List<ProcessInstance> instances = runtimeService.createProcessInstanceQuery()
                         .processInstanceBusinessKey(trimmedKey)
                         .list();
-                
+
                 if (!instances.isEmpty()) {
                     // 如果有多个实例，取最新的一个（按开始时间排序）
                     ProcessInstance latestInstance = instances.stream()
                             .max(Comparator.comparing(ProcessInstance::getStartTime))
                             .orElse(instances.get(0));
-                    
+
                     processInstanceIds.add(latestInstance.getId());
                     processInstanceToBusinessKey.put(latestInstance.getId(), trimmedKey);
-                    log.debug("找到流程实例: {} -> {} (共{}个实例，取最新)", 
-                             latestInstance.getId(), trimmedKey, instances.size());
+                    log.debug("找到流程实例: {} -> {} (共{}个实例，取最新)",
+                            latestInstance.getId(), trimmedKey, instances.size());
                 } else {
                     log.debug("未找到流程实例，businessKey: {}", trimmedKey);
                 }
             }
-            
+
             log.info("找到 {} 个流程实例", processInstanceIds.size());
-            
+
             if (processInstanceIds.isEmpty()) {
                 log.info("没有找到任何流程实例，返回空结果");
                 return Result.success(result);
             }
-            
+
             // 批量查询所有相关的活跃任务
             log.debug("查询活跃任务，processInstanceIds: {}", processInstanceIds);
             List<Task> tasks = flowableTaskService.createTaskQuery()
                     .processInstanceIdIn(processInstanceIds)
                     .list();
-            
+
             log.info("查询到 {} 个活跃任务", tasks.size());
-            
+
             // 按 businessKey 分组，提取 taskDefinitionKey
             for (Task task : tasks) {
                 String businessKey = processInstanceToBusinessKey.get(task.getProcessInstanceId());
@@ -775,10 +779,10 @@ public class DeclarationFormController {
                     log.debug("任务映射: {} -> {}", businessKey, task.getTaskDefinitionKey());
                 }
             }
-            
+
             log.info("最终结果: {}", result);
             return Result.success(result);
-            
+
         } catch (Exception e) {
             log.error("批量获取任务失败，ids: {}", ids, e);
             return Result.fail("获取任务失败: " + e.getMessage());
@@ -792,9 +796,9 @@ public class DeclarationFormController {
             @Parameter(description = "分页参数") PageParam pageParam,
             @Parameter(description = "申报单号") @RequestParam(required = false) String formNo,
             @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
-        
+
         Page<DeclarationForm> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
-        
+
         if (StpUtil.isLogin()) {
             Long userId = StpUtil.getLoginIdAsLong();
 
@@ -806,7 +810,7 @@ public class DeclarationFormController {
             if (status != null) {
                 queryWrapper.eq(DeclarationForm::getStatus, status);
             }
-            
+
             // 组织级数据权限隔离：有审核权限可查看所有数据
             boolean hasApprovePermission = StpUtil.hasPermission("business:declaration:audit");
             System.out.println(hasApprovePermission);
@@ -818,31 +822,32 @@ public class DeclarationFormController {
                 if (currentUser != null && currentUser.getOrgId() != null) {
                     // 查看自己创建的 或 本组织的数据
                     queryWrapper.and(w -> w.eq(DeclarationForm::getCreateBy, userId)
-                        .or().eq(DeclarationForm::getOrgId, currentUser.getOrgId()));
+                            .or().eq(DeclarationForm::getOrgId, currentUser.getOrgId()));
                 } else {
                     // 用户没有组织，只能看自己创建的
                     queryWrapper.eq(DeclarationForm::getCreateBy, userId);
                 }
             }
-            
+
             queryWrapper.orderByDesc(DeclarationForm::getCreateTime);
-            
+
             IPage<DeclarationForm> result = declarationFormService.page(page, queryWrapper);
-            
+
             // 批量填充申请人名称
             fillApplicantNames(result.getRecords());
             // 批量填充财务补充状态
             fillFinanceUploadStatus(result.getRecords());
-            
+            fillTotalQuantity(result.getRecords());
             return Result.success(result);
         }
 
         IPage<DeclarationForm> result = declarationFormService.page(page);
         fillApplicantNames(result.getRecords());
         fillFinanceUploadStatus(result.getRecords());
+        fillTotalQuantity(result.getRecords());
         return Result.success(result);
     }
-    
+
     /**
      * 批量填充申请人名称
      */
@@ -850,25 +855,24 @@ public class DeclarationFormController {
         if (records == null || records.isEmpty()) {
             return;
         }
-        
+
         // 收集所有 createBy ID
         Set<Long> userIds = records.stream()
-            .map(DeclarationForm::getCreateBy)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
-        
+                .map(DeclarationForm::getCreateBy)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
         if (userIds.isEmpty()) {
             return;
         }
-        
+
         // 批量查询用户
         List<User> users = userService.listByIds(userIds);
         Map<Long, String> userNameMap = users.stream()
-            .collect(Collectors.toMap(
-                User::getId,
-                u -> u.getNickname() != null ? u.getNickname() : u.getUsername()
-            ));
-        
+                .collect(Collectors.toMap(
+                        User::getId,
+                        u -> u.getNickname() != null ? u.getNickname() : u.getUsername()));
+
         // 填充 applicantName
         records.forEach(form -> {
             if (form.getCreateBy() != null) {
@@ -894,6 +898,33 @@ public class DeclarationFormController {
         }
     }
 
+    /**
+     * 更新箱子数
+     */
+    private void fillTotalQuantity(List<DeclarationForm> records) {
+        System.out.printf("进入数据");
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        records.forEach(form ->{
+            if(form.getTotalCartons()==0){
+                LambdaQueryWrapper<DeclarationCarton> queryWrapper = new LambdaQueryWrapper<>();
+                queryWrapper.eq(DeclarationCarton::getFormId,form.getId());
+                List<DeclarationCarton> cartons = declarationCartonService.list(queryWrapper);
+                System.out.printf("数量:"+ JSONObject.toJSONString(form.getCartons()));
+                if (cartons != null) {
+                    Integer totalQuantity = 0;
+                    for (DeclarationCarton carton : cartons) {
+                        totalQuantity += carton.getQuantity();
+                    }
+                    System.out.printf("totalQuantity:"+totalQuantity);
+                    form.setTotalCartons(totalQuantity);
+                }
+            }
+
+        });
+    }
+
     @PostMapping("/draft")
     @Operation(summary = "保存草稿")
     @RequiresPermissions("business:declaration:add")
@@ -904,15 +935,15 @@ public class DeclarationFormController {
                 form.setOrgId(orgId);
             }
             form.setStatus(0); // 确保是草稿状态
-            
+
             if (form.getId() != null) {
                 declarationFormService.updateDeclarationForm(form);
             } else {
                 declarationFormService.saveDeclarationForm(form);
             }
             JSONObject json = new JSONObject();
-            json.put("formId",form.getId());
-            json.put("formNo",form.getFormNo());
+            json.put("formId", form.getId());
+            json.put("formNo", form.getFormNo());
             return Result.success(json);
         } catch (Exception e) {
             log.error("保存草稿失败", e);
@@ -926,9 +957,9 @@ public class DeclarationFormController {
     public Result<DeclarationForm> getDeclaration(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
-        
+
         DeclarationForm form = declarationFormService.getFullDeclarationForm(id);
-        
+
         // 查询单一记录时，也填充财务状态
         if (form != null && form.getId() != null) {
             long count = flowableTaskService.createTaskQuery()
@@ -937,7 +968,7 @@ public class DeclarationFormController {
                     .count();
             form.setFinanceUploadPending(count > 0);
         }
-        
+
         return Result.success(form);
     }
 
@@ -953,7 +984,7 @@ public class DeclarationFormController {
         if (form.getFormNo() == null || form.getFormNo().isEmpty()) {
             form.setFormNo(generateFormNo());
         }
-        
+
         // 如果前端未提供发票号，则按规则生成
         if (form.getInvoiceNo() == null || form.getInvoiceNo().isEmpty()) {
             // 生成规则：ZIYI-yy-mmdd
@@ -979,13 +1010,13 @@ public class DeclarationFormController {
             @Valid @RequestBody DeclarationForm form) {
         // 验证申报单ID与路径参数的一致性
         form.setId(id);
-        
+
         // 设置组织ID，确保不会被从前端修改
         Long currentOrgId = OrganizationUtils.getCurrentUserOrgId();
         if (currentOrgId != null) {
             form.setOrgId(currentOrgId);
         }
-        
+
         declarationFormService.updateDeclarationForm(form);
         return Result.success();
     }
@@ -999,17 +1030,17 @@ public class DeclarationFormController {
     public Result<Void> deleteDeclaration(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
-        
+
         DeclarationForm form = declarationFormService.getById(id);
         if (form == null) {
             return Result.success();
         }
-        
+
         // 只有草稿状态才能被删除
         if (form.getStatus() != 0) {
             return Result.fail("只有草稿状态的申报单才允许删除");
         }
-        
+
         declarationFormService.removeById(id);
         return Result.success();
     }
@@ -1028,22 +1059,22 @@ public class DeclarationFormController {
             if (form.getStatus() != 0) {
                 return Result.fail("当前状态不支持提交操作");
             }
-            
+
             // 验证组织权限，确保用户只能提交自己组织的申报单
             Long currentOrgId = OrganizationUtils.getCurrentUserOrgId();
             if (form.getOrgId() != null && currentOrgId != null && !form.getOrgId().equals(currentOrgId)) {
                 log.warn("用户尝试提交不属于其组织的申报单: {}", id);
                 return Result.fail("没有权限提交此申报单");
             }
-            
+
             // 如果组织ID为空，则设置为当前用户组织ID
             if (form.getOrgId() == null && currentOrgId != null) {
                 form.setOrgId(currentOrgId);
             }
-            
+
             form.setStatus(1); // 已提交状态 - 待初审
             declarationFormService.updateById(form);
-            
+
             // 创建审核历史记录（申报提交 - 待审核状态）
             try {
                 BusinessAuditRecord record = new BusinessAuditRecord();
@@ -1057,14 +1088,14 @@ public class DeclarationFormController {
                 record.setAuditStatus(0); // 0-待审核
                 record.setPreStatus(0); // 从草稿状态提交
                 // auditorId、auditRemark、auditTime 在审核时填充
-                
+
                 auditRecordDao.insert(record);
                 log.info("申报单 {} 审核记录创建成功（待审核），recordId={}", form.getFormNo(), record.getId());
             } catch (Exception e) {
                 log.error("申报单 {} 创建审核记录失败", form.getFormNo(), e);
                 // 审核记录创建失败不影响主流程，继续执行
             }
-            
+
             // 在提交时生成Excel文件（Service 内部已处理保存/替换逻辑）
             try {
                 DeclarationForm fullForm = declarationFormService.getFullDeclarationForm(id);
@@ -1076,26 +1107,29 @@ public class DeclarationFormController {
                 log.error("申报单 {} 提交时自动生成导出文件失败", form.getFormNo(), e);
                 // 即使生成失败也不影响提交流程
             }
-            
+
             // 启动 Flowable 流程
             try {
                 Map<String, Object> variables = new HashMap<>();
                 variables.put("starterId", form.getCreateBy());
                 variables.put("orgId", form.getOrgId());
                 variables.put("formNo", form.getFormNo());
-                
-                log.info("准备启动流程：key={}, businessKey={}, variables={}", "declarationProcess", String.valueOf(id), variables);
-                
-                com.declaration.entity.ProcessInstance processInstance = processInstanceService.startProcessInstance("declarationProcess", String.valueOf(id), variables);
-                
+
+                log.info("准备启动流程：key={}, businessKey={}, variables={}", "declarationProcess", String.valueOf(id),
+                        variables);
+
+                com.declaration.entity.ProcessInstance processInstance = processInstanceService
+                        .startProcessInstance("declarationProcess", String.valueOf(id), variables);
+
                 log.info("申报单 {} 流程启动成功，instanceId={}", form.getFormNo(), processInstance.getInstanceId());
             } catch (Exception e) {
-                log.error("申报单 {} 流程启动失败，formNo={}, createBy={}, orgId={}", form.getFormNo(), form.getFormNo(), form.getCreateBy(), form.getOrgId(), e);
-                
+                log.error("申报单 {} 流程启动失败，formNo={}, createBy={}, orgId={}", form.getFormNo(), form.getFormNo(),
+                        form.getCreateBy(), form.getOrgId(), e);
+
                 // 流程启动失败时进行手动状态补偿回滚，防止该单据卡死在状态 1 (无对应流程任务)
                 form.setStatus(0);
                 declarationFormService.updateById(form);
-                
+
                 return Result.fail("流水线引擎启动流程失败，错误详情：" + e.getMessage() + " (单据已自动回退到草稿状态)");
             }
         }
@@ -1125,12 +1159,12 @@ public class DeclarationFormController {
     public Result<Void> saveProducts(
             @Parameter(description = "申报单ID") @PathVariable Long formId,
             @Valid @RequestBody List<DeclarationProduct> products) {
-        
+
         // 先删除原有产品
         declarationProductService.lambdaUpdate()
                 .eq(DeclarationProduct::getFormId, formId)
                 .remove();
-        
+
         // 保存新产品
         if (products != null && !products.isEmpty()) {
             for (int i = 0; i < products.size(); i++) {
@@ -1144,7 +1178,7 @@ public class DeclarationFormController {
                 declarationProductService.save(product);
             }
         }
-        
+
         return Result.success();
     }
 
@@ -1171,12 +1205,12 @@ public class DeclarationFormController {
     public Result<Void> saveCartons(
             @Parameter(description = "申报单ID") @PathVariable Long formId,
             @Valid @RequestBody List<DeclarationCarton> cartons) {
-        
+
         // 先删除原有箱子
         declarationCartonService.lambdaUpdate()
                 .eq(DeclarationCarton::getFormId, formId)
                 .remove();
-        
+
         // 保存新箱子
         if (cartons != null && !cartons.isEmpty()) {
             for (int i = 0; i < cartons.size(); i++) {
@@ -1190,7 +1224,7 @@ public class DeclarationFormController {
                 declarationCartonService.save(carton);
             }
         }
-        
+
         return Result.success();
     }
 
@@ -1215,7 +1249,7 @@ public class DeclarationFormController {
     @Operation(summary = "保存箱子产品关联")
     @RequiresPermissions("business:declaration:update")
     public Result<Void> saveCartonProducts(@Valid @RequestBody List<DeclarationCartonProduct> cartonProducts) {
-        
+
         // 先删除原有关联
         if (cartonProducts != null && !cartonProducts.isEmpty()) {
             Long cartonId = cartonProducts.get(0).getCartonId();
@@ -1223,7 +1257,7 @@ public class DeclarationFormController {
                     .eq(DeclarationCartonProduct::getCartonId, cartonId)
                     .remove();
         }
-        
+
         // 保存新关联
         if (cartonProducts != null && !cartonProducts.isEmpty()) {
             for (DeclarationCartonProduct cartonProduct : cartonProducts) {
@@ -1234,7 +1268,7 @@ public class DeclarationFormController {
                 declarationCartonProductService.save(cartonProduct);
             }
         }
-        
+
         return Result.success();
     }
 
@@ -1254,39 +1288,42 @@ public class DeclarationFormController {
                 response.getWriter().write("{\"code\":404,\"msg\":\"申报单不存在\"}");
                 return;
             }
-            
+
             // 设置响应头
-            String fileName = "申报单_" + form.getFormNo() + "_" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".xlsx";
+            String fileName = "申报单_" + form.getFormNo() + "_"
+                    + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".xlsx";
             response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-            response.setHeader("Content-Disposition", "attachment;filename=" + java.net.URLEncoder.encode(fileName, "UTF-8"));
+            response.setHeader("Content-Disposition",
+                    "attachment;filename=" + java.net.URLEncoder.encode(fileName, "UTF-8"));
             response.setCharacterEncoding("UTF-8");
-            
+
             // 使用 POI 创建 Excel
             org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
             org.apache.poi.xssf.usermodel.XSSFSheet sheet = workbook.createSheet("申报单详情");
-            
+
             // 创建标题样式
             org.apache.poi.xssf.usermodel.XSSFCellStyle headerStyle = workbook.createCellStyle();
             org.apache.poi.xssf.usermodel.XSSFFont headerFont = workbook.createFont();
             headerFont.setBold(true);
             headerStyle.setFont(headerFont);
             headerStyle.setAlignment(org.apache.poi.ss.usermodel.HorizontalAlignment.CENTER);
-            
+
             int rowNum = 0;
-            
+
             // 基本信息标题
             org.apache.poi.xssf.usermodel.XSSFRow titleRow = sheet.createRow(rowNum++);
             org.apache.poi.xssf.usermodel.XSSFCell titleCell = titleRow.createCell(0);
             titleCell.setCellValue("申报单详情 - " + form.getFormNo());
             titleCell.setCellStyle(headerStyle);
             sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, 5));
-            
+
             rowNum++; // 空行
-            
+
             // 基本信息
             createInfoRow(sheet, rowNum++, "申报单号", form.getFormNo(), headerStyle);
             createInfoRow(sheet, rowNum++, "发票号", form.getInvoiceNo(), headerStyle);
-            createInfoRow(sheet, rowNum++, "申报日期", form.getDeclarationDate() != null ? form.getDeclarationDate().toString() : "", headerStyle);
+            createInfoRow(sheet, rowNum++, "申报日期",
+                    form.getDeclarationDate() != null ? form.getDeclarationDate().toString() : "", headerStyle);
             createInfoRow(sheet, rowNum++, "发货人公司", form.getShipperCompany(), headerStyle);
             createInfoRow(sheet, rowNum++, "发货人地址", form.getShipperAddress(), headerStyle);
             createInfoRow(sheet, rowNum++, "收货人公司", form.getConsigneeCompany(), headerStyle);
@@ -1295,68 +1332,80 @@ public class DeclarationFormController {
             createInfoRow(sheet, rowNum++, "出发城市", form.getDepartureCity(), headerStyle);
             createInfoRow(sheet, rowNum++, "目的国", form.getDestinationCountry(), headerStyle);
             createInfoRow(sheet, rowNum++, "币种", form.getCurrency(), headerStyle);
-            createInfoRow(sheet, rowNum++, "总数量", form.getTotalQuantity() != null ? form.getTotalQuantity().toString() : "", headerStyle);
-            createInfoRow(sheet, rowNum++, "总金额", form.getTotalAmount() != null ? form.getTotalAmount().toString() : "", headerStyle);
-            createInfoRow(sheet, rowNum++, "总箱数", form.getTotalCartons() != null ? form.getTotalCartons().toString() : "", headerStyle);
-            createInfoRow(sheet, rowNum++, "总毛重(KGS)", form.getTotalGrossWeight() != null ? form.getTotalGrossWeight().toString() : "", headerStyle);
-            createInfoRow(sheet, rowNum++, "总净重(KGS)", form.getTotalNetWeight() != null ? form.getTotalNetWeight().toString() : "", headerStyle);
-            createInfoRow(sheet, rowNum++, "总体积(CBM)", form.getTotalVolume() != null ? form.getTotalVolume().toString() : "", headerStyle);
+            createInfoRow(sheet, rowNum++, "总数量",
+                    form.getTotalQuantity() != null ? form.getTotalQuantity().toString() : "", headerStyle);
+            createInfoRow(sheet, rowNum++, "总金额", form.getTotalAmount() != null ? form.getTotalAmount().toString() : "",
+                    headerStyle);
+            createInfoRow(sheet, rowNum++, "总箱数",
+                    form.getTotalCartons() != null ? form.getTotalCartons().toString() : "", headerStyle);
+            createInfoRow(sheet, rowNum++, "总毛重(KGS)",
+                    form.getTotalGrossWeight() != null ? form.getTotalGrossWeight().toString() : "", headerStyle);
+            createInfoRow(sheet, rowNum++, "总净重(KGS)",
+                    form.getTotalNetWeight() != null ? form.getTotalNetWeight().toString() : "", headerStyle);
+            createInfoRow(sheet, rowNum++, "总体积(CBM)",
+                    form.getTotalVolume() != null ? form.getTotalVolume().toString() : "", headerStyle);
             createInfoRow(sheet, rowNum++, "状态", getStatusText(form.getStatus()), headerStyle);
-            
+
             // 产品明细
             if (form.getProducts() != null && !form.getProducts().isEmpty()) {
                 rowNum++;
                 org.apache.poi.xssf.usermodel.XSSFRow productTitleRow = sheet.createRow(rowNum++);
                 productTitleRow.createCell(0).setCellValue("产品明细");
                 productTitleRow.getCell(0).setCellStyle(headerStyle);
-                
+
                 // 产品表头
                 org.apache.poi.xssf.usermodel.XSSFRow productHeaderRow = sheet.createRow(rowNum++);
-                String[] productHeaders = {"序号", "产品名称", "HS编码", "数量", "单位", "单价", "金额", "毛重", "净重"};
+                String[] productHeaders = { "序号", "产品名称", "HS编码", "数量", "单位", "单价", "金额", "毛重", "净重" };
                 for (int i = 0; i < productHeaders.length; i++) {
                     org.apache.poi.xssf.usermodel.XSSFCell cell = productHeaderRow.createCell(i);
                     cell.setCellValue(productHeaders[i]);
                     cell.setCellStyle(headerStyle);
                 }
-                
+
                 // 产品数据
                 int productNo = 1;
                 for (DeclarationProduct product : form.getProducts()) {
                     org.apache.poi.xssf.usermodel.XSSFRow productRow = sheet.createRow(rowNum++);
                     productRow.createCell(0).setCellValue(productNo++);
-                    productRow.createCell(1).setCellValue(product.getProductName() != null ? product.getProductName() : "");
+                    productRow.createCell(1)
+                            .setCellValue(product.getProductName() != null ? product.getProductName() : "");
                     productRow.createCell(2).setCellValue(product.getHsCode() != null ? product.getHsCode() : "");
                     productRow.createCell(3).setCellValue(product.getQuantity() != null ? product.getQuantity() : 0);
                     productRow.createCell(4).setCellValue(product.getUnit() != null ? product.getUnit() : "");
-                    productRow.createCell(5).setCellValue(product.getUnitPrice() != null ? product.getUnitPrice().doubleValue() : 0);
-                    productRow.createCell(6).setCellValue(product.getAmount() != null ? product.getAmount().doubleValue() : 0);
-                    productRow.createCell(7).setCellValue(product.getGrossWeight() != null ? product.getGrossWeight().doubleValue() : 0);
-                    productRow.createCell(8).setCellValue(product.getNetWeight() != null ? product.getNetWeight().doubleValue() : 0);
+                    productRow.createCell(5)
+                            .setCellValue(product.getUnitPrice() != null ? product.getUnitPrice().doubleValue() : 0);
+                    productRow.createCell(6)
+                            .setCellValue(product.getAmount() != null ? product.getAmount().doubleValue() : 0);
+                    productRow.createCell(7).setCellValue(
+                            product.getGrossWeight() != null ? product.getGrossWeight().doubleValue() : 0);
+                    productRow.createCell(8)
+                            .setCellValue(product.getNetWeight() != null ? product.getNetWeight().doubleValue() : 0);
                 }
             }
-            
+
             // 自动调整列宽
             for (int i = 0; i < 9; i++) {
                 sheet.autoSizeColumn(i);
             }
-            
+
             // 写入响应流
             workbook.write(response.getOutputStream());
             workbook.close();
-            
+
         } catch (Exception e) {
             log.error("导出申报单失败", e);
             try {
                 response.setContentType("application/json;charset=UTF-8");
                 response.getWriter().write("{\"code\":500,\"msg\":\"导出失败: " + e.getMessage() + "\"}");
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            }
         }
     }
-    
+
     /**
      * 创建信息行
      */
-    private void createInfoRow(org.apache.poi.xssf.usermodel.XSSFSheet sheet, int rowNum, String label, String value, 
+    private void createInfoRow(org.apache.poi.xssf.usermodel.XSSFSheet sheet, int rowNum, String label, String value,
             org.apache.poi.xssf.usermodel.XSSFCellStyle headerStyle) {
         org.apache.poi.xssf.usermodel.XSSFRow row = sheet.createRow(rowNum);
         org.apache.poi.xssf.usermodel.XSSFCell labelCell = row.createCell(0);
@@ -1364,7 +1413,7 @@ public class DeclarationFormController {
         labelCell.setCellStyle(headerStyle);
         row.createCell(1).setCellValue(value != null ? value : "");
     }
-    
+
     /**
      * 获取状态文本
      * 状态定义（任务驱动流程）：
@@ -1375,18 +1424,24 @@ public class DeclarationFormController {
      * 注：状态3/4/5已移除，并行阶段主状态始终为2
      */
     private String getStatusText(Integer status) {
-        if (status == null) return "未知";
+        if (status == null)
+            return "未知";
         switch (status) {
-            case 0: return "草稿";
-            case 1: return "待初审";
-            case 2: return "处理中";
-            case 8: return "已完成";
-            default: return "状态" + status;
+            case 0:
+                return "草稿";
+            case 1:
+                return "待初审";
+            case 2:
+                return "处理中";
+            case 8:
+                return "已完成";
+            default:
+                return "状态" + status;
         }
     }
 
     // ================== 提货单与财务附件管理 ==================
-    
+
     /**
      * 获取提货单附件列表
      */
@@ -1416,7 +1471,7 @@ public class DeclarationFormController {
         if (form == null) {
             return Result.fail("申报单不存在");
         }
-        
+
         // 验证必要字段
         if (attachment.getFileName() == null || attachment.getFileName().trim().isEmpty()) {
             return Result.fail("文件名不能为空");
@@ -1424,12 +1479,12 @@ public class DeclarationFormController {
         if (attachment.getFileUrl() == null || attachment.getFileUrl().trim().isEmpty()) {
             return Result.fail("文件URL不能为空");
         }
-        
+
         attachment.setFormId(id);
         attachment.setFileType("PickupList");
         attachment.setCreateTime(LocalDateTime.now());
         attachmentService.save(attachment);
-        
+
         return Result.success();
     }
 
@@ -1445,7 +1500,7 @@ public class DeclarationFormController {
         if (attachment == null) {
             return Result.fail("附件不存在");
         }
-        
+
         attachmentService.removeById(attachmentId);
         return Result.success();
     }
@@ -1461,12 +1516,12 @@ public class DeclarationFormController {
     public Result<Long> saveDeliveryOrder(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody DeliveryOrder deliveryOrder) {
-        
+
         DeclarationForm form = declarationFormService.getById(id);
         if (form == null) {
             return Result.fail("申报单不存在");
         }
-        
+
         deliveryOrder.setFormId(id);
         boolean saved = declarationFormService.saveDeliveryOrder(deliveryOrder);
         if (saved) {
@@ -1483,7 +1538,7 @@ public class DeclarationFormController {
     @RequiresPermissions("business:declaration:deliveryOrder")
     public Result<List<DeliveryOrder>> getDeliveryOrders(
             @Parameter(description = "申报单ID") @PathVariable Long id) {
-        
+
         List<DeliveryOrder> deliveryOrders = declarationFormService.getDeliveryOrdersByFormId(id);
         return Result.success(deliveryOrders);
     }
@@ -1497,18 +1552,18 @@ public class DeclarationFormController {
     public Result<Void> updateDeliveryOrder(
             @Parameter(description = "提货单ID") @PathVariable Long deliveryOrderId,
             @RequestBody DeliveryOrder deliveryOrder) {
-        
+
         DeliveryOrder existing = declarationFormService.getDeliveryOrderById(deliveryOrderId);
         if (existing == null) {
             return Result.fail("提货单不存在");
         }
-        
+
         // 保持原有的formId和createdBy不变
         deliveryOrder.setId(deliveryOrderId);
         deliveryOrder.setFormId(existing.getFormId());
         deliveryOrder.setCreatedBy(existing.getCreatedBy());
         deliveryOrder.setCreatedAt(existing.getCreatedAt());
-        
+
         boolean updated = declarationFormService.updateDeliveryOrder(deliveryOrder);
         if (updated) {
             return Result.success();
@@ -1524,17 +1579,17 @@ public class DeclarationFormController {
     @RequiresPermissions("business:declaration:deliveryOrder:delete")
     public Result<Void> deleteDeliveryOrder(
             @Parameter(description = "提货单ID") @PathVariable Long deliveryOrderId) {
-        
+
         DeliveryOrder existing = declarationFormService.getDeliveryOrderById(deliveryOrderId);
         if (existing == null) {
             return Result.fail("提货单不存在");
         }
-        
+
         // 只有待审核状态才能删除
         if (existing.getStatus() != null && existing.getStatus() != 0) {
             return Result.fail("只有待审核的提货单才能删除");
         }
-        
+
         boolean deleted = declarationFormService.deleteDeliveryOrder(deliveryOrderId);
         if (deleted) {
             return Result.success();
@@ -1553,16 +1608,17 @@ public class DeclarationFormController {
     public Result<Void> auditRemittance(
             @Parameter(description = "水单ID") @PathVariable Long remittanceId,
             @RequestBody Map<String, Object> params) {
-        
+
         DeclarationRemittance remittance = remittanceService.getById(remittanceId);
         if (remittance == null) {
             return Result.fail("水单不存在");
         }
-        
+
         Object approvedObj = params.get("approved");
-        boolean approved = approvedObj != null && (Boolean.TRUE.equals(approvedObj) || "true".equals(approvedObj.toString()));
+        boolean approved = approvedObj != null
+                && (Boolean.TRUE.equals(approvedObj) || "true".equals(approvedObj.toString()));
         String remark = params.get("remark") != null ? params.get("remark").toString() : "";
-        
+
         boolean result = declarationFormService.auditRemittance(remittanceId, approved, remark);
         if (result) {
             return Result.success();
@@ -1579,22 +1635,24 @@ public class DeclarationFormController {
     public Result<Void> auditDeliveryOrder(
             @Parameter(description = "提货单ID") @PathVariable Long deliveryOrderId,
             @RequestBody Map<String, Object> params) {
-        
+
         DeliveryOrder deliveryOrder = declarationFormService.getDeliveryOrderById(deliveryOrderId);
         if (deliveryOrder == null) {
             return Result.fail("提货单不存在");
         }
-        
+
         Object approvedObj = params.get("approved");
-        boolean approved = approvedObj != null && (Boolean.TRUE.equals(approvedObj) || "true".equals(approvedObj.toString()));
+        boolean approved = approvedObj != null
+                && (Boolean.TRUE.equals(approvedObj) || "true".equals(approvedObj.toString()));
         String remark = params.get("remark") != null ? params.get("remark").toString() : "";
-        
+
         boolean result = declarationFormService.auditDeliveryOrder(deliveryOrderId, approved, remark);
         if (result) {
             return Result.success();
         }
         return Result.fail("审核提货单失败");
     }
+
     /**
      * 申请退回草稿
      */
@@ -1604,7 +1662,7 @@ public class DeclarationFormController {
     public Result<Void> applyReturnToDraft(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody Map<String, String> params) {
-        
+
         String reason = params.get("reason");
         boolean result = declarationFormService.applyReturnToDraft(id, reason);
         if (result) {
@@ -1622,11 +1680,12 @@ public class DeclarationFormController {
     public Result<Void> auditReturnToDraft(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody Map<String, Object> params) {
-        
+
         Object approvedObj = params.get("approved");
-        boolean approved = approvedObj != null && (Boolean.TRUE.equals(approvedObj) || "true".equals(approvedObj.toString()));
+        boolean approved = approvedObj != null
+                && (Boolean.TRUE.equals(approvedObj) || "true".equals(approvedObj.toString()));
         String remark = params.get("remark") != null ? params.get("remark").toString() : "";
-        
+
         boolean result = declarationFormService.auditReturnToDraft(id, approved, remark);
         if (result) {
             return Result.success();
@@ -1642,11 +1701,11 @@ public class DeclarationFormController {
     @RequiresPermissions("business:declaration:query")
     public Result<List<AuditHistoryDTO>> getReturnAuditHistory(
             @Parameter(description = "申报单 ID") @PathVariable Long id) {
-            
+
         List<AuditHistoryDTO> history = declarationFormService.getReturnAuditHistory(id);
         return Result.success(history);
     }
-    
+
     /**
      * 获取文件扩展名
      */

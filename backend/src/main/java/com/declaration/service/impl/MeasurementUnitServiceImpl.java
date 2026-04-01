@@ -7,8 +7,10 @@ import com.declaration.entity.MeasurementUnit;
 import com.declaration.service.MeasurementUnitService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -23,6 +25,7 @@ import java.util.List;
 public class MeasurementUnitServiceImpl extends ServiceImpl<MeasurementUnitDao, MeasurementUnit> implements MeasurementUnitService {
 
     @Override
+    @Cacheable(value = "sys:dict:measurement-units")
     public List<MeasurementUnit> getActiveUnits() {
         return list(new LambdaQueryWrapper<MeasurementUnit>()
                 .eq(MeasurementUnit::getStatus, 1)
@@ -34,5 +37,23 @@ public class MeasurementUnitServiceImpl extends ServiceImpl<MeasurementUnitDao, 
         return getOne(new LambdaQueryWrapper<MeasurementUnit>()
                 .eq(MeasurementUnit::getUnitCode, unitCode)
                 .eq(MeasurementUnit::getStatus, 1));
+    }
+
+    @Override
+    @CacheEvict(value = "sys:dict:measurement-units", allEntries = true)
+    public boolean save(MeasurementUnit entity) {
+        return super.save(entity);
+    }
+
+    @Override
+    @CacheEvict(value = "sys:dict:measurement-units", allEntries = true)
+    public boolean updateById(MeasurementUnit entity) {
+        return super.updateById(entity);
+    }
+
+    @Override
+    @CacheEvict(value = "sys:dict:measurement-units", allEntries = true)
+    public boolean removeById(Serializable id) {
+        return super.removeById(id);
     }
 }

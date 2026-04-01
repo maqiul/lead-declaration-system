@@ -23,11 +23,12 @@
       
       <a-menu
         v-model:selected-keys="selectedKeys"
-        v-model:open-keys="openKeys"
+        :open-keys="openKeys"
         mode="inline"
         theme="dark"
         :items="menuItems"
         @click="handleMenuClick"
+        @openChange="handleOpenChange"
         class="modern-menu"
         :selectable="false"
       />
@@ -163,9 +164,18 @@ const getConfigValue = (key: string, defaultValue: string = ''): string => {
   }
 }
 
-// 监听路由变化更新选中菜单
+// 监听路由变化更新选中菜单和展开的菜单
 watch(() => route.path, (path) => {
   selectedKeys.value = [path]
+  
+  // 自动判断并展开父级菜单
+  const parentPath = path.substring(0, path.lastIndexOf('/'))
+  if (parentPath && parentPath !== '/') {
+    // 只有不在已展开的列表中时，我们将其覆盖为主展开项（实现加载时和点击跳转时的手风琴效果）
+    if (!openKeys.value.includes(parentPath)) {
+      openKeys.value = [parentPath]
+    }
+  }
 }, { immediate: true })
 
 // 加载系统配置
@@ -385,6 +395,24 @@ const handleMenuClick = ({ key }: { key: string | number }) => {
       menuClickTimeout = null
     }
   }, 100)
+}
+
+// 菜单展开/关闭处理（手风琴模式）
+const handleOpenChange = (keys: (string | number)[]) => {
+  const latestOpenKey = keys.find(key => openKeys.value.indexOf(String(key)) === -1)
+  if (!latestOpenKey) {
+    openKeys.value = keys.map(String)
+    return
+  }
+  
+  // 从真正用于渲染的 menuItems 提炼一级菜单的 key
+  const rootSubmenuKeys = menuItems.value.map((item: any) => String(item.key))
+  
+  if (rootSubmenuKeys.includes(String(latestOpenKey))) {
+    openKeys.value = [String(latestOpenKey)]
+  } else {
+    openKeys.value = keys.map(String)
+  }
 }
 
 const handleLogout = async () => {

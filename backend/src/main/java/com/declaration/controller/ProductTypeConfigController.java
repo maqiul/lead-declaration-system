@@ -66,10 +66,7 @@ public class ProductTypeConfigController {
     @RequiresPermissions("system:product:list")
     public Result<List<ProductTypeConfig>> getProductTypes() {
         try {
-            List<ProductTypeConfig> list = productTypeConfigService.lambdaQuery()
-                    .eq(ProductTypeConfig::getStatus, 1)
-                    .orderByAsc(ProductTypeConfig::getSort)
-                    .list();
+            List<ProductTypeConfig> list = productTypeConfigService.getEnabledList();
             return Result.success(list);
         } catch (Exception e) {
             log.error("获取商品类型列表失败", e);

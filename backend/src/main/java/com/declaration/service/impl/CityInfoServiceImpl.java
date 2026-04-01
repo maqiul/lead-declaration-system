@@ -8,6 +8,8 @@ import com.declaration.entity.CityInfo;
 import com.declaration.service.ICityInfoService;
 import com.declaration.utils.OrganizationUtils;
 import cn.dev33.satoken.stp.StpUtil;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -18,6 +20,15 @@ import java.util.List;
  */
 @Service
 public class CityInfoServiceImpl extends ServiceImpl<CityInfoDao, CityInfo> implements ICityInfoService {
+
+    @Override
+    @Cacheable(value = "sys:dict:cities", key = "#country")
+    public List<CityInfo> getCitiesByCountry(String country) {
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<CityInfo> queryWrapper = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<CityInfo>()
+                .eq("country_name", country)
+                .orderByAsc("sort");
+        return this.list(queryWrapper);
+    }
 
     @Override
     public Page<CityInfo> getPageList(int pageNum, int pageSize, String cityName, String provinceName, String countryName, Integer status) {
@@ -50,6 +61,7 @@ public class CityInfoServiceImpl extends ServiceImpl<CityInfoDao, CityInfo> impl
     }
 
     @Override
+    @CacheEvict(value = "sys:dict:cities", allEntries = true)
     public void addCityInfo(CityInfo cityInfo) {
         // 设置创建信息
         cityInfo.setCreateTime(LocalDateTime.now());
@@ -61,6 +73,7 @@ public class CityInfoServiceImpl extends ServiceImpl<CityInfoDao, CityInfo> impl
     }
 
     @Override
+    @CacheEvict(value = "sys:dict:cities", allEntries = true)
     public void updateCityInfo(CityInfo cityInfo) {
         // 设置更新信息
         cityInfo.setUpdateTime(LocalDateTime.now());
@@ -70,11 +83,13 @@ public class CityInfoServiceImpl extends ServiceImpl<CityInfoDao, CityInfo> impl
     }
 
     @Override
+    @CacheEvict(value = "sys:dict:cities", allEntries = true)
     public void deleteCityInfo(Long id) {
         removeById(id);
     }
 
     @Override
+    @CacheEvict(value = "sys:dict:cities", allEntries = true)
     public void updateStatus(Long id, Integer status) {
         CityInfo cityInfo = new CityInfo();
         cityInfo.setId(id);

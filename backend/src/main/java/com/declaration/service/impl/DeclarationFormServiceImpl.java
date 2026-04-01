@@ -91,6 +91,19 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                 log.info("申报单已提供组织ID: {}", form.getOrgId());
             }
             
+            // 自动计算并在保存前填充箱子总数
+            if (form.getCartons() != null && !form.getCartons().isEmpty()) {
+                int totalCartons = 0;
+                for (DeclarationCarton carton : form.getCartons()) {
+                    if (carton.getQuantity() != null) {
+                        totalCartons += carton.getQuantity();
+                    }
+                }
+                form.setTotalCartons(totalCartons);
+            } else {
+                form.setTotalCartons(0);
+            }
+            
             // 保存申报单主表
             boolean saved = this.save(form);
             if (!saved) {
@@ -189,6 +202,19 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             // 确保不更新组织ID字段，保持原有的组织ID
             if (existingForm != null && existingForm.getOrgId() != null) {
                 form.setOrgId(existingForm.getOrgId());
+            }
+
+            // 自动计算并在更新前填充箱子总数
+            if (form.getCartons() != null && !form.getCartons().isEmpty()) {
+                int totalCartons = 0;
+                for (DeclarationCarton carton : form.getCartons()) {
+                    if (carton.getQuantity() != null) {
+                        totalCartons += carton.getQuantity();
+                    }
+                }
+                form.setTotalCartons(totalCartons);
+            } else {
+                form.setTotalCartons(0);
             }
 
             // 1. 更新主表

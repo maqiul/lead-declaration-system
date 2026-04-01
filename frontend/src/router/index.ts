@@ -21,7 +21,8 @@ const preloadComponents = [
   () => import('@/views/system/user/index.vue'),
   () => import('@/views/system/role/index.vue'),
   () => import('@/views/system/bank-account/index.vue'),
-  () => import('@/views/system/country/index.vue')
+  () => import('@/views/system/country/index.vue'),
+  () => import('@/views/system/measurement-unit/index.vue')
 ]
 
 export const asyncRoutes: RouteRecordRaw[] = [
@@ -121,6 +122,12 @@ export const asyncRoutes: RouteRecordRaw[] = [
         name: 'Currency',
         component: () => import('@/views/system/currency/index.vue'),
         meta: { title: '货币管理', icon: 'MoneyCollectOutlined', permission: 'system:currency:list' }
+      },
+      {
+        path: 'measurement-unit',
+        name: 'MeasurementUnit',
+        component: () => import('@/views/system/measurement-unit/index.vue'),
+        meta: { title: '计量单位管理', icon: 'DashboardOutlined', permission: 'system:measurement-unit:list' }
       },
       {
         path: 'city-info',

@@ -53,9 +53,14 @@ public class DeclarationProduct {
     private Integer quantity;
 
     /**
-     * 单位
+     * 单位（英文名称）
      */
     private String unit;
+
+    /**
+     * 单位代码（关联 measurement_units 表）
+     */
+    private String unitCode;
 
     /**
      * 单价

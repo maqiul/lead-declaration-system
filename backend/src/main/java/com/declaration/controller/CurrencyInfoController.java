@@ -70,12 +70,7 @@ public class CurrencyInfoController {
     @GetMapping("/enabled")
     @Operation(summary = "获取所有启用的货币信息")
     public Result<List<CurrencyInfo>> getEnabledCurrencies() {
-        LambdaQueryWrapper<CurrencyInfo> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(CurrencyInfo::getStatus, 1)
-               .orderByAsc(CurrencyInfo::getSort)
-               .orderByAsc(CurrencyInfo::getChineseName);
-        
-        List<CurrencyInfo> currencies = currencyInfoService.list(wrapper);
+        List<CurrencyInfo> currencies = currencyInfoService.getEnabledList();
         return Result.success(currencies);
     }
 

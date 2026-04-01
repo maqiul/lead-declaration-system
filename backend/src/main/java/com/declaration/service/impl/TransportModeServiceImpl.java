@@ -6,8 +6,11 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.declaration.dao.TransportModeDao;
 import com.declaration.entity.TransportMode;
 import com.declaration.service.TransportModeService;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -48,11 +51,30 @@ public class TransportModeServiceImpl extends ServiceImpl<TransportModeDao, Tran
     }
 
     @Override
+    @Cacheable(value = "sys:dict:transport-modes")
     public List<TransportMode> getEnabledList() {
         LambdaQueryWrapper<TransportMode> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(TransportMode::getStatus, 1)
                .orderByAsc(TransportMode::getSort)
                .orderByAsc(TransportMode::getChineseName);
         return this.list(wrapper);
+    }
+
+    @Override
+    @CacheEvict(value = "sys:dict:transport-modes", allEntries = true)
+    public boolean save(TransportMode entity) {
+        return super.save(entity);
+    }
+
+    @Override
+    @CacheEvict(value = "sys:dict:transport-modes", allEntries = true)
+    public boolean updateById(TransportMode entity) {
+        return super.updateById(entity);
+    }
+
+    @Override
+    @CacheEvict(value = "sys:dict:transport-modes", allEntries = true)
+    public boolean removeById(Serializable id) {
+        return super.removeById(id);
     }
 }

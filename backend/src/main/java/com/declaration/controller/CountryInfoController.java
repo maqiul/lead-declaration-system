@@ -65,12 +65,7 @@ public class CountryInfoController {
     @GetMapping("/enabled")
     @Operation(summary = "获取所有启用的国家信息")
     public Result<List<CountryInfo>> getEnabledCountries() {
-        LambdaQueryWrapper<CountryInfo> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(CountryInfo::getStatus, 1)
-               .orderByAsc(CountryInfo::getSort)
-               .orderByAsc(CountryInfo::getChineseName);
-        
-        List<CountryInfo> countries = countryInfoService.list(wrapper);
+        List<CountryInfo> countries = countryInfoService.getEnabledList();
         return Result.success(countries);
     }
 

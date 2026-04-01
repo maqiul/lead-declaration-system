@@ -153,7 +153,7 @@
               <a-select
                 v-model:value="formData.destinationCountry"
                 :options="countryOptions"
-                placeholder="请输入或选择目的国家(支持中英文)" 
+                placeholder="请输入或选择目的国家 (支持中英文)" 
                 :disabled="isFormReadonly"
                 show-search
                 option-filter-prop="label"
@@ -167,7 +167,7 @@
               <a-select
                 v-model:value="formData.tradeCountry"
                 :options="countryOptions"
-                placeholder="请输入或选择贸易国家(支持中英文)" 
+                placeholder="请输入或选择贸易国家 (支持中英文)" 
                 :disabled="isFormReadonly"
                 show-search
                 option-filter-prop="label"
@@ -309,15 +309,20 @@
             <template v-else-if="column.key === 'unit'">
               <a-select 
                 v-if="!isFormReadonly"
-                v-model:value="record.unit" 
+                v-model:value="record.unitCode" 
                 style="width: 100%"
-                placeholder="单位"
+                placeholder="请选择单位"
+                @change="handleUnitChange(record)"
               >
-                <a-select-option value="PCS">PCS</a-select-option>
-                <a-select-option value="KGS">KGS</a-select-option>
-                <a-select-option value="CBM">CBM</a-select-option>
+                <a-select-option 
+                  v-for="unit in measurementUnits" 
+                  :key="unit.unitCode"
+                  :value="unit.unitCode"
+                >
+                  {{ unit.unitName }} ({{ unit.unitNameEn }})
+                </a-select-option>
               </a-select>
-              <span v-else>{{ record.unit }}</span>
+              <span v-else>{{ findUnitByCode(measurementUnits, record.unitCode)?.unitNameEn || record.unit }}</span>
             </template>
             
             <template v-else-if="column.key === 'unitPrice'">
@@ -372,9 +377,7 @@
                 v-model:value="record.amount" 
                 :min="0"
                 :step="0.01"
-                @change="() => {
-                  record._amountManuallySet = true;
-                }"
+                @change="handleAmountChange(record)"
                 style="width: 100%"
               />
               <span v-else>{{ record.amount }}</span>
@@ -1342,6 +1345,8 @@ import { getEnabledTransportModes } from '@/api/system/transportMode'
 import { getEnabledPaymentMethods } from '@/api/system/paymentMethod'
 import { getEnabledCountries } from '@/api/system'
 import { getEnabledCurrencies } from '@/api/system/currency'
+import { getActiveMeasurementUnits, type MeasurementUnit } from '@/api/system/measurement-unit'
+import {  findUnitByCode } from '@/utils/measurement-unit'
 
 // 文件预览 URL 生成函数
 const FILE_DOWNLOAD_URL = '/api/v1/files/download'
@@ -1383,9 +1388,12 @@ const auditHistoryColumns = [
   { title: '原状态', key: 'preStatus', width: 70 }
 ]
 
-// 活跃任务状态（用于任务驱动的UI判断）
+// 活跃任务状态（用于任务驱动的 UI 判断）
 const activeTasks = ref<any[]>([])
 const activeTaskKeys = computed(() => activeTasks.value.map((t: any) => t.taskKey))
+
+// 计量单位列表
+const measurementUnits = ref<MeasurementUnit[]>([])
 
 // 基本信息是否只读（审核模式、查看模式、水单提交模式、财务补充模式都只读）
 const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value || isFinanceUploadMode.value)
@@ -2409,7 +2417,7 @@ const loadCountries = async () => {
       }))
       console.log('加载国家数据成功:', countryOptions.value)
     } else {
-      // 如果API失败，使用默认数据
+      // 如果 API 失败，使用默认数据
       countryOptions.value = [
         { label: 'China', value: 'CHN', englishName: 'China' },
         { label: 'United States', value: 'USA', englishName: 'United States' },
@@ -2423,15 +2431,19 @@ const loadCountries = async () => {
   } catch (error) {
     console.error('加载国家数据失败:', error)
     // 使用默认数据作为后备
-    countryOptions.value = [
-      { label: 'China', value: 'CHN', englishName: 'China' },
-      { label: 'United States', value: 'USA', englishName: 'United States' },
-      { label: 'United Kingdom', value: 'GBR', englishName: 'United Kingdom' },
-      { label: 'Germany', value: 'DEU', englishName: 'Germany' },
-      { label: 'France', value: 'FRA', englishName: 'France' },
-      { label: 'Japan', value: 'JPN', englishName: 'Japan' },
-      { label: 'South Korea', value: 'KOR', englishName: 'South Korea' }
-    ]
+  }
+}
+
+// 加载计量单位列表
+const loadMeasurementUnits = async () => {
+  try {
+    const response = await getActiveMeasurementUnits()
+    if (response.data && response.data.code === 200) {
+      measurementUnits.value = response.data.data || []
+      console.log('加载计量单位成功:', measurementUnits.value.length + ' 个单位')
+    }
+  } catch (error) {
+    console.error('加载计量单位失败:', error)
   }
 }
 
@@ -2478,6 +2490,12 @@ const getCountryEnglishName = (countryCode: string): string => {
   const country = countryOptions.value.find(item => item.value === countryCode);
   return country ? country.englishName : countryCode;
 }
+
+// 根据国家代码获取中文全名
+// const getCountryChineseName = (countryCode: string): string => {
+//   const country = countryOptions.value.find(item => item.value === countryCode);
+//   return country ? country.chineseName : countryCode;
+// }
 
 // 加载HS商品类型数据
 const loadProductTypes = async () => {
@@ -2645,28 +2663,40 @@ const calculateAmount = (record: any) => {
 const handleUnitPriceOrQuantityChange = (record: any) => {
   // 如果金额是手动设置的，询问用户是否要重新计算
   if (record._amountManuallySet && record.amount !== 0) {
-    // 使用 ant design 的 Modal 确认对话框
     Modal.confirm({
-      title: '重新计算金额?',
+      title: '重新计算金额？',
       content: '检测到单价或数量已更改，是否根据新的单价和数量重新计算金额？',
       okText: '重新计算',
       cancelText: '保持手动输入',
       onOk: () => {
-        record._amountManuallySet = false; // 临时取消手动标记，允许重新计算
-        calculateAmount(record); // 重新计算
-        record._amountManuallySet = true; // 重新标记为手动设置
+        record._amountManuallySet = false;
+        calculateAmount(record);
+        record._amountManuallySet = true;
       },
-      onCancel: () => {
-        // 用户选择保持手动输入，不做任何操作
-      }
+      onCancel: () => {}
     });
   } else {
-    // 如果金额未手动设置，直接计算
     calculateAmount(record);
   }
 };
 
-// HS编码变更处理
+// 处理单位变更
+const handleUnitChange = (record: any) => {
+  console.log('单位变更:', record.unitCode, record);
+  // 根据 unitCode 查找对应的单位名称，同时设置 unit 和 unitCode
+  const selectedUnit = findUnitByCode(measurementUnits.value, record.unitCode);
+  if (selectedUnit) {
+    record.unit = selectedUnit.unitNameEn;  // 设置英文名称
+    // record.unitCode 已经由 v-model 自动设置了
+  }
+};
+
+// 处理金额变更
+const handleAmountChange = (record: any) => {
+  record._amountManuallySet = true;
+};
+
+// HS 编码变更处理
 const onHsCodeChange = async (index: number, value: string | number) => {
   const stringValue = typeof value === 'string' ? value : String(value)
   const option = hsOptions.value.find(opt => opt.value === stringValue)
@@ -2829,16 +2859,16 @@ const addProduct = () => {
     productEnglishName: '',
     hsCode: '',
     quantity: 1,
-    unit: 'PCS',
+    unitCode: '01',  // 默认单位代码（个）
     unitPrice: 0,
     amount: 0, // 初始化金额字段
     _amountManuallySet: false, // 标记金额是否手动设置
     grossWeight: 0,
     netWeight: 0,
-    cartons: 1,    // 默认1箱
-    volume: 0,     // 默认0
-    imageId: null, // 产品图片ID
-    productPhoto: '', // 产品照片URL
+    cartons: 1,    // 默认 1 箱
+    volume: 0,     // 默认 0
+    imageId: null, // 产品图片 ID
+    productPhoto: '', // 产品照片 URL
     photoFile: null, // 上传文件对象
     declarationElements: [] // 添加申报要素字段
   })
@@ -2929,8 +2959,18 @@ const goBack = () => {
 const handleSaveDraft = async () => {
   submitting.value = true
   try {
-    // 将关联箱子的 cartons 和 volume 赋值到产品中
+    // 将关联箱子的 cartons 和 volume 赋值到产品中，并确保单位完整
     productList.value.forEach(product => {
+      // 保证单位信息完整
+      if (!product.unit && product.unitCode) {
+        const selectedUnit = findUnitByCode(measurementUnits.value, product.unitCode)
+        if (selectedUnit) {
+          product.unit = selectedUnit.unitNameEn || 'PCS'
+        } else {
+          product.unit = 'PCS'
+        }
+      }
+      
       const relatedCarton = cartonList.value.find(carton => 
         carton.selectedProducts && carton.selectedProducts.includes(product.id)
       )
@@ -2985,9 +3025,9 @@ const handleSaveDraft = async () => {
       totalAmount: totals.value.totalAmount,
       products: productList.value.map((product: any) => ({
         ...product,
-        id: product.id ? Number(product.id) : undefined,  // 确保ID是数字类型
-        imageId: product.imageId ? Number(product.imageId) : null,  // 确保imageId是数字类型
-        productPhoto: product.productPhoto, // 显式包含图片URL
+        id: product.id ? Number(product.id) : undefined,  // 确保 ID 是数字类型
+        imageId: product.imageId ? Number(product.imageId) : null,  // 确保 imageId 是数字类型
+        productPhoto: product.productPhoto, // 显式包含图片 URL
         elementValues: (product.declarationElements || [])
           .filter((elem: any) => elem.value && elem.value.trim())
           .map((elem: any) => ({
@@ -3115,8 +3155,18 @@ const handleSubmit = async () => {
       }
     })
     
-    // 将关联箱子的 cartons 和 volume 赋值到产品中
+    // 将关联箱子的 cartons 和 volume 赋值到产品中，并确保单位完整
     productList.value.forEach(product => {
+      // 保证单位信息完整
+      if (!product.unit && product.unitCode) {
+        const selectedUnit = findUnitByCode(measurementUnits.value, product.unitCode)
+        if (selectedUnit) {
+          product.unit = selectedUnit.unitNameEn || 'PCS'
+        } else {
+          product.unit = 'PCS'
+        }
+      }
+      
       const relatedCarton = cartonList.value.find(carton => 
         carton.selectedProducts && carton.selectedProducts.includes(product.id)
       )
@@ -3547,6 +3597,7 @@ const testDataStructure = (elements: any[]) => {
 onMounted(() => {
   loadData()
   loadCountries()
+  loadMeasurementUnits()
 })
 </script>
 

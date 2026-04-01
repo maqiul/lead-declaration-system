@@ -75,18 +75,7 @@ public class BankAccountConfigController {
     @Operation(summary = "获取所有启用的银行账户")
     public Result<List<BankAccountConfig>> getEnabledBankAccounts(
             @Parameter(description = "币种") @RequestParam(required = false) String currency) {
-        LambdaQueryWrapper<BankAccountConfig> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(BankAccountConfig::getStatus, 1);
-        
-        if (currency != null && !currency.isEmpty()) {
-            wrapper.eq(BankAccountConfig::getCurrency, currency);
-        }
-        
-        wrapper.orderByDesc(BankAccountConfig::getIsDefault)
-               .orderByAsc(BankAccountConfig::getSort)
-               .orderByAsc(BankAccountConfig::getAccountName);
-        
-        List<BankAccountConfig> accounts = bankAccountConfigService.list(wrapper);
+        List<BankAccountConfig> accounts = bankAccountConfigService.getEnabledList(currency);
         return Result.success(accounts);
     }
 

@@ -49,8 +49,7 @@ public class CityInfoController {
         if(country == null) 
             return Result.fail("国家不能为空");
 
-        QueryWrapper<CityInfo> queryWrapper = new QueryWrapper<CityInfo>().eq("country_name", country).orderByAsc("sort");
-        return Result.success(cityInfoService.list(queryWrapper));
+        return Result.success(cityInfoService.getCitiesByCountry(country));
     }
 
     /**

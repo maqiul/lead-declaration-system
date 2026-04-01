@@ -61,4 +61,10 @@ public interface ICityInfoService extends IService<CityInfo> {
      */
     void updateStatus(Long id, Integer status);
 
+    /**
+     * 根据国家获取城市列表
+     * @param country 国家名称
+     * @return 城市列表
+     */
+    List<CityInfo> getCitiesByCountry(String country);
 }

@@ -75,6 +75,9 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     @Autowired
     private TransportModeService transportModeService;
 
+    @Autowired
+    private MeasurementUnitService measurementUnitService;
+
     @Override
     public DeclarationAttachment generateAndSaveExportDocuments(DeclarationForm form) throws IOException {
         String templatePath = getTemplatePath();
@@ -244,13 +247,16 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         }
 
         // 从关联数据计算统计字段
-        fillData.put("totalCartons", calculateTotalCartons(form));
+        Integer totalCartons = calculateTotalCartons(form);
+        form.setTotalCartons(totalCartons);
+        fillData.put("totalCartons", totalCartons);
         fillData.put("totalGrossWeight", calculateTotalGrossWeight(form));
         fillData.put("totalNetWeight", calculateTotalNetWeight(form));
         fillData.put("totalVolume", calculateTotalVolume(form));
         fillData.put("totalQuantity", calculateTotalQuantity(form));
-        fillData.put("contonEN", getCaronsType(form).get("contonEN"));
-        fillData.put("contonCH", getCaronsType(form).get("contonCH"));
+        Map<String,String> contonString = getCaronsType(form);
+        fillData.put("contonEN", contonString.get("contonEN"));
+        fillData.put("contonCH", contonString.get("contonCH"));
         fillData.put("departureCityEnglish", form.getDepartureCityEnglish());
         fillData.put("paymentMethod",form.getPaymentMethod());
         // fillData.put("contonEN",)
@@ -350,13 +356,22 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             DeclarationCarton carton = form.getCartons().get(0);
             String contonCH = carton.getTypeChinese();
             String contonEN = carton.getTypeEnglish();
+            System.out.printf("contonEN:" +contonEN);
             HashMap<String, String> map = new HashMap<>();
-            map.put("contonCH", contonCH);
             map.put("contonEN", contonEN);
+            if (form.getTotalCartons()==1){
+                map.put("contonEN", contonEN.substring(0,contonEN.length()-1 ));
+            }
+            map.put("contonCH", contonCH);
+            System.out.printf("MapStr:" + JSONObject.toJSONString(map));
             return map;
         }
         HashMap<String, String> map2 = new HashMap<String, String>(2);
         map2.put("contonEN", "CARTONS");
+        if (form.getTotalCartons()==1){
+            map2.put("contonEN", "CARTON");
+        }
+
         map2.put("contonCH", "纸箱");
         // return "CARTONS";
         return map2;
@@ -383,11 +398,23 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
         if (form.getProducts() != null) {
             form.getProducts().forEach(p -> {
+                String unit = "PCS";
+                String unitCode = p.getUnitCode();
+                MeasurementUnit measurementUnit = measurementUnitService.getByUnitCode(unitCode);
+                if(measurementUnit !=null){
+                    if(p.getQuantity()>1){
+                        unit = measurementUnit.getUnitNameEn();
+                    }else {
+                        unit = measurementUnit.getUnitNameEnSingular();
+                    }
+
+                }
+
                 ExportDataRequest.ProductInfo info = new ExportDataRequest.ProductInfo();
                 info.setProductName(p.getProductEnglishName());
                 info.setHsCode(p.getHsCode());
                 info.setQuantity(p.getQuantity());
-                info.setUnit(p.getUnit());
+                info.setUnit(unit);
                 info.setUnitPrice(p.getUnitPrice());
                 info.setAmount(p.getAmount() != null ? p.getAmount().toString() : "0.00");
                 info.setGrossWeight(p.getGrossWeight());
@@ -409,7 +436,11 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                         info.setCartonNo(carton.getCartonNo());
                         info.setCartonQuantity(carton.getQuantity());
                         info.setCartonVolume(carton.getVolume());
-                        info.setContonEN(carton.getTypeEnglish());
+                        String contonEn  = carton.getTypeEnglish();
+                        info.setContonEN(contonEn);
+                        if(carton.getQuantity()==1){
+                            info.setContonEN(contonEn.substring(0,contonEn.length()-1));
+                        }
                     }
                 }
 
@@ -1035,9 +1066,12 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         data.put("destinationCountry", destinationCountryDisplay);
         data.put("portOfDestination", destinationCountryDisplay);
         data.put("portOfDeparture", "");
-        data.put("packageType", getCaronsType(form).get("contonCH"));
-        data.put("contonEN", getCaronsType(form).get("contonEN"));
-        data.put("totalCartons", calculateTotalCartons(form));
+        Integer totalCarTons = calculateTotalCartons(form);
+        form.setTotalCartons(totalCarTons);
+        Map<String,String> contonString = getCaronsType(form);
+        data.put("packageType", contonString.get("contonCH"));
+        data.put("contonEN", contonString.get("contonEN"));
+        data.put("totalCartons", totalCarTons);
         data.put("totalGrossWeight", calculateTotalGrossWeight(form));
         data.put("totalNetWeight", calculateTotalNetWeight(form));
         data.put("totalQuantity", calculateTotalQuantity(form));
@@ -1123,12 +1157,18 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
             int no = 1;
             for (com.declaration.entity.DeclarationProduct p : sortedProducts) {
+                String unit ="个";
+                String unitCode = p.getUnitCode();
+                MeasurementUnit measurementUnit = measurementUnitService.getByUnitCode(unitCode);
+                if(measurementUnit!=null){
+                    unit = measurementUnit.getUnitName();
+                }
                 CustomsItemDTO customsItemDTO = new CustomsItemDTO();
                 customsItemDTO.setNo(no++);
                 customsItemDTO.setHsCode(p.getHsCode());
                 // customsItemDTO.set.put("productName", p.getProductEnglishName());
                 customsItemDTO.setNameCh(p.getProductChineseName());
-                customsItemDTO.setQuantityStr(p.getQuantity() + " " + "个");
+                customsItemDTO.setQuantityStr(p.getQuantity() + " " + unit);
                 customsItemDTO.setUnitPrice(p.getUnitPrice());
                 customsItemDTO.setTotalPrice(p.getAmount());
                 customsItemDTO.setCurrency(form.getCurrency());
@@ -1144,7 +1184,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                 customsItemDTO.setExemptionType("照章征税（1）");
 
                 // 统计数量 (对应模板中的 {.statQuantity})
-                customsItemDTO.setStatQuantity(p.getQuantity() + " (个)");
+                customsItemDTO.setStatQuantity(p.getQuantity() + " ("+unit+")");
                 // list.add(row1);
                 // 箱号处理
                 Long cartonId = productToCartonMap.get(p.getId());

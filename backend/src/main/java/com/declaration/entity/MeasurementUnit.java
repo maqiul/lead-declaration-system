@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 public class MeasurementUnit {
 
     /**
-     * 主键ID
+     * 主键 ID
      */
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
@@ -34,6 +34,11 @@ public class MeasurementUnit {
      * 英文单位名称
      */
     private String unitNameEn;
+
+    /**
+     * 英文单位单数名称
+     */
+    private String unitNameEnSingular;
 
     /**
      * 单位类型
