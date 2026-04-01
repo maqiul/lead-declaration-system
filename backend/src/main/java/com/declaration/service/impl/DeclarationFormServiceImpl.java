@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 出口申报单服务实现类
@@ -53,6 +54,7 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     private final BusinessAuditRecordDao auditRecordDao;
     private final RuntimeService runtimeService;
     private final UserService userService;
+    private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -110,69 +112,8 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                 return false;
             }
             
-            // 保存箱子信息
-            List<DeclarationCarton> cartons = form.getCartons();
-            Map<Long, Long> cartonIdMap = new HashMap<>(); // 临时ID到真实ID的映射
-            if (cartons != null && !cartons.isEmpty()) {
-                for (int i = 0; i < cartons.size(); i++) {
-                    DeclarationCarton carton = cartons.get(i);
-                    Long tempId = carton.getId(); // 临时ID
-                    carton.setId(null); // 重要：设置为null，通过自增生成新ID
-                    carton.setFormId(form.getId());
-                    carton.setSortOrder(i);
-                    cartonService.save(carton);
-                    cartonIdMap.put(tempId, carton.getId()); // 建立映射
-                }
-            }
-            
-            // 保存产品明细
-            List<DeclarationProduct> products = form.getProducts();
-            Map<Long, Long> productIdMap = new HashMap<>(); // 临时ID到真实ID的映射
-            if (products != null && !products.isEmpty()) {
-                for (int i = 0; i < products.size(); i++) {
-                    DeclarationProduct product = products.get(i);
-                    Long tempId = product.getId(); // 临时ID
-                    product.setId(null); // 重要：设置为null，通过自增生成新ID
-                    product.setFormId(form.getId());
-                    product.setSortOrder(i);
-                    productService.save(product);
-                    productIdMap.put(tempId, product.getId()); // 建立映射
-                    
-                    // 保存申报要素建议
-                    List<DeclarationElementValue> elementValues = product.getElementValues();
-                    if (elementValues != null && !elementValues.isEmpty()) {
-                        for (DeclarationElementValue elementValue : elementValues) {
-                            elementValue.setId(null); // 重要：设置为null
-                            elementValue.setProductId(product.getId());
-                            elementValueService.save(elementValue);
-                        }
-                    }
-                }
-            }
-            
-            // 保存箱子产品关联
-            List<DeclarationCartonProduct> cartonProducts = form.getCartonProducts();
-            if (cartonProducts != null && !cartonProducts.isEmpty() && !cartonIdMap.isEmpty()) {
-                // 先删除原有的关联关系
-                cartonProductService.lambdaUpdate()
-                        .in(DeclarationCartonProduct::getCartonId, 
-                            cartonIdMap.values().toArray())
-                        .remove();
-                
-                // 保存新的关联关系，使用映射后的实际ID
-                for (DeclarationCartonProduct cartonProduct : cartonProducts) {
-                    Long realCartonId = cartonIdMap.get(cartonProduct.getCartonId());
-                    Long realProductId = productIdMap.get(cartonProduct.getProductId());
-                    
-                    if (realCartonId != null && realProductId != null) {
-                        DeclarationCartonProduct newCartonProduct = new DeclarationCartonProduct();
-                        newCartonProduct.setCartonId(realCartonId);
-                        newCartonProduct.setProductId(realProductId);
-                        newCartonProduct.setQuantity(cartonProduct.getQuantity());
-                        cartonProductService.save(newCartonProduct);
-                    }
-                }
-            }
+            // 保存主表后批量保存所有子数据
+            saveNestedData(form);
             
             return true;
         } catch (Exception e) {
@@ -248,62 +189,8 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                 cartonService.removeByIds(Arrays.asList(cartonIds));
             }
 
-            // 3. 重新保存新的关联数据 (复用保存逻辑的部分代码，但需要跳过主表保存)
-            // 保存箱子信息
-            List<DeclarationCarton> cartons = form.getCartons();
-            Map<Long, Long> cartonIdMap = new HashMap<>(); 
-            if (cartons != null && !cartons.isEmpty()) {
-                for (int i = 0; i < cartons.size(); i++) {
-                    DeclarationCarton carton = cartons.get(i);
-                    Long tempId = carton.getId(); 
-                    carton.setId(null); 
-                    carton.setFormId(form.getId());
-                    carton.setSortOrder(i);
-                    cartonService.save(carton);
-                    cartonIdMap.put(tempId, carton.getId()); 
-                }
-            }
-            
-            // 保存产品明细
-            List<DeclarationProduct> products = form.getProducts();
-            Map<Long, Long> productIdMap = new HashMap<>(); 
-            if (products != null && !products.isEmpty()) {
-                for (int i = 0; i < products.size(); i++) {
-                    DeclarationProduct product = products.get(i);
-                    Long tempId = product.getId(); 
-                    product.setId(null); 
-                    product.setFormId(form.getId());
-                    product.setSortOrder(i);
-                    productService.save(product);
-                    productIdMap.put(tempId, product.getId()); 
-                    
-                    List<DeclarationElementValue> elementValues = product.getElementValues();
-                    if (elementValues != null && !elementValues.isEmpty()) {
-                        for (DeclarationElementValue elementValue : elementValues) {
-                            elementValue.setId(null); 
-                            elementValue.setProductId(product.getId());
-                            elementValueService.save(elementValue);
-                        }
-                    }
-                }
-            }
-            
-            // 保存箱子产品关联
-            List<DeclarationCartonProduct> cartonProducts = form.getCartonProducts();
-            if (cartonProducts != null && !cartonProducts.isEmpty() && !cartonIdMap.isEmpty()) {
-                for (DeclarationCartonProduct cartonProduct : cartonProducts) {
-                    Long realCartonId = cartonIdMap.get(cartonProduct.getCartonId());
-                    Long realProductId = productIdMap.get(cartonProduct.getProductId());
-                    
-                    if (realCartonId != null && realProductId != null) {
-                        DeclarationCartonProduct newCartonProduct = new DeclarationCartonProduct();
-                        newCartonProduct.setCartonId(realCartonId);
-                        newCartonProduct.setProductId(realProductId);
-                        newCartonProduct.setQuantity(cartonProduct.getQuantity());
-                        cartonProductService.save(newCartonProduct);
-                    }
-                }
-            }
+            // 3. 重新合并批量保存子数据
+            saveNestedData(form);
 
             return true;
         } catch (Exception e) {
@@ -316,58 +203,89 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     public DeclarationForm getFullDeclarationForm(Long id) {
         DeclarationForm form = this.getById(id);
         if (form != null) {
-            // 查询产品明细
-            List<DeclarationProduct> products = productService.lambdaQuery()
-                    .eq(DeclarationProduct::getFormId, id)
-                    .list();
-            form.setProducts(products);
-            
-            // 查询箱子信息
-            List<DeclarationCarton> cartons = cartonService.lambdaQuery()
-                    .eq(DeclarationCarton::getFormId, id)
-                    .orderByAsc(DeclarationCarton::getSortOrder)
-                    .list();
-            form.setCartons(cartons);
-            
-            // 查询箱子产品关联
-            if (cartons != null && !cartons.isEmpty()) {
-                List<DeclarationCartonProduct> cartonProducts = cartonProductService.lambdaQuery()
-                        .in(DeclarationCartonProduct::getCartonId, 
-                            cartons.stream().map(DeclarationCarton::getId).toArray())
-                        .list();
-                form.setCartonProducts(cartonProducts);
+            try {
+                // ====== 第一波并发：产品 + 箱子 + 水单 + 附件 + 提货单 同时查询 ======
+                CompletableFuture<List<DeclarationProduct>> productsFuture = CompletableFuture.supplyAsync(() ->
+                    productService.lambdaQuery()
+                            .eq(DeclarationProduct::getFormId, id)
+                            .list()
+                );
+                
+                CompletableFuture<List<DeclarationCarton>> cartonsFuture = CompletableFuture.supplyAsync(() ->
+                    cartonService.lambdaQuery()
+                            .eq(DeclarationCarton::getFormId, id)
+                            .orderByAsc(DeclarationCarton::getSortOrder)
+                            .list()
+                );
+                
+                CompletableFuture<List<DeclarationRemittance>> remittancesFuture = CompletableFuture.supplyAsync(() ->
+                    remittanceService.lambdaQuery()
+                            .eq(DeclarationRemittance::getFormId, id)
+                            .orderByAsc(DeclarationRemittance::getRemittanceDate)
+                            .list()
+                );
+                
+                CompletableFuture<List<DeclarationAttachment>> attachmentsFuture = CompletableFuture.supplyAsync(() ->
+                    attachmentService.lambdaQuery()
+                            .eq(DeclarationAttachment::getFormId, id)
+                            .orderByDesc(DeclarationAttachment::getCreateTime)
+                            .list()
+                );
+                
+                CompletableFuture<List<DeliveryOrder>> deliveryOrdersFuture = CompletableFuture.supplyAsync(() -> {
+                    LambdaQueryWrapper<DeliveryOrder> deliveryOrderQuery = new LambdaQueryWrapper<>();
+                    deliveryOrderQuery.eq(DeliveryOrder::getFormId, id)
+                            .orderByDesc(DeliveryOrder::getCreatedAt);
+                    return deliveryOrderDao.selectList(deliveryOrderQuery);
+                });
+                
+                // 等待第一波全部查完
+                CompletableFuture.allOf(productsFuture, cartonsFuture, remittancesFuture, attachmentsFuture, deliveryOrdersFuture).join();
+                
+                List<DeclarationProduct> products = productsFuture.get();
+                List<DeclarationCarton> cartons = cartonsFuture.get();
+                
+                form.setProducts(products);
+                form.setCartons(cartons);
+                form.setRemittances(remittancesFuture.get());
+                form.setAttachments(attachmentsFuture.get());
+                form.setDeliveryOrders(deliveryOrdersFuture.get());
+                
+                // ====== 第二波并发：基于第一波结果的依赖查询 ======
+                CompletableFuture<Void> elementsFuture = CompletableFuture.runAsync(() -> {
+                    if (products != null && !products.isEmpty()) {
+                        // 一次性查出所有产品的申报要素，避免 N+1 问题
+                        List<Long> productIds = products.stream()
+                                .map(DeclarationProduct::getId)
+                                .collect(Collectors.toList());
+                        List<DeclarationElementValue> allValues = elementValueService.lambdaQuery()
+                                .in(DeclarationElementValue::getProductId, productIds)
+                                .list();
+                        // 按 productId 分组后回填
+                        Map<Long, List<DeclarationElementValue>> valueMap = allValues.stream()
+                                .collect(Collectors.groupingBy(DeclarationElementValue::getProductId));
+                        for (DeclarationProduct product : products) {
+                            product.setElementValues(valueMap.getOrDefault(product.getId(), new ArrayList<>()));
+                        }
+                    }
+                });
+                
+                CompletableFuture<Void> cartonProductsFuture = CompletableFuture.runAsync(() -> {
+                    if (cartons != null && !cartons.isEmpty()) {
+                        List<DeclarationCartonProduct> cartonProducts = cartonProductService.lambdaQuery()
+                                .in(DeclarationCartonProduct::getCartonId,
+                                    cartons.stream().map(DeclarationCarton::getId).toArray())
+                                .list();
+                        form.setCartonProducts(cartonProducts);
+                    }
+                });
+                
+                // 等待第二波全部查完
+                CompletableFuture.allOf(elementsFuture, cartonProductsFuture).join();
+                
+            } catch (Exception e) {
+                log.error("并发查询申报单详情异常，降级为空数据: formId={}", id, e);
             }
-            
-            // 查询申报要素
-            if (products != null && !products.isEmpty()) {
-                for (DeclarationProduct product : products) {
-                    List<DeclarationElementValue> elementValues = elementValueService.lambdaQuery()
-                            .eq(DeclarationElementValue::getProductId, product.getId())
-                            .list();
-                    product.setElementValues(elementValues);
-                }
-            }
-            
-            // 查询水单信息
-            List<DeclarationRemittance> remittances = remittanceService.lambdaQuery()
-                    .eq(DeclarationRemittance::getFormId, id)
-                    .orderByAsc(DeclarationRemittance::getRemittanceDate)
-                    .list();
-            form.setRemittances(remittances);
-
-            // 查询附件信息
-            List<DeclarationAttachment> attachments = attachmentService.lambdaQuery()
-                    .eq(DeclarationAttachment::getFormId, id)
-                    .orderByDesc(DeclarationAttachment::getCreateTime)
-                    .list();
-            form.setAttachments(attachments);
-
-            // 查询提货单信息
-            LambdaQueryWrapper<DeliveryOrder> deliveryOrderQuery = new LambdaQueryWrapper<>();
-            deliveryOrderQuery.eq(DeliveryOrder::getFormId, id)
-                    .orderByDesc(DeliveryOrder::getCreatedAt);
-            List<DeliveryOrder> deliveryOrders = deliveryOrderDao.selectList(deliveryOrderQuery);
-            form.setDeliveryOrders(deliveryOrders);
         }
         return form;
     }
@@ -378,8 +296,89 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
      */
     private String generateFormNo() {
         String datePrefix = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String randomSuffix = String.valueOf(System.currentTimeMillis() % 10000);
-        return "DEC" + datePrefix + randomSuffix;
+        String redisKey = "sys:seq:formno:" + datePrefix;
+        
+        Long seq = stringRedisTemplate.opsForValue().increment(redisKey);
+        if (seq != null && seq == 1L) {
+            stringRedisTemplate.expire(redisKey, 24, java.util.concurrent.TimeUnit.HOURS);
+        }
+        
+        String suffix = String.format("%04d", seq != null ? seq : 1L);
+        return "DEC" + datePrefix + suffix;
+    }
+
+    /**
+     * 高性能批量保存关联数据
+     */
+    private void saveNestedData(DeclarationForm form) {
+        List<DeclarationCarton> cartons = form.getCartons();
+        Map<Long, Long> cartonIdMap = new HashMap<>(); 
+        if (cartons != null && !cartons.isEmpty()) {
+            List<Long> tempIds = new ArrayList<>();
+            for (int i = 0; i < cartons.size(); i++) {
+                DeclarationCarton carton = cartons.get(i);
+                tempIds.add(carton.getId()); 
+                carton.setId(null); 
+                carton.setFormId(form.getId());
+                carton.setSortOrder(i);
+            }
+            cartonService.saveBatch(cartons);
+            for (int i = 0; i < cartons.size(); i++) {
+                cartonIdMap.put(tempIds.get(i), cartons.get(i).getId());
+            }
+        }
+        
+        List<DeclarationProduct> products = form.getProducts();
+        Map<Long, Long> productIdMap = new HashMap<>(); 
+        if (products != null && !products.isEmpty()) {
+            List<Long> tempIds = new ArrayList<>();
+            List<DeclarationElementValue> allElementValues = new ArrayList<>();
+            for (int i = 0; i < products.size(); i++) {
+                DeclarationProduct product = products.get(i);
+                tempIds.add(product.getId()); 
+                product.setId(null); 
+                product.setFormId(form.getId());
+                product.setSortOrder(i);
+            }
+            productService.saveBatch(products);
+            
+            for (int i = 0; i < products.size(); i++) {
+                DeclarationProduct product = products.get(i);
+                productIdMap.put(tempIds.get(i), product.getId());
+                
+                List<DeclarationElementValue> elementValues = product.getElementValues();
+                if (elementValues != null && !elementValues.isEmpty()) {
+                    for (DeclarationElementValue elementValue : elementValues) {
+                        elementValue.setId(null); 
+                        elementValue.setProductId(product.getId());
+                        allElementValues.add(elementValue);
+                    }
+                }
+            }
+            if (!allElementValues.isEmpty()) {
+                elementValueService.saveBatch(allElementValues);
+            }
+        }
+        
+        List<DeclarationCartonProduct> cartonProducts = form.getCartonProducts();
+        if (cartonProducts != null && !cartonProducts.isEmpty() && !cartonIdMap.isEmpty()) {
+            List<DeclarationCartonProduct> newCartonProducts = new ArrayList<>();
+            for (DeclarationCartonProduct cartonProduct : cartonProducts) {
+                Long realCartonId = cartonIdMap.get(cartonProduct.getCartonId());
+                Long realProductId = productIdMap.get(cartonProduct.getProductId());
+                
+                if (realCartonId != null && realProductId != null) {
+                    DeclarationCartonProduct newCartonProduct = new DeclarationCartonProduct();
+                    newCartonProduct.setCartonId(realCartonId);
+                    newCartonProduct.setProductId(realProductId);
+                    newCartonProduct.setQuantity(cartonProduct.getQuantity());
+                    newCartonProducts.add(newCartonProduct);
+                }
+            }
+            if (!newCartonProducts.isEmpty()) {
+                cartonProductService.saveBatch(newCartonProducts);
+            }
+        }
     }
 
     @Override

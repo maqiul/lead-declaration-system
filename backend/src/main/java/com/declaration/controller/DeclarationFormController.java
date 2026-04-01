@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.declaration.dao.BusinessAuditRecordDao;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.declaration.annotation.Idempotent;
 import com.declaration.annotation.RequiresPermissions;
 import com.declaration.common.PageParam;
 import com.declaration.common.Result;
@@ -260,6 +261,7 @@ public class DeclarationFormController {
     @PostMapping("/{id}/audit")
     @Operation(summary = "审核申报单")
     @RequiresPermissions("business:declaration:audit")
+    @Idempotent(prefix = "sys:idempotent:audit:", expireTime = 5, message = "审核正在处理中，请勿重复操作！")
     public Result<String> auditDeclaration(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody Map<String, Object> auditData) {
@@ -928,6 +930,7 @@ public class DeclarationFormController {
     @PostMapping("/draft")
     @Operation(summary = "保存草稿")
     @RequiresPermissions("business:declaration:add")
+    @Idempotent(prefix = "sys:idempotent:draft:", expireTime = 3, message = "草稿正在保存中，请勿重复点击！")
     public Result<JSONObject> saveDraft(@RequestBody DeclarationForm form) {
         try {
             Long orgId = OrganizationUtils.getCurrentUserOrgId();
@@ -979,6 +982,7 @@ public class DeclarationFormController {
     @SaIgnore
     @Operation(summary = "新增申报单")
     @RequiresPermissions("business:declaration:add")
+    @Idempotent(prefix = "sys:idempotent:create:", expireTime = 5, message = "申报单正在创建中，请勿重复提交！")
     public Result<Long> createDeclaration(@Valid @RequestBody DeclarationForm form) {
         // 生成申报单号
         if (form.getFormNo() == null || form.getFormNo().isEmpty()) {
@@ -1005,6 +1009,7 @@ public class DeclarationFormController {
     @PutMapping("/{id}")
     @Operation(summary = "更新申报单")
     @RequiresPermissions("business:declaration:update")
+    @Idempotent(prefix = "sys:idempotent:update:", expireTime = 5, message = "申报单正在更新中，请勿重复提交！")
     public Result<Void> updateDeclaration(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Valid @RequestBody DeclarationForm form) {
@@ -1052,6 +1057,7 @@ public class DeclarationFormController {
     @SaIgnore
     @Operation(summary = "提交申报单")
     @RequiresPermissions("business:declaration:update")
+    @Idempotent(prefix = "sys:idempotent:submit:", expireTime = 5, message = "申报单正在提交中，请勿重复操作！")
     public Result<String> submitDeclaration(@Parameter(description = "申报单ID") @PathVariable Long id) {
         log.info("调用提交申报单");
         DeclarationForm form = declarationFormService.getById(id);

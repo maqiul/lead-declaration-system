@@ -709,8 +709,8 @@
         <a-empty v-if="depositRemittanceList.length === 0" description="暂无定金水单" />
       </a-card>
 
-      <!-- 尾款水单 (定金水单审核通过后显示，提货单模式下只读展示，水单提交模式下也显示，审核模式下也显示) -->
-      <a-card v-if="formStatus && formStatus !== 1 && (formStatus >= 4 || (isPaymentOnlyMode && route.query.type === 'balance') || isAudit)" title="尾款水单" size="small" class="section-card">
+      <!-- 尾款水单 (定金水单审核通过后显示，提货单模式下只读展示，水单提交模式下也显示，审核模式下也显示但定金审核/初审阶段隐藏) -->
+      <a-card v-if="formStatus && formStatus !== 1 && !isDepositAuditStage && (formStatus >= 4 || (isPaymentOnlyMode && route.query.type === 'balance') || isAudit)" title="尾款水单" size="small" class="section-card">
         <template #extra>
           <a-button v-if="isBalanceEditable" type="primary" size="small" @click="handleAddRemittance(2)">
             <template #icon><PlusOutlined /></template>
@@ -800,8 +800,8 @@
         <a-empty v-if="balanceRemittanceList.length === 0" description="暂无尾款水单" />
       </a-card>
 
-      <!-- 提货单 (尾款审核通过后显示，在提货单上传模式下也显示，在审核模式下也显示) -->
-      <a-card v-if="formStatus !== 1 && ((formStatus && formStatus >= 2 && balanceApproved && !isPaymentOnlyMode) || isPickupMode || isAudit)" title="提货单" size="small" class="section-card">
+      <!-- 提货单 (尾款审核通过后显示，在提货单上传模式下也显示，在审核模式下也显示但定金/尾款审核阶段隐藏) -->
+      <a-card v-if="formStatus !== 1 && !isDepositAuditStage && !isBalanceAuditStage && ((formStatus && formStatus >= 2 && balanceApproved && !isPaymentOnlyMode) || isPickupMode || isAudit)" title="提货单" size="small" class="section-card">
         <template #extra>
           <a-button 
             v-if="(formStatus === 2 || isPickupMode) && !isReadonly" 
@@ -1416,6 +1416,13 @@ const isBalanceEditable = computed(() =>
   formStatus.value === 4 &&
   !isPickupMode.value // 提货单模式下尾款水单只读
 )
+
+// 当前审核阶段（从 URL taskKey 中获取）
+const currentAuditTaskKey = computed(() => (route.query.taskKey as string) || '')
+// 定金审核阶段：不应该看到尾款水单和提货单
+const isDepositAuditStage = computed(() => isAudit.value && (currentAuditTaskKey.value === 'depositAudit' || currentAuditTaskKey.value === 'deptAudit'))
+// 尾款审核阶段：不应该看到提货单
+const isBalanceAuditStage = computed(() => isAudit.value && currentAuditTaskKey.value === 'balanceAudit')
 
 // 获取当前审核阶段文本
 const getAuditActionText = () => {
