@@ -54,3 +54,12 @@ export function getUserPermissions() {
     method: 'get'
   })
 }
+
+// 修改密码
+export function changePassword(data: { oldPassword: string; newPassword: string }) {
+  return request({
+    url: '/user/change-password',
+    method: 'post',
+    data
+  })
+}

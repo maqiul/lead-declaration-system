@@ -224,6 +224,56 @@ public class UserController {
             return Result.fail("密码重置失败");
         }
     }
+
+    /**
+     * 当前登录用户修改自己的密码
+     */
+    @PostMapping("/change-password")
+    public Result<Void> changePassword(@RequestBody Map<String, String> params) {
+        String oldPassword = params.get("oldPassword");
+        String newPassword = params.get("newPassword");
+
+        if (oldPassword == null || oldPassword.trim().isEmpty()) {
+            return Result.fail("旧密码不能为空");
+        }
+        if (newPassword == null || newPassword.trim().isEmpty()) {
+            return Result.fail("新密码不能为空");
+        }
+        if (newPassword.length() < 6) {
+            return Result.fail("新密码长度不能少于6位");
+        }
+
+        Long userId = StpUtil.getLoginIdAsLong();
+        User user = userService.getById(userId);
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+
+        // 验证旧密码是否正确
+        String encryptedOldPassword = SaSecureUtil.md5(oldPassword);
+        if (!encryptedOldPassword.equals(user.getPassword())) {
+            return Result.fail("旧密码不正确");
+        }
+
+        // 不能和旧密码相同
+        if (oldPassword.equals(newPassword)) {
+            return Result.fail("新密码不能与旧密码相同");
+        }
+
+        // 更新密码
+        User userToUpdate = new User();
+        userToUpdate.setId(userId);
+        userToUpdate.setPassword(SaSecureUtil.md5(newPassword));
+
+        boolean result = userService.updateById(userToUpdate);
+        if (result) {
+            // 修改密码后强制当前登录失效，要求重新登录
+            StpUtil.logout();
+            return Result.success("密码修改成功，请重新登录", null);
+        } else {
+            return Result.fail("密码修改失败");
+        }
+    }
     
     @GetMapping("/permissions")
     public Result<Set<String>> getUserPermissions() {

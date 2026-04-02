@@ -74,6 +74,11 @@
                   <span style="margin-left: 8px">系统设置</span>
                 </a-menu-item>
                 <a-menu-divider />
+                <a-menu-item key="change-password">
+                  <lock-outlined />
+                  <span style="margin-left: 8px">修改密码</span>
+                </a-menu-item>
+                <a-menu-divider />
                 <a-menu-item key="logout" style="color: #F43F5E">
                   <logout-outlined />
                   <span style="margin-left: 8px">退出登录</span>
@@ -95,20 +100,45 @@
       </a-layout-footer>
     </a-layout>
   </a-layout>
+
+  <!-- 修改密码弹窗 -->
+  <a-modal
+    v-model:open="changePwdVisible"
+    title="修改密码"
+    :confirm-loading="changePwdLoading"
+    @ok="handleChangePassword"
+    @cancel="changePwdVisible = false"
+    :destroyOnClose="true"
+  >
+    <a-form :label-col="{ span: 6 }" :wrapper-col="{ span: 16 }" style="margin-top: 16px;">
+      <a-form-item label="旧密码" required>
+        <a-input-password v-model:value="changePwdForm.oldPassword" placeholder="请输入旧密码" />
+      </a-form-item>
+      <a-form-item label="新密码" required>
+        <a-input-password v-model:value="changePwdForm.newPassword" placeholder="请输入新密码（至少6位）" />
+      </a-form-item>
+      <a-form-item label="确认密码" required>
+        <a-input-password v-model:value="changePwdForm.confirmPassword" placeholder="请再次输入新密码" />
+      </a-form-item>
+    </a-form>
+  </a-modal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, h, watch } from 'vue'
+import { ref, computed, onMounted, h, watch, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { getUserRoutes } from '@/api/system'
+import { changePassword } from '@/api/user'
 import { getSystemBasicInfo, getUiConfig } from '@/api/system/config'
+import { message } from 'ant-design-vue'
 import { 
   MenuUnfoldOutlined, 
   MenuFoldOutlined,
   UserOutlined,
   SettingOutlined,
   LogoutOutlined,
+  LockOutlined,
   HomeOutlined,
   TeamOutlined,
   ApartmentOutlined,
@@ -430,9 +460,59 @@ const handleUserMenuClick = ({ key }: { key: string | number }) => {
     case 'settings':
       router.push('/system/config')
       break
+    case 'change-password':
+      changePwdVisible.value = true
+      changePwdForm.oldPassword = ''
+      changePwdForm.newPassword = ''
+      changePwdForm.confirmPassword = ''
+      break
     case 'logout':
       handleLogout()
       break
+  }
+}
+
+// ========== 修改密码 ==========
+const changePwdVisible = ref(false)
+const changePwdLoading = ref(false)
+const changePwdForm = reactive({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+})
+
+const handleChangePassword = async () => {
+  if (!changePwdForm.oldPassword) {
+    message.warning('请输入旧密码')
+    return
+  }
+  if (!changePwdForm.newPassword || changePwdForm.newPassword.length < 6) {
+    message.warning('新密码不能为空且至少6位')
+    return
+  }
+  if (changePwdForm.newPassword !== changePwdForm.confirmPassword) {
+    message.warning('两次输入的新密码不一致')
+    return
+  }
+
+  changePwdLoading.value = true
+  try {
+    const res: any = await changePassword({
+      oldPassword: changePwdForm.oldPassword,
+      newPassword: changePwdForm.newPassword
+    })
+    if (res.data.code === 200) {
+      message.success('密码修改成功，请重新登录')
+      changePwdVisible.value = false
+      await userStore.resetToken()
+      router.push('/login')
+    } else {
+      message.error(res.data.message || '密码修改失败')
+    }
+  } catch (e: any) {
+    message.error(e?.message || '密码修改失败')
+  } finally {
+    changePwdLoading.value = false
   }
 }
 
