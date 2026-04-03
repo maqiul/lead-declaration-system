@@ -1110,143 +1110,141 @@
              </a-col>
           </a-row>
           
-          <!-- 财务汇总信息 -->
+          <!-- 财务汇总信息 (只读，与财务补充弹窗样式一致) -->
           <a-row :gutter="16" style="margin-top: 16px;" v-if="!isFinanceUploadMode">
             <a-col :span="24">
-              <a-card title="财务汇总信息" size="small" style="background-color: #f8f9fa;">
-                <a-row :gutter="16">
-                  <a-col :span="6">
-                    <div style="text-align: center; padding: 8px;">
-                      <div style="font-size: 12px; color: #666;">收汇总计</div>
-                      <div style="font-size: 16px; font-weight: bold; color: #1890ff;">{{ totalReceiptCNY.toFixed(2) }} CNY</div>
-                      <div style="font-size: 10px; color: #999;">已转成人民币</div>
-                    </div>
+              <a-card size="small">
+                <template #title>
+                  <span>财务汇总信息</span>
+                  <a-tag v-if="parsedCalculationDetail" color="success" style="margin-left: 8px;">已生成明细</a-tag>
+                  <a-tag v-else color="warning" style="margin-left: 8px;">待生成明细</a-tag>
+                </template>
+                <a-row :gutter="24">
+                  <a-col :span="10">
+                    <a-card title="退税参数" size="small">
+                      <a-form layout="vertical">
+                        <a-form-item label="退税点 (%)">
+                          <a-input-number :value="financeSupplement.taxRefundRate" style="width: 100%" disabled />
+                        </a-form-item>
+                        <a-form-item label="外汇银行">
+                          <a-input :value="parsedCalculationDetail && parsedCalculationDetail.foreignExchangeBank ? parsedCalculationDetail.foreignExchangeBank : '未设置'" style="width: 100%" disabled />
+                        </a-form-item>
+                        <a-form-item label="银行手续费率 (%)">
+                          <a-input-number :value="financeSupplement.bankFeeRate" style="width: 100%" disabled />
+                        </a-form-item>
+                        <a-form-item label="货代发票金额">
+                          <a-input-number :value="financeSupplement.freightAmount" style="width: 100%" disabled />
+                        </a-form-item>
+                        <a-form-item label="报关代理发票金额">
+                          <a-input-number :value="financeSupplement.customsAmount" style="width: 100%" disabled />
+                        </a-form-item>
+                      </a-form>
+                    </a-card>
                   </a-col>
-                  <a-col :span="6">
-                    <div style="text-align: center; padding: 8px;">
-                      <div style="font-size: 12px; color: #666;">银行手续费</div>
-                      <div style="font-size: 16px; font-weight: bold; color: #ff4d4f;">{{ bankFeeAmount.toFixed(2) }} CNY</div>
-                      <div style="font-size: 10px; color: #999;">{{ financeSupplement.bankFeeRate || 0 }}%</div>
-                    </div>
-                  </a-col>
-                  <a-col :span="6">
-                    <div style="text-align: center; padding: 8px;">
-                      <div style="font-size: 12px; color: #666;">退税金额</div>
-                      <div style="font-size: 16px; font-weight: bold; color: #52c41a;">{{ taxRefundAmount.toFixed(2) }} CNY</div>
-                      <div style="font-size: 10px; color: #999;">{{ financeSupplement.taxRefundRate || 0 }}%</div>
-                    </div>
-                  </a-col>
-                  <a-col :span="6">
-                    <div style="text-align: center; padding: 8px;">
-                      <div style="font-size: 12px; color: #666;">开票金额</div>
-                      <div style="font-size: 16px; font-weight: bold; color: #722ed1;">{{ computedDetailsAmount.toFixed(2) }} CNY</div>
-                      <div style="font-size: 10px; color: #999;">最终计算结果</div>
-                    </div>
+                  <a-col :span="14">
+                    <a-card title="开票明细计算" size="small">
+                      <template v-if="parsedCalculationDetail">
+                        <div class="calculation-box">
+                          <!-- 定金明细 -->
+                          <div class="calc-section">
+                            <div class="calc-title" style="color: #1890ff;">定金收汇明细</div>
+                            <template v-if="parsedCalculationDetail.depositDetails && parsedCalculationDetail.depositDetails.length > 0">
+                              <div class="calc-row" v-for="(item, index) in parsedCalculationDetail.depositDetails" :key="'d'+index">
+                                <span class="calc-label">{{ item.remittanceName ? String(item.remittanceName) : '定金' }}:</span>
+                                <span class="calc-value">{{ formatMoney(item.amount) }} {{ item.currency || 'USD' }} × {{ item.exchangeRate }} = {{ formatMoney(item.cny) }} CNY</span>
+                              </div>
+                            </template>
+                            <div class="calc-row total">
+                              <span class="calc-label">定金合计:</span>
+                              <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.depositCny) }} CNY</span>
+                            </div>
+                          </div>
+                          
+                          <a-divider />
+                          
+                          <!-- 尾款明细 -->
+                          <div class="calc-section">
+                            <div class="calc-title" style="color: #fa8c16;">尾款收汇明细</div>
+                            <template v-if="parsedCalculationDetail.balanceDetails && parsedCalculationDetail.balanceDetails.length > 0">
+                              <div class="calc-row" v-for="(item, index) in parsedCalculationDetail.balanceDetails" :key="'b'+index">
+                                <span class="calc-label">{{ item.remittanceName ? String(item.remittanceName) : '尾款' }}:</span>
+                                <span class="calc-value">{{ formatMoney(item.amount) }} {{ item.currency || 'USD' }} × {{ item.exchangeRate }} = {{ formatMoney(item.cny) }} CNY</span>
+                              </div>
+                            </template>
+                            <div class="calc-row total">
+                              <span class="calc-label">尾款合计:</span>
+                              <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.balanceCny) }} CNY</span>
+                            </div>
+                          </div>
+                          
+                          <a-divider />
+                          
+                          <!-- 总货物金额 -->
+                          <div class="calc-section">
+                            <div class="calc-title">汇总</div>
+                            <div class="calc-row">
+                              <span class="calc-label">总货物金额 (定金+尾款):</span>
+                              <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
+                            </div>
+                          </div>
+                          
+                          <a-divider />
+                          
+                          <!-- 开票金额计算 -->
+                          <div class="calc-section">
+                            <div class="calc-title">开票金额计算</div>
+                            <div class="calc-row">
+                              <span class="calc-label">货款金额:</span>
+                              <span class="calc-value">{{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
+                            </div>
+                            <div class="calc-row">
+                              <span class="calc-label">退税金额 ({{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} × {{ parsedCalculationDetail.taxRefundRate }}%):</span>
+                              <span class="calc-value" style="color: #52c41a;">+{{ formatMoney(parsedCalculationDetail.amountWithTaxRefund - parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
+                            </div>
+                            <div class="calc-row total-with-tax">
+                              <span class="calc-label">含税总金额 (货款+退税):</span>
+                              <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.amountWithTaxRefund) }} CNY</span>
+                            </div>
+                            <div class="calc-row deduct">
+                              <span class="calc-label">- 货代发票金额:</span>
+                              <span class="calc-value">{{ formatMoney(parsedCalculationDetail.freightInvoiceAmount || 0) }} CNY</span>
+                            </div>
+                            <div class="calc-row deduct">
+                              <span class="calc-label">- 海关代理发票金额:</span>
+                              <span class="calc-value">{{ formatMoney(parsedCalculationDetail.customsInvoiceAmount || 0) }} CNY</span>
+                            </div>
+                            <div class="calc-row deduct">
+                              <span class="calc-label">- 银行手续费 ({{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} × {{ parsedCalculationDetail.bankFeeRate }}%):</span>
+                              <span class="calc-value">{{ formatMoney(parsedCalculationDetail.bankFeeAmount) }} CNY</span>
+                            </div>
+                          </div>
+                          
+                          <a-divider />
+                          
+                          <div class="calc-section">
+                            <div class="calc-row final">
+                              <span class="calc-label">开票金额:</span>
+                              <span class="calc-value final-value">{{ formatMoney(parsedCalculationDetail.invoiceAmount) }} CNY</span>
+                            </div>
+                            <div class="calc-row" v-if="financeSupplement.taxRefundAmount">
+                              <span class="calc-label">退税金额:</span>
+                              <span class="calc-value" style="color: #52c41a;">+{{ formatMoney(financeSupplement.taxRefundAmount) }} CNY</span>
+                            </div>
+                            <div class="calc-row" v-if="parsedCalculationDetail.foreignExchangeBank">
+                              <span class="calc-label">外汇银行:</span>
+                              <span class="calc-value">{{ parsedCalculationDetail.foreignExchangeBank }}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+                      <template v-else>
+                        <div style="text-align: center; color: #999; padding: 40px 0;">
+                          <p>请先在财务补充中设置退税参数，然后点击"生成开票明细"按钮计算开票金额</p>
+                        </div>
+                      </template>
+                    </a-card>
                   </a-col>
                 </a-row>
-              </a-card>
-            </a-col>
-          </a-row>
-          
-          <!-- 计算详情展示 -->
-          <a-row :gutter="16" style="margin-top: 16px;" v-if="!isFinanceUploadMode && financeSupplement.calculationDetail">
-            <a-col :span="24">
-              <a-card title="计算详情" size="small">
-                <div class="calculation-box">
-                  <!-- 解析计算详情JSON -->
-                  <template v-if="parsedCalculationDetail">
-                    <!-- 定金明细 -->
-                    <div class="calc-section" v-if="parsedCalculationDetail.depositDetails && parsedCalculationDetail.depositDetails.length > 0">
-                      <div class="calc-title" style="color: #1890ff;">定金收汇明细</div>
-                      <div class="calc-row" v-for="(item, index) in parsedCalculationDetail.depositDetails" :key="index">
-                        <span class="calc-label">{{ item.remittanceName || '定金' }}:</span>
-                        <span class="calc-value">{{ formatMoney(item.amount) }} {{ item.currency || 'USD' }} × {{ item.exchangeRate }} = {{ formatMoney(item.cny) }} CNY</span>
-                      </div>
-                      <div class="calc-row total">
-                        <span class="calc-label">定金合计:</span>
-                        <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.depositCny) }} CNY</span>
-                      </div>
-                    </div>
-                    
-                    <a-divider v-if="parsedCalculationDetail.depositDetails && parsedCalculationDetail.depositDetails.length > 0" />
-                    
-                    <!-- 尾款明细 -->
-                    <div class="calc-section" v-if="parsedCalculationDetail.balanceDetails && parsedCalculationDetail.balanceDetails.length > 0">
-                      <div class="calc-title" style="color: #fa8c16;">尾款收汇明细</div>
-                      <div class="calc-row" v-for="(item, index) in parsedCalculationDetail.balanceDetails" :key="index">
-                        <span class="calc-label">{{ item.remittanceName || '尾款' }}:</span>
-                        <span class="calc-value">{{ formatMoney(item.amount) }} {{ item.currency || 'USD' }} × {{ item.exchangeRate }} = {{ formatMoney(item.cny) }} CNY</span>
-                      </div>
-                      <div class="calc-row total">
-                        <span class="calc-label">尾款合计:</span>
-                        <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.balanceCny) }} CNY</span>
-                      </div>
-                    </div>
-                    
-                    <a-divider v-if="(parsedCalculationDetail.depositDetails && parsedCalculationDetail.depositDetails.length > 0) || (parsedCalculationDetail.balanceDetails && parsedCalculationDetail.balanceDetails.length > 0)" />
-                    
-                    <!-- 总货物金额 -->
-                    <div class="calc-section" v-if="parsedCalculationDetail.totalGoodsAmount">
-                      <div class="calc-title">汇总</div>
-                      <div class="calc-row">
-                        <span class="calc-label">总货物金额:</span>
-                        <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
-                      </div>
-                    </div>
-                    
-                    <a-divider v-if="parsedCalculationDetail.totalGoodsAmount" />
-                    
-                    <!-- 开票金额计算 -->
-                    <div class="calc-section" v-if="parsedCalculationDetail.totalGoodsAmount">
-                      <div class="calc-title">开票金额计算</div>
-                      <div class="calc-row">
-                        <span class="calc-label">货款金额:</span>
-                        <span class="calc-value">{{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
-                      </div>
-                      <div class="calc-row" v-if="parsedCalculationDetail.taxRefundRate">
-                        <span class="calc-label">退税金额 ({{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} × {{ parsedCalculationDetail.taxRefundRate }}%):</span>
-                        <span class="calc-value" style="color: #52c41a;">+{{ formatMoney(getTaxRefundAmount()) }} CNY</span>
-                      </div>
-                      <div class="calc-row total-with-tax" v-if="parsedCalculationDetail.amountWithTaxRefund">
-                        <span class="calc-label">含税总金额:</span>
-                        <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.amountWithTaxRefund) }} CNY</span>
-                      </div>
-                      <div class="calc-row deduct" v-if="parsedCalculationDetail.freightInvoiceAmount">
-                        <span class="calc-label">- 货代发票金额:</span>
-                        <span class="calc-value">{{ formatMoney(parsedCalculationDetail.freightInvoiceAmount) }} CNY</span>
-                      </div>
-                      <div class="calc-row deduct" v-if="parsedCalculationDetail.customsInvoiceAmount">
-                        <span class="calc-label">- 海关代理发票金额:</span>
-                        <span class="calc-value">{{ formatMoney(parsedCalculationDetail.customsInvoiceAmount) }} CNY</span>
-                      </div>
-                      <div class="calc-row deduct" v-if="parsedCalculationDetail.bankFeeAmount">
-                        <span class="calc-label">- 银行手续费:</span>
-                        <span class="calc-value">{{ formatMoney(parsedCalculationDetail.bankFeeAmount) }} CNY</span>
-                      </div>
-                    </div>
-                    
-                    <a-divider v-if="parsedCalculationDetail.totalGoodsAmount" />
-                    
-                    <!-- 最终结果 -->
-                    <div class="calc-section">
-                      <div class="calc-row final">
-                        <span class="calc-label">开票金额:</span>
-                        <span class="calc-value final-value">{{ formatMoney(parsedCalculationDetail.invoiceAmount) }} CNY</span>
-                      </div>
-                      <div class="calc-row" v-if="financeSupplement.taxRefundAmount">
-                        <span class="calc-label">退税金额:</span>
-                        <span class="calc-value" style="color: #52c41a;">+{{ formatMoney(financeSupplement.taxRefundAmount) }} CNY</span>
-                      </div>
-                      <div class="calc-row" v-if="parsedCalculationDetail.foreignExchangeBank">
-                        <span class="calc-label">外汇银行:</span>
-                        <span class="calc-value">{{ parsedCalculationDetail.foreignExchangeBank }}</span>
-                      </div>
-                    </div>
-                  </template>
-                  <div v-else style="text-align: center; color: #999; padding: 40px 0;">
-                    <p>暂无计算详情数据</p>
-                  </div>
-                </div>
               </a-card>
             </a-col>
           </a-row>
@@ -3896,5 +3894,45 @@ onMounted(() => {
 .calc-row.final .calc-value {
   font-size: 20px;
   font-weight: bold;
+}
+
+/* 财务汇总信息增强样式 */
+.finance-summary-card {
+  background-color: #fafbfc;
+}
+
+.summary-stat-item {
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.summary-stat-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+.summary-stat-final {
+  background: linear-gradient(135deg, #f9f0ff, #fff);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 1.3;
+}
+
+.stat-unit {
+  font-size: 11px;
+  color: #999;
+  margin-top: 2px;
 }
 </style>

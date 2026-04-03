@@ -1,5 +1,6 @@
 package com.declaration.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.declaration.dao.BankAccountConfigDao;
 import com.declaration.entity.BankAccountConfig;
@@ -23,7 +24,7 @@ public class BankAccountConfigServiceImpl extends ServiceImpl<BankAccountConfigD
     @Override
     @Cacheable(value = "sys:dict:bank-accounts", key = "#currency != null && !#currency.isEmpty() ? #currency : 'ALL'")
     public List<BankAccountConfig> getEnabledList(String currency) {
-        var wrapper = new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<BankAccountConfig>();
+        LambdaQueryWrapper<BankAccountConfig> wrapper = new LambdaQueryWrapper<BankAccountConfig>();
         wrapper.eq(BankAccountConfig::getStatus, 1);
         
         if (currency != null && !currency.isEmpty()) {
