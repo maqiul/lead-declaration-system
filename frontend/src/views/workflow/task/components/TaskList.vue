@@ -11,9 +11,9 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" @click="handleSearch" v-permission="['workflow:task:list']">搜索</a-button>
-            <a-button @click="handleReset" v-permission="['workflow:task:list']">重置</a-button>
-            <a-button @click="$emit('refresh')" v-permission="['workflow:task:list']">
+            <a-button type="primary" @click="handleSearch" v-permission="['workflow:task:view']">搜索</a-button>
+            <a-button @click="handleReset" v-permission="['workflow:task:view']">重置</a-button>
+            <a-button @click="$emit('refresh')" v-permission="['workflow:task:view']">
               <template #icon><reload-outlined /></template>
               刷新
             </a-button>
@@ -40,25 +40,28 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record as Task)" v-permission="['workflow:task:list']">查看</a-button>
-              
+              <a-button type="link" size="small" @click="handleView(record as Task)" v-permission="['workflow:task:view']">查看</a-button>
+
               <template v-if="type === 'candidate'">
                 <a-button type="link" size="small" @click="$emit('claim', record as Task)" v-permission="['workflow:task:claim']">
                   签收
                 </a-button>
               </template>
-              
+
               <template v-else-if="type === 'assigned'">
                 <a-button type="link" size="small" @click="$emit('complete', record as Task)" v-permission="['workflow:task:complete']">
                   处理
+                </a-button>
+                <a-button type="link" size="small" @click="$emit('reject', record as Task)" v-permission="['workflow:task:reject']" danger>
+                  驳回
                 </a-button>
                 <a-button type="link" size="small" @click="handleTransfer(record as Task)" v-permission="['workflow:task:transfer']">
                   转办
                 </a-button>
               </template>
-              
+
               <template v-else>
-                <a-button type="link" size="small" @click="handleViewProcess(record as Task)" v-permission="['workflow:instance:list']">
+                <a-button type="link" size="small" @click="handleViewProcess(record as Task)" v-permission="['workflow:instance:view']">
                   查看流程
                 </a-button>
               </template>
@@ -137,6 +140,7 @@ const emit = defineEmits<{
   (e: 'refresh'): void
   (e: 'claim', task: Task): void
   (e: 'complete', task: Task): void
+  (e: 'reject', task: Task): void
   (e: 'change', pagination: { current: number, pageSize: number }): void
   (e: 'search', params: SearchForm): void
   (e: 'view', task: Task): void

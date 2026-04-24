@@ -67,4 +67,10 @@ public interface ICityInfoService extends IService<CityInfo> {
      * @return 城市列表
      */
     List<CityInfo> getCitiesByCountry(String country);
+
+    /**
+     * 获取所有启用的城市信息
+     * @return 启用的城市列表
+     */
+    List<CityInfo> getEnabledList();
 }

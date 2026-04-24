@@ -30,7 +30,7 @@
     <!-- 操作按钮区域 -->
     <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="openAddModal" v-permission="['system:transport:add']" class="ui-btn-cta">
+        <a-button type="primary" @click="openAddModal" v-permission="['system:transport:create']" class="ui-btn-cta">
           <template #icon><plus-outlined /></template>
           新增运输方式
         </a-button>
@@ -60,7 +60,7 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="openEditModal(record as TransportMode)" v-permission="['system:transport:edit']" class="text-blue-600 font-medium">编辑</a-button>
+              <a-button type="link" size="small" @click="openEditModal(record as TransportMode)" v-permission="['system:transport:update']" class="text-blue-600 font-medium">编辑</a-button>
               <a-popconfirm
                 title="确定要切换状态吗？"
                 @confirm="toggleStatus(record as TransportMode)"

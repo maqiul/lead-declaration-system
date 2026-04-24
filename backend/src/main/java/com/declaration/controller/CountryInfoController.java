@@ -32,7 +32,7 @@ public class CountryInfoController {
      */
     @GetMapping
     @Operation(summary = "分页查询国家信息")
-    @RequiresPermissions("system:country:list")
+    @RequiresPermissions("system:country:view")
     public Result<Page<CountryInfo>> getCountries(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer current,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
@@ -88,7 +88,7 @@ public class CountryInfoController {
      */
     @PostMapping
     @Operation(summary = "新增国家信息")
-    @RequiresPermissions("system:country:add")
+    @RequiresPermissions("system:country:create")
     public Result<Void> addCountry(@RequestBody CountryInfo country) {
         // 检查国家代码是否重复
         boolean exists = countryInfoService.lambdaQuery()
@@ -132,7 +132,7 @@ public class CountryInfoController {
      */
     @PutMapping("/{id}")
     @Operation(summary = "修改国家信息")
-    @RequiresPermissions("system:country:edit")
+    @RequiresPermissions("system:country:update")
     public Result<Void> updateCountry(
             @Parameter(description = "国家ID") @PathVariable Long id,
             @RequestBody CountryInfo country) {
@@ -196,7 +196,7 @@ public class CountryInfoController {
      */
     @PostMapping("/{id}/toggle-status")
     @Operation(summary = "启用/禁用国家信息")
-    @RequiresPermissions("system:country:edit")
+    @RequiresPermissions("system:country:update")
     public Result<Void> toggleStatus(
             @Parameter(description = "国家ID") @PathVariable Long id,
             @Parameter(description = "状态 0-禁用 1-启用") @RequestParam Integer status) {

@@ -32,7 +32,7 @@ public class BankAccountConfigController {
      */
     @GetMapping
     @Operation(summary = "分页查询银行账户配置")
-    @RequiresPermissions("system:bank-account:query")
+    @RequiresPermissions("system:bank-account:view")
     public Result<Page<BankAccountConfig>> getBankAccounts(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer current,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
@@ -73,6 +73,7 @@ public class BankAccountConfigController {
      */
     @GetMapping("/enabled")
     @Operation(summary = "获取所有启用的银行账户")
+    @RequiresPermissions("system:bank-account:view")
     public Result<List<BankAccountConfig>> getEnabledBankAccounts(
             @Parameter(description = "币种") @RequestParam(required = false) String currency) {
         List<BankAccountConfig> accounts = bankAccountConfigService.getEnabledList(currency);
@@ -84,6 +85,7 @@ public class BankAccountConfigController {
      */
     @GetMapping("/default")
     @Operation(summary = "获取默认银行账户")
+    @RequiresPermissions("system:bank-account:view")
     public Result<BankAccountConfig> getDefaultBankAccount(
             @Parameter(description = "币种") @RequestParam(required = false) String currency) {
         LambdaQueryWrapper<BankAccountConfig> wrapper = new LambdaQueryWrapper<>();

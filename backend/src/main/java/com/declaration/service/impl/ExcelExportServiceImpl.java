@@ -17,6 +17,7 @@ import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.PrintSetup;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.VerticalAlignment;
@@ -317,19 +318,22 @@ public class ExcelExportServiceImpl implements ExcelExportService {
      * 计算总体积 - 优先从箱子列表累加，否则从产品累加，最后使用表单字段
      */
     private java.math.BigDecimal calculateTotalVolume(DeclarationForm form) {
+        java.math.BigDecimal total;
+        
         // 优先从箱子列表累加
         if (form.getCartons() != null && !form.getCartons().isEmpty()) {
-            java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+            total = java.math.BigDecimal.ZERO;
             for (DeclarationCarton carton : form.getCartons()) {
                 if (carton.getVolume() != null) {
                     total = total.add(carton.getVolume());
                 }
             }
-            return total;
-
+        } else {
+            total = form.getTotalVolume() != null ? form.getTotalVolume() : java.math.BigDecimal.ZERO;
         }
-
-        return form.getTotalVolume();
+        
+        // 保留4位小数
+        return total.setScale(4, java.math.RoundingMode.HALF_UP);
     }
 
     /**
@@ -380,84 +384,89 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     private List<ExportDataRequest.ProductInfo> createProductListData(DeclarationForm form) {
         List<ExportDataRequest.ProductInfo> productList = new ArrayList<>();
 
-        // 建立产品ID到箱子ID的映射
-        Map<Long, Long> productToCartonMap = new HashMap<>();
+        // 建立箱子ID到产品ID列表的映射
+        Map<Long, List<Long>> cartonToProductsMap = new HashMap<>();
         if (form.getCartonProducts() != null) {
             for (DeclarationCartonProduct cp : form.getCartonProducts()) {
-                productToCartonMap.put(cp.getProductId(), cp.getCartonId());
+                cartonToProductsMap.computeIfAbsent(cp.getCartonId(), k -> new ArrayList<>()).add(cp.getProductId());
             }
         }
 
-        // 建立箱子ID到箱子信息的映射
-        Map<Long, DeclarationCarton> cartonMap = new HashMap<>();
-        if (form.getCartons() != null) {
-            for (DeclarationCarton c : form.getCartons()) {
-                cartonMap.put(c.getId(), c);
-            }
-        }
-
+        // 建立产品ID到产品信息的映射
+        Map<Long, com.declaration.entity.DeclarationProduct> productMap = new HashMap<>();
         if (form.getProducts() != null) {
-            form.getProducts().forEach(p -> {
-                String unit = "PCS";
-                String unitCode = p.getUnitCode();
-                MeasurementUnit measurementUnit = measurementUnitService.getByUnitCode(unitCode);
-                if(measurementUnit !=null){
-                    if(p.getQuantity()>1){
-                        unit = measurementUnit.getUnitNameEn();
-                    }else {
-                        unit = measurementUnit.getUnitNameEnSingular();
-                    }
+            for (com.declaration.entity.DeclarationProduct p : form.getProducts()) {
+                productMap.put(p.getId(), p);
+            }
+        }
 
+        // 按箱子遍历，每个箱子生成对应的产品记录
+        if (form.getCartons() != null) {
+            // 按箱子ID排序
+            List<DeclarationCarton> sortedCartons = new ArrayList<>(form.getCartons());
+            sortedCartons.sort((a, b) -> a.getId().compareTo(b.getId()));
+
+            for (DeclarationCarton carton : sortedCartons) {
+                List<Long> productIds = cartonToProductsMap.get(carton.getId());
+                if (productIds == null || productIds.isEmpty()) {
+                    continue;
                 }
 
-                ExportDataRequest.ProductInfo info = new ExportDataRequest.ProductInfo();
-                info.setProductName(p.getProductEnglishName());
-                info.setHsCode(p.getHsCode());
-                info.setQuantity(p.getQuantity());
-                info.setUnit(unit);
-                info.setUnitPrice(p.getUnitPrice());
-                info.setAmount(p.getAmount() != null ? p.getAmount().toString() : "0.00");
-                info.setGrossWeight(p.getGrossWeight());
-                info.setNetWeight(p.getNetWeight());
-                System.out.println("获取当前产品体积:" + p.getVolume());
-                info.setVolume(p.getVolume());
-                info.setCurrency(form.getCurrency());
+                // 为这个箱子中的每个产品创建记录
+                for (Long productId : productIds) {
+                    com.declaration.entity.DeclarationProduct p = productMap.get(productId);
+                    if (p == null) continue;
 
-                // 设置产品箱数
-                info.setCartons(p.getCartons());
-                // 重量单位
-                info.setWgt("KGS");
-
-                // 获取关联的箱子信息
-                Long cartonId = productToCartonMap.get(p.getId());
-                if (cartonId != null) {
-                    DeclarationCarton carton = cartonMap.get(cartonId);
-                    if (carton != null) {
-                        info.setCartonNo(carton.getCartonNo());
-                        info.setCartonQuantity(carton.getQuantity());
-                        info.setCartonVolume(carton.getVolume());
-                        String contonEn  = carton.getTypeEnglish();
-                        info.setContonEN(contonEn);
-                        if(carton.getQuantity()==1){
-                            info.setContonEN(contonEn.substring(0,contonEn.length()-1));
+                    String unit = "PCS";
+                    String unitCode = p.getUnitCode();
+                    MeasurementUnit measurementUnit = measurementUnitService.getByUnitCode(unitCode);
+                    if(measurementUnit !=null){
+                        if(p.getQuantity()>1){
+                            unit = measurementUnit.getUnitNameEn();
+                        }else {
+                            unit = measurementUnit.getUnitNameEnSingular();
                         }
                     }
-                }
 
-                // 设置申报要素
-                if (p.getElementValues() != null) {
-                    List<Map<String, Object>> elements = new ArrayList<>();
-                    p.getElementValues().forEach(ev -> {
-                        Map<String, Object> map = new HashMap<>();
-                        map.put("name", ev.getElementName());
-                        map.put("value", ev.getElementValue());
-                        elements.add(map);
-                    });
-                    info.setDeclarationElements(elements);
-                }
+                    ExportDataRequest.ProductInfo info = new ExportDataRequest.ProductInfo();
+                    info.setProductName(p.getProductEnglishName());
+                    info.setHsCode(p.getHsCode());
+                    info.setQuantity(p.getQuantity());
+                    info.setUnit(unit);
+                    info.setUnitPrice(p.getUnitPrice());
+                    info.setAmount(p.getAmount() != null ? p.getAmount().toString() : "0.00");
+                    info.setGrossWeight(p.getGrossWeight());
+                    info.setNetWeight(p.getNetWeight());
+                    info.setVolume(p.getVolume());
+                    info.setCurrency(form.getCurrency());
+                    info.setCartons(p.getCartons());
+                    info.setWgt("KGS");
 
-                productList.add(info);
-            });
+                    // 设置当前箱子的信息
+                    info.setCartonNo(carton.getCartonNo());
+                    info.setCartonQuantity(carton.getQuantity());
+                    info.setCartonVolume(carton.getVolume());
+                    String contonEn = carton.getTypeEnglish();
+                    info.setContonEN(contonEn);
+                    if(carton.getQuantity()==1){
+                        info.setContonEN(contonEn.substring(0,contonEn.length()-1));
+                    }
+
+                    // 设置申报要素
+                    if (p.getElementValues() != null) {
+                        List<Map<String, Object>> elements = new ArrayList<>();
+                        p.getElementValues().forEach(ev -> {
+                            Map<String, Object> map = new HashMap<>();
+                            map.put("name", ev.getElementName());
+                            map.put("value", ev.getElementValue());
+                            elements.add(map);
+                        });
+                        info.setDeclarationElements(elements);
+                    }
+
+                    productList.add(info);
+                }
+            }
         }
         return productList;
     }
@@ -491,7 +500,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             data.put("remittanceDate", "");
         }
         data.put("remittanceAmount", remittance.getRemittanceAmount());
-        data.put("exchangeRate", remittance.getExchangeRate());
+        data.put("exchangeRate", remittance.getTaxRate() != null ? remittance.getTaxRate() : "");
         data.put("bankFee", remittance.getBankFee());
         data.put("creditedAmount", remittance.getCreditedAmount());
         data.put("remarks", remittance.getRemarks() != null ? remittance.getRemarks() : "");
@@ -627,9 +636,16 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     @Override
     public DeclarationAttachment generateAndSaveRemittanceReport(
             com.declaration.entity.DeclarationRemittance remittance, DeclarationForm form) throws IOException {
+        
+        if (form == null) {
+            log.warn("申报单为空,跳过水单报告生成, 水单ID: {}", remittance.getId());
+            return null;
+        }
+        
         String templatePath = getRemittanceTemplatePath();
         if (templatePath == null) {
-            throw new RuntimeException("水单模板文件不存在");
+            log.warn("水单模板文件不存在,跳过报告生成");
+            return null;
         }
 
         // 创建目录
@@ -894,26 +910,70 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                     removeOverlapMergedRegions(sheet, rowFrom, rowFrom, 13, 15);
                     sheet.addMergedRegion(cellRangeAddress4);
                     RegionUtil.setBorderTop(borderStyle, cellRangeAddress4, sheet);
+                    
                     // F: 规格区域 (第 2-3 行物理区域，水平 3-5 合并，垂直 2-3 合并)
                     CellRangeAddress cellRangeAddress5 = new CellRangeAddress(rowFrom + 1, rowTo, 3, 5);
                     removeOverlapMergedRegions(sheet, rowFrom + 1, rowTo, 3, 5);
                     sheet.addMergedRegion(cellRangeAddress5);
                     // RegionUtil.setBorderTop(borderStyle, cellRangeAddress5, sheet);
+                    
+                    // G: 为所有行添加左右边框（第0列是最左，第16列是最右）
+                    for (int row = rowFrom; row <= rowTo; row++) {
+                        Row currentRow = sheet.getRow(row);
+                        if (currentRow != null) {
+                            // 确保第0列（最左）有单元格并设置左边框
+                            Cell cell0 = currentRow.getCell(0);
+                            if (cell0 == null) {
+                                cell0 = currentRow.createCell(0);
+                            }
+                            CellStyle style0 = cell0.getCellStyle() != null ? cell0.getCellStyle() : workbook.createCellStyle();
+                            CellStyle newStyle0 = workbook.createCellStyle();
+                            newStyle0.cloneStyleFrom(style0);
+                            newStyle0.setBorderLeft(BorderStyle.THIN);
+                            newStyle0.setLeftBorderColor(IndexedColors.BLACK.getIndex());
+                            cell0.setCellStyle(newStyle0);
+                            
+                            // 确保第16列（最右）有单元格并设置右边框
+                            Cell cell16 = currentRow.getCell(16);
+                            if (cell16 == null) {
+                                cell16 = currentRow.createCell(16);
+                            }
+                            CellStyle style16 = cell16.getCellStyle() != null ? cell16.getCellStyle() : workbook.createCellStyle();
+                            CellStyle newStyle16 = workbook.createCellStyle();
+                            newStyle16.cloneStyleFrom(style16);
+                            newStyle16.setBorderRight(BorderStyle.THIN);
+                            newStyle16.setRightBorderColor(IndexedColors.BLACK.getIndex());
+                            cell16.setCellStyle(newStyle16);
+                        }
+                    }
 
                     currentStartRow += 3;
                 }
+                
+                // 设置打印区域和缩放：所有内容在一页中
+                Sheet sheet0 = workbook.getSheetAt(0);
+                
+                // 报关单固定17列（0-16），直接使用横向打印
+                int lastRowIndex = sheet0.getLastRowNum();
+                int lastColIndex = 16;
+                
+                // 设置打印区域：必须设置，否则预览空白
+                workbook.setPrintArea(0, 0, lastColIndex, 0, lastRowIndex);
+                
+                sheet0.setFitToPage(true);
+                PrintSetup printSetup = sheet0.getPrintSetup();
+                printSetup.setFitHeight((short) 1);  // 1表示所有行适应1页高
+                printSetup.setFitWidth((short) 1);   // 1表示所有列适应1页宽
+                printSetup.setLandscape(true);       // 报关单固定使用横向打印
 
-                // Sheet 1: 申报要素
-                WriteSheet ys = FesodSheet.writerSheet(1).needHead(false).relativeHeadRowIndex(3).build();
-                writer.write(elementListData, ys);
 
                 // Sheet 2: 发票
-                WriteSheet invoiceSheet = FesodSheet.writerSheet(2).build();
+                WriteSheet invoiceSheet = FesodSheet.writerSheet(1).build();
                 writer.fill(otherData, invoiceSheet);
                 writer.fill(productList, FillConfig.builder().forceNewRow(false).build(), invoiceSheet);
 
                 // Sheet 3: 装箱单
-                ExcelWriterSheetBuilder packingSheetBuilder = FesodSheet.writerSheet(3);
+                ExcelWriterSheetBuilder packingSheetBuilder = FesodSheet.writerSheet(2);
                 for (OnceAbsoluteMergeStrategy strategy : mergeStrategies) {
                     packingSheetBuilder.registerWriteHandler(strategy);
                 }
@@ -1131,11 +1191,11 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     private List<CustomsItemDTO> createAllTempleProductListData(DeclarationForm form) {
         List<CustomsItemDTO> list = new ArrayList<>();
         if (form.getProducts() != null) {
-            // 建立产品ID到箱子ID的映射
-            Map<Long, Long> productToCartonMap = new HashMap<>();
+            // 建立产品ID到箱子ID列表的映射（一个产品可能对应多个箱子）
+            Map<Long, List<Long>> productToCartonsMap = new HashMap<>();
             if (form.getCartonProducts() != null) {
                 for (com.declaration.entity.DeclarationCartonProduct cp : form.getCartonProducts()) {
-                    productToCartonMap.put(cp.getProductId(), cp.getCartonId());
+                    productToCartonsMap.computeIfAbsent(cp.getProductId(), k -> new ArrayList<>()).add(cp.getCartonId());
                 }
             }
 
@@ -1147,11 +1207,13 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                 }
             }
 
-            // 按箱子ID排序
+            // 按箱子ID排序（取第一个箱子ID作为排序依据）
             List<com.declaration.entity.DeclarationProduct> sortedProducts = new ArrayList<>(form.getProducts());
             sortedProducts.sort((a, b) -> {
-                Long cartonA = productToCartonMap.getOrDefault(a.getId(), Long.MAX_VALUE);
-                Long cartonB = productToCartonMap.getOrDefault(b.getId(), Long.MAX_VALUE);
+                List<Long> cartonsA = productToCartonsMap.getOrDefault(a.getId(), new ArrayList<>());
+                List<Long> cartonsB = productToCartonsMap.getOrDefault(b.getId(), new ArrayList<>());
+                Long cartonA = cartonsA.isEmpty() ? Long.MAX_VALUE : cartonsA.get(0);
+                Long cartonB = cartonsB.isEmpty() ? Long.MAX_VALUE : cartonsB.get(0);
                 return cartonA.compareTo(cartonB);
             });
 
@@ -1186,9 +1248,10 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                 // 统计数量 (对应模板中的 {.statQuantity})
                 customsItemDTO.setStatQuantity(p.getQuantity() + " ("+unit+")");
                 // list.add(row1);
-                // 箱号处理
-                Long cartonId = productToCartonMap.get(p.getId());
-                if (cartonId != null) {
+                // 箱号处理（取第一个箱子）
+                List<Long> cartonIds = productToCartonsMap.get(p.getId());
+                if (cartonIds != null && !cartonIds.isEmpty()) {
+                    Long cartonId = cartonIds.get(0);
                     com.declaration.entity.DeclarationCarton carton = cartonMap.get(cartonId);
                     if (carton != null) {
                         // list.add(row1);
@@ -1260,9 +1323,12 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
                 // 合并 cartons(箱数) 列
                 strategies.add(new OnceAbsoluteMergeStrategy(startRow, endRow, cartonsColIdx, cartonsColIdx));
+                // 合并 cartons(箱数) 单位
+                strategies.add(new OnceAbsoluteMergeStrategy(startRow, endRow, cartonsColIdx+1, cartonsColIdx+1));
                 // 合并 volume(体积) 列
                 strategies.add(new OnceAbsoluteMergeStrategy(startRow, endRow, volumeColIdx, volumeColIdx));
-
+                // 合并 volume(体积)单位
+                strategies.add(new OnceAbsoluteMergeStrategy(startRow, endRow, volumeColIdx+1, volumeColIdx+1));
                 log.debug("计算合并策略: cartonNo={}, rows {}-{}", cartonNo, startRow, endRow);
             }
             i++;
@@ -1319,10 +1385,12 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
                 // 合并 cartons(箱数) 列
                 strategies.add(new OnceAbsoluteMergeStrategy(startRow, endRow, cartonsColIdx, cartonsColIdx));
+                strategies.add(new OnceAbsoluteMergeStrategy(startRow, endRow, cartonsColIdx+1, cartonsColIdx+1));
                 // 合并 volume(体积) 列
                 strategies.add(new OnceAbsoluteMergeStrategy(startRow, endRow, volumeColIdx, volumeColIdx));
-
-                log.debug("计算合并策略(AllTemple): cartonNo={}, rows {}-{}", cartonNo, startRow, endRow);
+                // 合并 volume(体积) 列
+                strategies.add(new OnceAbsoluteMergeStrategy(startRow, endRow, volumeColIdx+1, volumeColIdx+1));
+                log.debug("计算合并策略: cartonNo={}, rows {}-{}", cartonNo, startRow, endRow);
             }
             i++;
         }

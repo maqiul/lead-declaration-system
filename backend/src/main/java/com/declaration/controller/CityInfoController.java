@@ -26,10 +26,19 @@ public class CityInfoController {
     private ICityInfoService cityInfoService;
 
     /**
+     * 获取所有启用的城市信息（用于下拉选择）
+     */
+    @GetMapping("/enabled")
+    public Result<List<CityInfo>> getEnabledCities() {
+        List<CityInfo> cities = cityInfoService.getEnabledList();
+        return Result.success(cities);
+    }
+
+    /**
      * 获取城市信息分页列表
      */
     @GetMapping
-    @RequiresPermissions("system:city-info:list")
+    @RequiresPermissions("system:city-info:view")
     public Result<Page<CityInfo>> getCities(
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize,
@@ -42,11 +51,10 @@ public class CityInfoController {
         return Result.success(page);
     }
     @GetMapping("/{country}/cities")
-    @RequiresPermissions("system:city-info:list")
     public Result<List<CityInfo>> getCityCities(@PathVariable String country) throws UnsupportedEncodingException {
         country = URLDecoder.decode(country,"UTF-8");
         System.out.println("国家:"+country);
-        if(country == null) 
+        if(country == null)
             return Result.fail("国家不能为空");
 
         return Result.success(cityInfoService.getCitiesByCountry(country));
@@ -56,7 +64,7 @@ public class CityInfoController {
      * 根据ID获取城市信息
      */
     @GetMapping("/{id}")
-    @RequiresPermissions("system:city-info:query")
+    @RequiresPermissions("system:city-info:view")
     public Result<CityInfo> getCityById(@PathVariable Long id) {
         CityInfo cityInfo = cityInfoService.getInfoById(id);
         if (cityInfo != null) {
@@ -69,7 +77,7 @@ public class CityInfoController {
      * 新增城市信息
      */
     @PostMapping
-    @RequiresPermissions("system:city-info:add")
+    @RequiresPermissions("system:city-info:create")
     public Result<Void> addCity(@RequestBody CityInfo cityInfo) {
         cityInfoService.addCityInfo(cityInfo);
         return Result.success();

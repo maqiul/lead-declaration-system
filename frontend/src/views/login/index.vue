@@ -134,7 +134,7 @@ const handleLogin = async () => {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #020617 0%, #0F172A 40%, #1E40AF 100%);
+  background: linear-gradient(145deg, #FFFBEB 0%, #FFF7E6 40%, #FFE7BA 100%);
   position: relative;
   overflow: hidden;
 }
@@ -143,15 +143,15 @@ const handleLogin = async () => {
 .orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.35;
+  filter: blur(120px);
+  opacity: 0.5;
   pointer-events: none;
 }
 
 .orb--1 {
   width: 500px;
   height: 500px;
-  background: #1E40AF;
+  background: #FFD591;
   top: -150px;
   right: -120px;
   animation: float1 10s ease-in-out infinite;
@@ -160,7 +160,7 @@ const handleLogin = async () => {
 .orb--2 {
   width: 400px;
   height: 400px;
-  background: #3B82F6;
+  background: #FFE7BA;
   bottom: -100px;
   left: -80px;
   animation: float2 12s ease-in-out infinite;
@@ -169,7 +169,7 @@ const handleLogin = async () => {
 .orb--3 {
   width: 250px;
   height: 250px;
-  background: #0EA5E9;
+  background: #FFA940;
   top: 40%;
   left: 15%;
   animation: float3 14s ease-in-out infinite;
@@ -196,8 +196,9 @@ const handleLogin = async () => {
   width: 420px;
   padding: 44px 40px 32px;
   background: #ffffff;
-  border-radius: 24px;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  box-shadow: 0 9px 28px 8px rgba(0, 0, 0, 0.05), 0 6px 16px 0 rgba(0, 0, 0, 0.08);
+  border: 1px solid #F0F0F0;
   position: relative;
   z-index: 1;
   animation: cardEnter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -218,12 +219,12 @@ const handleLogin = async () => {
   width: 56px;
   height: 56px;
   margin: 0 auto 16px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #1E40AF, #3B82F6);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #FA8C16, #FA541C);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 16px rgba(30, 64, 175, 0.35);
+  box-shadow: 0 4px 16px rgba(250, 140, 22, 0.25);
 }
 
 .brand-icon-svg {
@@ -235,13 +236,13 @@ const handleLogin = async () => {
   margin: 0 0 4px;
   font-size: 24px;
   font-weight: 700;
-  color: #0F172A;
+  color: #FA8C16;
   letter-spacing: 0.5px;
 }
 
 .brand-subtitle {
   margin: 0;
-  color: #94A3B8;
+  color: #BFBFBF;
   font-size: 13px;
   letter-spacing: 2px;
   text-transform: uppercase;
@@ -254,46 +255,45 @@ const handleLogin = async () => {
 
 /* label 样式 */
 :deep(.ant-form-item-label > label) {
-  color: #475569 !important;
+  color: rgba(0, 0, 0, 0.85) !important;
   font-weight: 500 !important;
   font-size: 13px !important;
 }
 
-/* 输入框 — 确保深色文字可见并富有质感 */
+/* 输入框 */
 :deep(.ant-input-affix-wrapper) {
   background: #ffffff !important;
-  border: 1px solid #d1d5db !important;
-  border-radius: 12px !important;
+  border: 1px solid #D9D9D9 !important;
+  border-radius: 4px !important;
   padding: 0 16px !important;
-  height: 52px !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+  height: 48px !important;
+  transition: all 0.3s !important;
+  box-shadow: none !important;
 }
 
 :deep(.ant-input-affix-wrapper .ant-input) {
   background: transparent !important;
-  color: #111827 !important;
+  color: rgba(0, 0, 0, 0.85) !important;
   font-size: 16px !important;
-  height: 48px !important;
+  height: 44px !important;
 }
 
 :deep(.ant-input::placeholder) {
-  color: #9ca3af !important;
+  color: #BFBFBF !important;
 }
 
 :deep(.ant-input-affix-wrapper:hover) {
-  border-color: #3B82F6 !important;
+  border-color: #FA8C16 !important;
 }
 
 :deep(.ant-input-affix-wrapper-focused),
 :deep(.ant-input-affix-wrapper:focus-within) {
-  border-color: #2563EB !important;
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12) !important;
-  transform: translateY(-1px);
+  border-color: #FA8C16 !important;
+  box-shadow: 0 0 0 2px rgba(250, 140, 22, 0.2) !important;
 }
 
 :deep(.ant-input-password-icon) {
-  color: #94A3B8 !important;
+  color: #BFBFBF !important;
 }
 
 .login-options {
@@ -304,30 +304,30 @@ const handleLogin = async () => {
 }
 
 :deep(.login-options .ant-checkbox-wrapper) {
-  color: #64748B;
+  color: rgba(0, 0, 0, 0.45);
   font-size: 13px;
 }
 
 /* 登录按钮 */
 :deep(.login-btn) {
-  height: 48px !important;
-  border-radius: 12px !important;
-  background: linear-gradient(135deg, #1E40AF, #3B82F6) !important;
+  height: 44px !important;
+  border-radius: 4px !important;
+  background: #FA8C16 !important;
   border: none !important;
   font-size: 16px !important;
   font-weight: 600 !important;
   letter-spacing: 4px !important;
-  box-shadow: 0 4px 16px rgba(30, 64, 175, 0.3) !important;
-  transition: all 0.25s !important;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.045) !important;
+  transition: all 0.3s !important;
 }
 
 :deep(.login-btn:hover) {
-  box-shadow: 0 8px 28px rgba(30, 64, 175, 0.45) !important;
-  transform: translateY(-2px) !important;
+  background: #FFA940 !important;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.045) !important;
 }
 
 :deep(.login-btn:active) {
-  transform: translateY(0) !important;
+  background: #D46B08 !important;
 }
 
 /* 表单校验 */
@@ -340,12 +340,12 @@ const handleLogin = async () => {
   text-align: center;
   margin-top: 28px;
   padding-top: 20px;
-  border-top: 1px solid #F1F5F9;
+  border-top: 1px solid #F0F0F0;
 }
 
 .login-footer p {
   margin: 0;
-  color: #CBD5E1;
+  color: #BFBFBF;
   font-size: 12px;
   letter-spacing: 0.5px;
 }

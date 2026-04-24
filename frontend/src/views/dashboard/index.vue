@@ -150,10 +150,10 @@ const router = useRouter()
 
 // 统计卡片
 const statCards = ref([
-  { title: '用户总数', value: 0, icon: markRaw(UserOutlined), theme: 'indigo', trend: '', trendUp: true },
-  { title: '总流程数', value: 0, icon: markRaw(ProfileOutlined), theme: 'emerald', trend: '', trendUp: true },
-  { title: '流转中待办', value: 0, icon: markRaw(CheckCircleOutlined), theme: 'amber', trend: '', trendUp: false },
-  { title: '今日新增单据', value: 0, icon: markRaw(PlusCircleOutlined), theme: 'rose', trend: '', trendUp: true },
+  { title: '用户总数', value: 0, icon: markRaw(UserOutlined), theme: 'orange', trend: '', trendUp: true },
+  { title: '总流程数', value: 0, icon: markRaw(ProfileOutlined), theme: 'orange', trend: '', trendUp: true },
+  { title: '流转中待办', value: 0, icon: markRaw(CheckCircleOutlined), theme: 'orange-light', trend: '', trendUp: false },
+  { title: '今日新增单据', value: 0, icon: markRaw(PlusCircleOutlined), theme: 'orange-deep', trend: '', trendUp: true },
 ])
 
 const fetchStatsData = async () => {
@@ -201,10 +201,10 @@ const fetchStatsData = async () => {
 
 // 快捷操作
 const quickActions = ref([
-  { label: '新增用户', icon: markRaw(UserAddOutlined), path: '/system/user', bg: 'linear-gradient(135deg, #EEF2FF, #E0E7FF)' },
-  { label: '创建流程', icon: markRaw(FileAddOutlined), path: '/workflow/definition', bg: 'linear-gradient(135deg, #ECFDF5, #D1FAE5)' },
-  { label: '处理任务', icon: markRaw(CheckCircleOutlined), path: '/workflow/task', bg: 'linear-gradient(135deg, #FFF7ED, #FED7AA)' },
-  { label: '组织管理', icon: markRaw(ApartmentOutlined), path: '/system/org', bg: 'linear-gradient(135deg, #FFF1F2, #FECDD3)' },
+  { label: '新增用户', icon: markRaw(UserAddOutlined), path: '/system/user', bg: 'linear-gradient(135deg, #FFF7E6, #FFE7BA)' },
+  { label: '创建流程', icon: markRaw(FileAddOutlined), path: '/workflow/definition', bg: 'linear-gradient(135deg, #FFF1E6, #FFD591)' },
+  { label: '处理任务', icon: markRaw(CheckCircleOutlined), path: '/workflow/task', bg: 'linear-gradient(135deg, #FFF7E6, #FFA940)' },
+  { label: '组织管理', icon: markRaw(ApartmentOutlined), path: '/system/org', bg: 'linear-gradient(135deg, #FFFBEB, #FFE7BA)' },
 ])
 
 // 图表引用
@@ -336,11 +336,11 @@ const goToPage = (path: string) => {
 // 初始化图表
 const initCharts = async () => {
   const colors = {
-    indigo: '#6366F1',
-    violet: '#8B5CF6',
-    emerald: '#10B981',
-    amber: '#F59E0B',
-    rose: '#F43F5E',
+    orange: '#FFA940',
+    orangeLight: '#FFC069',
+    orangeDeep: '#FA8C16',
+    orangePale: '#FFF7E6',
+    amber: '#FFD666',
   }
 
   try {
@@ -366,10 +366,10 @@ const initCharts = async () => {
             barWidth: '50%',
             data: processChart.seriesData || [],
             itemStyle: {
-              borderRadius: [6, 6, 0, 0],
+              borderRadius: [4, 4, 0, 0],
               color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: '#3B82F6' },
-                { offset: 1, color: '#1E40AF' }
+                { offset: 0, color: '#FFD591' },
+                { offset: 1, color: '#FFF7E6' }
               ])
             }
           }]
@@ -393,7 +393,7 @@ const initCharts = async () => {
             label: { show: false, position: 'center' },
             emphasis: { label: { show: true, fontSize: 18, fontWeight: '600', color: '#1E293B' } },
             labelLine: { show: false },
-            color: [colors.indigo, colors.violet, colors.emerald, colors.rose],
+            color: [colors.orange, colors.orangeLight, colors.orangeDeep, colors.orangePale],
             data: taskPieChart.seriesData || []
           } as any]
         })
@@ -430,18 +430,19 @@ onUnmounted(() => {
 <style scoped>
 .dashboard {
   min-height: 100%;
-  background-color: white;
+  background-color: #F0F2F5;
 }
 
 /* 欢迎横幅 */
 .welcome-banner {
-  background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
-  border-radius: 20px;
+  background: linear-gradient(135deg, #FFF7E6 0%, #FFE7BA 100%);
+  border-radius: 12px;
   padding: 28px 32px;
   margin-bottom: 24px;
   position: relative;
   overflow: hidden;
-  color: white;
+  color: #873800;
+  border: 1px solid #FFD591;
 }
 
 .welcome-text {
@@ -453,12 +454,12 @@ onUnmounted(() => {
   margin: 0 0 4px;
   font-size: 22px;
   font-weight: 700;
-  color: white;
+  color: #873800;
 }
 
 .welcome-desc {
   margin: 0;
-  color: rgba(255, 255, 255, 0.7);
+  color: #D46B08;
   font-size: 14px;
 }
 
@@ -473,7 +474,7 @@ onUnmounted(() => {
 .decoration-circle {
   position: absolute;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(250, 140, 22, 0.05);
 }
 
 .decoration-circle--1 {
@@ -508,25 +509,33 @@ onUnmounted(() => {
   transform: translateY(-2px);
 }
 
-.stat-card--indigo {
-  background: linear-gradient(135deg, #1E40AF, #1D4ED8);
-  box-shadow: 0 4px 16px rgba(30, 64, 175, 0.25);
+.stat-card--orange {
+  background: #FFFFFF;
+  border: 1px solid #FFE7BA;
 }
 
-.stat-card--emerald {
-  background: linear-gradient(135deg, #059669, #10B981);
-  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.25);
-}
+.stat-card--orange .stat-value { color: #FA8C16; }
+.stat-card--orange .stat-label { color: #8C8C8C; }
+.stat-card--orange .stat-icon-wrap { background: #FFF7E6; }
+.stat-card--orange .stat-icon { color: #FA8C16; }
 
-.stat-card--amber {
-  background: linear-gradient(135deg, #D97706, #F59E0B);
-  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.25);
+.stat-card--orange-light {
+  background: #FFFFFF;
+  border: 1px solid #FFE7BA;
 }
+.stat-card--orange-light .stat-value { color: #FFA940; }
+.stat-card--orange-light .stat-label { color: #8C8C8C; }
+.stat-card--orange-light .stat-icon-wrap { background: #FFFBE6; }
+.stat-card--orange-light .stat-icon { color: #FFA940; }
 
-.stat-card--rose {
-  background: linear-gradient(135deg, #E11D48, #F43F5E);
-  box-shadow: 0 4px 16px rgba(244, 63, 94, 0.25);
+.stat-card--orange-deep {
+  background: #FFFFFF;
+  border: 1px solid #FFD591;
 }
+.stat-card--orange-deep .stat-value { color: #FA8C16; }
+.stat-card--orange-deep .stat-label { color: #8C8C8C; }
+.stat-card--orange-deep .stat-icon-wrap { background: #FFF7E6; }
+.stat-card--orange-deep .stat-icon { color: #FA8C16; }
 
 .stat-card:hover {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
@@ -547,7 +556,7 @@ onUnmounted(() => {
 
 .stat-label {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.75);
+  color: #8C8C8C;
   margin-bottom: 4px;
   font-weight: 500;
 }
@@ -555,7 +564,6 @@ onUnmounted(() => {
 .stat-value {
   font-size: 28px;
   font-weight: 800;
-  color: white;
   letter-spacing: -0.5px;
   line-height: 1.2;
 }

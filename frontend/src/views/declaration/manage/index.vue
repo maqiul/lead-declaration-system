@@ -11,18 +11,16 @@
           />
         </a-form-item>
         <a-form-item label="状态">
-          <a-select 
-            v-model:value="searchForm.status" 
-            placeholder="状态筛选" 
+          <a-select
+            v-model:value="searchForm.status"
+            placeholder="状态筛选"
             style="width: 140px"
             @change="loadData"
           >
             <a-select-option value="">全部</a-select-option>
             <a-select-option :value="0">草稿</a-select-option>
-            <a-select-option :value="1">待初审</a-select-option>
-            <a-select-option :value="2">处理中</a-select-option>
-            <a-select-option :value="9">退回待审</a-select-option>
-            <a-select-option :value="8">已完成</a-select-option>
+            <a-select-option :value="1">待审核</a-select-option>
+            <a-select-option :value="2">已完成</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="日期">
@@ -34,7 +32,7 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" @click="loadData" v-permission="['business:declaration:list']">查询</a-button>
+            <a-button type="primary" @click="loadData" v-permission="['business:declaration:view']">查询</a-button>
             <a-button @click="resetSearch">重置</a-button>
           </a-space>
         </a-form-item>
@@ -44,7 +42,7 @@
     <!-- 操作按钮 -->
     <a-card class="operation-card">
       <a-space>
-        <a-button type="primary" @click="handleAdd" v-permission="['business:declaration:add']">
+        <a-button type="primary" @click="handleAdd" v-permission="['business:declaration:create']">
           <template #icon><plus-outlined /></template>
           新增申报单
         </a-button>
@@ -77,15 +75,15 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <!-- 
-                操作按钮逻辑:
-                - 草稿状态(status=0):显示2个按钮(编辑、提交)
-                - 其他状态:根据可用按钮数量决定
-                  * 如果可用按钮 <= 3个,全部显示
-                  * 如果可用按钮 > 3个,只显示前2个,其余折叠到"更多"菜单
+              <!--
+                简化后的操作按钮逻辑:
+                - 草稿状态(status=0): [编辑] [提交]
+                - 待审核(status=1): [审核] (仅审核角色)
+                - 所有状态都有: [更多▼]
               -->
+              
+              <!-- 草稿状态: 编辑、提交 -->
               <template v-if="record.status === 0">
-                <!-- 草稿状态: 编辑、提交 (2个按钮) -->
                 <a-button type="link" size="small" @click="handleEdit(record as any)" v-permission="['business:declaration:update']">
                   <template #icon><EditOutlined /></template>
                   编辑
@@ -95,156 +93,121 @@
                   提交
                 </a-button>
               </template>
-          
-              <template v-else>
-                <!-- 
-                  已提交状态按钮计数逻辑:
-                  按钮列表(按优先级):
-                  1. 初审 (status=1) - 必需
-                  2. 上传定金水单 (status=2) - 必需
-                  3. 定金审核 - 条件显示
-                  4. 上传尾款水单 (status=4) - 必需
-                  5. 尾款审核 - 条件显示
-                  6. 上传提货单 (status=6) - 必需
-                  7. 提货单审核 - 条件显示
-                  
-                  规则:
-                  - 主按钮最多显示3个
-                  - 财务补充按钮总是显示(不计入3个限制)
-                  - 其余按钮全部折叠到"更多"菜单
-                -->
-                
-                <!-- 定义显示的主按钮 -->
-                <template v-if="record.status === 1">
-                  <!-- 状态1:只有1个主按钮(初审) -->
-                  <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'deptAudit')" v-permission="['business:declaration:audit']">
-                    <template #icon><CheckCircleOutlined /></template>
-                    初审
-                  </a-button>
-                </template>
-                
-                <template v-if="record.status === 2">
-                  <!-- 状态2:只有1个主按钮(上传定金水单) -->
-                  <a-button type="link" size="small" style="color: #1890ff;" @click="handlePayment(record as any, 'deposit')" v-permission="['business:declaration:payment']">
-                    <template #icon><DollarOutlined /></template>
-                    上传定金水单
-                  </a-button>
-                </template>
-                
-                <template v-if="record.activeTasks?.includes('depositAudit')">
-                  <!-- 定金审核:1个主按钮 -->
-                  <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'depositAudit')" v-permission="['business:declaration:audit']">
-                    <template #icon><CheckCircleOutlined /></template>
-                    定金审核
-                  </a-button>
-                </template>
-                
-                <template v-if="record.status === 4">
-                  <!-- 状态4:只有1个主按钮(上传尾款水单) -->
-                  <a-button type="link" size="small" style="color: #1890ff;" @click="handlePayment(record as any, 'balance')" v-permission="['business:declaration:payment']">
-                    <template #icon><DollarOutlined /></template>
-                    上传尾款水单
-                  </a-button>
-                </template>
-                
-                <template v-if="record.activeTasks?.includes('balanceAudit')">
-                  <!-- 尾款审核:1个主按钮 -->
-                  <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'balanceAudit')" v-permission="['business:declaration:audit']">
-                    <template #icon><CheckCircleOutlined /></template>
-                    尾款审核
-                  </a-button>
-                </template>
-                
-                <template v-if="record.status === 6">
-                  <!-- 状态6:只有1个主按钮(上传提货单) -->
-                  <a-button type="link" size="small" style="color: #1890ff;" @click="handlePickupSubmit(record as any)" v-permission="['business:declaration:pickup-submit']">
-                    <template #icon><UploadOutlined /></template>
-                    上传提货单
-                  </a-button>
-                </template>
-                
-                <template v-if="record.activeTasks?.includes('pickupListAudit')">
-                  <!-- 提货单审核:1个主按钮 -->
-                  <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'pickupListAudit')" v-permission="['business:declaration:audit']">
-                    <template #icon><CheckCircleOutlined /></template>
-                    提货单审核
-                  </a-button>
-                </template>
 
-                <!-- 退回审核按钮 (status=9) -->
-                <template v-if="record.status === 9">
-                  <!-- <a-button type="link" size="small" style="color: #ff4d4f;" @click="handleReturnAudit(record as any)" v-permission="['business:declaration:return-audit']">
-                    <template #icon><CheckCircleOutlined /></template>
-                    弹窗审核
-                  </a-button> -->
-                  <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any)" v-permission="['business:declaration:return-audit']">
-                    <template #icon><CheckCircleOutlined /></template>
-                    详情审核
-                  </a-button>
-                </template>
-                
-                <!-- 财务补充按钮:总是显示(不计入3个主按钮限制) -->
-                <a-button type="link" size="small" @click="handleFinanceUpload(record as any)" v-permission="['business:declaration:financeSupplement']">
-                  <template #icon><MoneyCollectOutlined /></template>
-                  财务补充
+              <!-- 待审核状态: 审核按钮 -->
+              <template v-if="record.status === 1">
+                <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'deptAudit')" v-permission="['business:declaration:audit:initial']">
+                  <template #icon><CheckCircleOutlined /></template>
+                  审核
                 </a-button>
-                
-                <!-- 折叠菜单:包含所有其他操作 -->
-                <a-dropdown>
-                  <a-button type="link" size="small">
-                    更多
-                    <DownOutlined />
-                  </a-button>
-                  <template #overlay>
-                    <a-menu>
-                      <!-- 单证下载 -->
-                      <a-menu-item key="download" @click="handleDownload(record as any)">
-                        <DownloadOutlined /> 单证
-                      </a-menu-item>
-                                
-                      <!-- 生成合同 -->
-                      <a-menu-item 
-                        v-if="!record.hasContract && hasPermission('business:declaration:contract')" 
-                        key="contract" 
-                        @click="handleOpenGenerate(record)"
-                      >
-                        <FileTextOutlined /> 生成合同
-                      </a-menu-item>
-
-                      <!-- 退回草稿申请 (已初审且未完成) -->
-                      <a-menu-item 
-                        v-if="record.status >= 2 && record.status < 8" 
-                        key="returnApply"
-                        @click="handleReturnApply(record as any)"
-                        v-permission="['business:declaration:return-apply']"
-                      >
-                        <ReloadOutlined /> 申请退回草稿
-                      </a-menu-item>
-
-                      <!-- 查看审核历史 -->
-                      <a-menu-item 
-                        key="returnHistory"
-                        @click="viewReturnHistory(record as any)"
-                      >
-                        <HistoryOutlined /> 审核详情
-                      </a-menu-item>
-                                
-                      <!-- 删除 (仅草稿) -->
-                      <a-menu-item v-if="record.status === 0" key="delete" danger>
-                        <a-popconfirm
-                          title="确定要删除该申报单吗?"
-                          @confirm="handleDelete(record as any)"
-                          placement="left"
-                        >
-                          <span v-permission="['business:declaration:delete']">
-                            <DeleteOutlined /> 删除
-                          </span>
-                        </a-popconfirm>
-                      </a-menu-item>
-                    </a-menu>
-                  </template>
-                </a-dropdown>
               </template>
+
+              <!-- 更多操作菜单 -->
+              <a-dropdown>
+                <a-button type="link" size="small">
+                  更多
+                  <DownOutlined />
+                </a-button>
+                <template #overlay>
+                  <a-menu>
+                    <!-- 提货单 (status>=1) -->
+                    <a-menu-item
+                      v-if="record.status >= 1 && checkPermission(['business:declaration:delivery:create'])"
+                      key="pickup"
+                      @click="handlePickupSubmit(record as any)"
+                    >
+                      <UploadOutlined /> 提货单
+                    </a-menu-item>
+
+                    <!-- 上传发票 -->
+                    <a-menu-item
+                      v-if="checkPermission(['business:declaration:update'])"
+                      key="invoice"
+                      @click="handleUploadInvoice(record as any)"
+                    >
+                      <FileTextOutlined /> 上传发票
+                    </a-menu-item>
+
+                    <!-- 财务补充 (仅财务角色) -->
+                    <a-menu-item
+                      v-if="checkPermission(['business:declaration:finance:supplement'])"
+                      key="finance"
+                      @click="handleFinanceUpload(record as any)"
+                    >
+                      <MoneyCollectOutlined /> 财务补充
+                    </a-menu-item>
+
+                    <!-- 关联水单 -->
+                    <a-menu-item
+                      v-if="checkPermission(['business:declaration:finance:remittance'])"
+                      key="relate"
+                      @click="handleRelateRemittance(record as any)"
+                    >
+                      <LinkOutlined /> 关联水单
+                    </a-menu-item>
+
+                    <!-- 创建水单 -->
+                    <a-menu-item
+                      v-if="checkPermission(['business:remittance:create'])"
+                      key="createRemittance"
+                      @click="handleCreateAndRelateRemittance(record as any)"
+                    >
+                      <PlusOutlined /> 创建水单
+                    </a-menu-item>
+
+                    <!-- 单证下载 -->
+                    <a-menu-item key="download" @click="handleDownload(record as any)">
+                      <DownloadOutlined /> 单证下载
+                    </a-menu-item>
+
+                    <!-- 生成合同 -->
+                    <a-menu-item
+                      v-if="!record.hasContract && checkPermission(['business:declaration:contract'])"
+                      key="contract"
+                      @click="handleOpenGenerate(record)"
+                    >
+                      <FileTextOutlined /> 生成合同
+                    </a-menu-item>
+
+                    <!-- 申请退回草稿 (已提交状态，不包括退回待审) -->
+                    <a-menu-item
+                      v-if="record.status >= 1 && record.status !== 9 && checkPermission(['business:declaration:return:apply'])"
+                      key="returnApply"
+                      @click="handleReturnApply(record as any)"
+                    >
+                      <ReloadOutlined /> 申请退回草稿
+                    </a-menu-item>
+
+                    <!-- 退回审核 (仅退回待审状态) -->
+                    <a-menu-item
+                      v-if="record.status === 9 && checkPermission(['business:declaration:return:audit'])"
+                      key="returnAudit"
+                      @click="handleReturnAudit(record as any)"
+                    >
+                      <CheckOutlined /> 退回审核
+                    </a-menu-item>
+
+                    <!-- 审核详情 -->
+                    <a-menu-item
+                      key="returnHistory"
+                      @click="viewReturnHistory(record as any)"
+                    >
+                      <HistoryOutlined /> 审核详情
+                    </a-menu-item>
+
+                    <!-- 删除 (仅草稿) -->
+                    <a-menu-item v-if="record.status === 0" key="delete" danger>
+                      <a-popconfirm
+                        title="确定要删除该申报单吗?"
+                        @confirm="handleDelete(record as any)"
+                        placement="left"
+                      >
+                        <DeleteOutlined /> 删除
+                      </a-popconfirm>
+                    </a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
             </a-space>
           </template>
         </template>
@@ -267,7 +230,7 @@
             <a-list-item-meta>
               <template #title>
                 <div class="attachment-title">
-                  <FileOutlined v-if="isDocumentFile(item.fileName)" style="color: #1890ff; margin-right: 8px;" />
+                  <FileOutlined v-if="isDocumentFile(item.fileName)" style="color: #FA8C16; margin-right: 8px;" />
                   <PictureOutlined v-else-if="isImageFile(item.fileName)" style="color: #52c41a; margin-right: 8px;" />
                   <FileUnknownOutlined v-else style="color: #faad14; margin-right: 8px;" />
                   {{ item.fileName }}
@@ -293,7 +256,7 @@
                 <a-button 
                   type="link" 
                   size="small" 
-                  style="color: #1890ff;" 
+                  style="color: #FA8C16;" 
                   @click="handleRegenerateSimple(item)"
                   v-permission="['business:declaration:audit']"
                 >
@@ -328,13 +291,13 @@
               <a-list-item-meta>
                 <template #title>
                   <div class="attachment-title">
-                    <FileTextOutlined style="color: #722ed1; margin-right: 8px;" />
+                    <FileTextOutlined style="color: #D46B08; margin-right: 8px;" />
                     {{ item.generatedFileName }}
                   </div>
                 </template>
                 <template #description>
                   <div class="attachment-info">
-                    <a-tag color="#722ed1">合同</a-tag>
+                    <a-tag color="#D46B08">合同</a-tag>
                     <span class="file-size">{{ formatFileSize(item.fileSize) }}</span>
                     <span class="create-time">{{ formatDate(item.generatedTime) }}</span>
                     <span v-if="item.templateName" style="margin-left: 8px; color: #999;">模板: {{ item.templateName }}</span>
@@ -456,6 +419,101 @@
       @save-success="handleFinanceSaveSuccess"
     />
 
+    <!-- 关联水单弹窗 -->
+    <RemittanceRelationModal
+      v-model:visible="remittanceRelationVisible"
+      :form-id="currentFormIdForRemittance"
+      :form-no="currentFormNoForRemittance"
+      @success="loadData"
+    />
+
+    <!-- 创建水单弹窗 -->
+    <a-modal
+      v-model:open="createRemittanceVisible"
+      :title="`创建水单并关联 - ${currentFormNoForRemittance}`"
+      width="700px"
+      :confirm-loading="createRemittanceLoading"
+      @ok="handleSubmitCreateRemittance"
+      @cancel="createRemittanceVisible = false"
+    >
+      <a-form layout="vertical">
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="币种">
+              <a-select v-model:value="remittanceFormData.currency">
+                <a-select-option value="USD">USD - 美元</a-select-option>
+                <a-select-option value="CNY">CNY - 人民币</a-select-option>
+                <a-select-option value="EUR">EUR - 欧元</a-select-option>
+                <a-select-option value="GBP">GBP - 英镑</a-select-option>
+                <a-select-option value="JPY">JPY - 日元</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="收汇名称" required>
+              <a-input v-model:value="remittanceFormData.remittanceName" placeholder="请输入收汇名称" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="收汇日期" required>
+              <a-date-picker v-model:value="remittanceFormData.remittanceDate" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="收汇金额" required>
+              <a-input-number
+                v-model:value="remittanceFormData.remittanceAmount"
+                :min="0"
+                :precision="2"
+                placeholder="请输入收汇金额"
+                style="width: 100%"
+              />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-form-item label="备注">
+          <a-textarea v-model:value="remittanceFormData.remarks" placeholder="请输入备注" :rows="2" />
+        </a-form-item>
+
+        <a-form-item label="水单文件" required>
+          <a-upload
+            :before-upload="handleUploadRemittancePhoto"
+            :file-list="remittanceFormData.fileList"
+            @remove="handleRemoveRemittancePhoto"
+            :max-count="1"
+          >
+            <a-button v-if="!remittanceFormData.photoUrl">
+              <UploadOutlined />
+              上传文件
+            </a-button>
+          </a-upload>
+          <div v-if="remittanceFormData.photoUrl" style="margin-top: 8px">
+            <a-tag color="blue">
+              <FileOutlined /> {{ getRemittanceFileExtension() }}
+            </a-tag>
+            <a-button type="link" size="small" @click="previewRemittanceFile">
+              查看文件
+            </a-button>
+          </div>
+          <div v-if="!remittanceFormData.photoUrl" style="margin-top: 8px; color: #ff4d4f; font-size: 12px;">
+            * 水单文件为必填项，支持图片、PDF等格式
+          </div>
+        </a-form-item>
+
+        <a-alert 
+          message="提示" 
+          description="创建水单后将自动关联当前申报单并提交审核" 
+          type="info" 
+          show-icon 
+          style="margin-top: 16px" 
+        />
+      </a-form>
+    </a-modal>
+
     <!-- 退回草稿申请弹窗 -->
     <a-modal
       v-model:open="returnApplyVisible"
@@ -513,13 +571,52 @@
             </a-tag>
           </template>
           <template v-else-if="column.key === 'businessType'">
-            <a-tag color="blue">{{ getBusinessTypeText(record.businessType) }}</a-tag>
+            <a-tag color="orange">{{ getBusinessTypeText(record.businessType) }}</a-tag>
           </template>
           <template v-else-if="column.key === 'preStatus'">
             <a-tag>{{ getStatusText(record.preStatus) }}</a-tag>
           </template>
         </template>
       </a-table>
+    </a-modal>
+
+    <!-- 发票上传弹窗 -->
+    <a-modal
+      v-model:open="invoiceModalVisible"
+      title="上传业务发票"
+      @ok="handleInvoiceSubmit"
+      width="600px"
+    >
+      <a-form :model="invoiceForm" layout="vertical">
+        <a-form-item label="发票名称">
+          <a-input v-model:value="invoiceForm.invoiceName" />
+        </a-form-item>
+        <a-form-item label="发票号码" required>
+          <a-input v-model:value="invoiceForm.invoiceNo" />
+        </a-form-item>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="金额 (不含税)">
+              <a-input-number v-model:value="invoiceForm.amount" style="width: 100%" :precision="2" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="税额">
+              <a-input-number v-model:value="invoiceForm.taxAmount" style="width: 100%" :precision="2" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-form-item label="发票文件" required>
+          <a-upload
+            :before-upload="beforeInvoiceUpload"
+            :file-list="invoiceFileList"
+            :max-count="1"
+            accept=".pdf,.jpg,.png"
+          >
+            <a-button><UploadOutlined /> 选择文件</a-button>
+          </a-upload>
+        </a-form-item>
+      </a-form>
     </a-modal>
   </div>
 </template>
@@ -528,8 +625,10 @@
 import { ref, reactive, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
-import { PlusOutlined, DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, DollarOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, LinkOutlined } from '@ant-design/icons-vue'
+import { checkPermission } from '@/directives/permission'
 import type { Dayjs } from 'dayjs'
+import dayjs from 'dayjs'
 import {
   getDeclarationList,
   deleteDeclaration as deleteDeclarationApi,
@@ -542,15 +641,19 @@ import {
   getBatchActiveTasks,
   applyReturnToDraft,
   auditReturnToDraft,
-  getReturnAuditHistory
+  getReturnAuditHistory,
+  uploadBusinessInvoice
 } from '@/api/business/declaration'
 import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile } from '@/api/business/contract'
+import { createRemittance, relateToForm, submitRemittanceAudit } from '@/api/business/remittance'
+import { uploadFile } from '@/api/business/declaration'
 import { h } from 'vue'
-import { hasPermission } from '@/utils/permission'
+// import { hasPermission } from '@/utils/permission'
 
 import { useRoute } from 'vue-router'
 
 import FinanceModal from '../finance/components/FinanceModal.vue'
+import RemittanceRelationModal from './components/RemittanceRelationModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -631,6 +734,24 @@ const currentDeclaration = ref<DeclarationRecord | null>(null)
 const financeModalVisible = ref(false)
 const currentRecordForFinance = ref<DeclarationRecord | null>(null)
 
+// 关联水单弹窗
+const remittanceRelationVisible = ref(false)
+const currentFormIdForRemittance = ref<number>(0)
+const currentFormNoForRemittance = ref<string>('')
+
+// 创建水单弹窗
+const createRemittanceVisible = ref(false)
+const createRemittanceLoading = ref(false)
+const remittanceFormData = reactive({
+  remittanceName: '',
+  remittanceDate: undefined as Dayjs | string | undefined,
+  remittanceAmount: undefined as number | undefined,
+  currency: 'USD',
+  remarks: '',
+  photoUrl: '',
+  fileList: [] as any[]
+})
+
 // 附件替换弹窗
 const replaceModalVisible = ref(false)
 const replaceLoading = ref(false)
@@ -673,6 +794,19 @@ watch(() => returnAuditForm.approved, (newVal) => {
 const returnHistoryVisible = ref(false)
 const returnHistoryLoading = ref(false)
 const returnHistoryList = ref<any[]>([])
+
+// 发票上传相关
+const invoiceModalVisible = ref(false)
+const invoiceFileList = ref<any[]>([])
+const tempInvoiceFile = ref<any>(null)
+const currentInvoiceFormId = ref<number>(0)
+const invoiceForm = reactive({
+  invoiceType: 1,
+  invoiceName: '',
+  invoiceNo: '',
+  amount: undefined as number | undefined,
+  taxAmount: undefined as number | undefined
+})
 
 // 加载数据
 const loadData = async () => {
@@ -869,21 +1003,21 @@ const handleEdit = (record: DeclarationRecord) => {
 }
 
 // 付款操作（定金/尾款）- 跳转到水单提交模式
-const handlePayment = (record: DeclarationRecord, type?: 'deposit' | 'balance') => {
-  console.log('handlePayment called with:', { record, type })
-  const query: Record<string, any> = { 
-    id: record.id, 
-    status: record.status, 
-    mode: 'payment' 
-  }
-  if (type) query.type = type
-  console.log('Router push query:', query)
-  router.push({ path: '/declaration/form', query })
-}
+// const handlePayment = (record: DeclarationRecord, type?: 'deposit' | 'balance') => {
+//   console.log('handlePayment called with:', { record, type })
+//   const query: Record<string, any> = { 
+//     id: record.id, 
+//     status: record.status, 
+//     mode: 'payment' 
+//   }
+//   if (type) query.type = type
+//   console.log('Router push query:', query)
+//   router.push({ path: '/declaration/form', query })
+// }
 
 // 提货单提交操作 - 跳转到申报单详情页的提货单上传模式
 const handlePickupSubmit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=payment&type=pickup`)
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=pickup`)
 }
 
 // 审核申报单
@@ -903,6 +1037,161 @@ const handleFinanceUpload = (record: DeclarationRecord) => {
 const handleFinanceSaveSuccess = () => {
   message.success('财务补充保存成功')
   loadData()
+}
+
+// 关联水单
+const handleRelateRemittance = (record: DeclarationRecord) => {
+  currentFormIdForRemittance.value = record.id
+  currentFormNoForRemittance.value = record.formNo
+  remittanceRelationVisible.value = true
+}
+
+// 创建并关联水单
+const handleCreateAndRelateRemittance = (record: DeclarationRecord) => {
+  currentFormIdForRemittance.value = record.id
+  currentFormNoForRemittance.value = record.formNo
+  createRemittanceVisible.value = true
+  // 重置表单数据
+  remittanceFormData.remittanceName = ''
+  remittanceFormData.remittanceDate = undefined
+  remittanceFormData.remittanceAmount = undefined
+  remittanceFormData.currency = 'USD'
+  remittanceFormData.remarks = ''
+  remittanceFormData.photoUrl = ''
+  remittanceFormData.fileList = []
+}
+
+// 上传发票 - 跳转到申报详情页
+const handleUploadInvoice = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&mode=invoiceUpload`)
+}
+
+// 发票文件上传前校验
+const beforeInvoiceUpload = (file: File) => {
+  const isAllowed = file.type === 'application/pdf' || 
+                    file.type === 'image/jpeg' || 
+                    file.type === 'image/png'
+  if (!isAllowed) {
+    message.error('只支持PDF、JPG、PNG格式')
+    return false
+  }
+  tempInvoiceFile.value = file
+  invoiceFileList.value = [{ uid: '-1', name: file.name, status: 'done' }]
+  return false // 阻止自动上传
+}
+
+// 提交发票上传
+const handleInvoiceSubmit = async () => {
+  if (!tempInvoiceFile.value) return message.warning('请选择发票文件')
+  if (!invoiceForm.invoiceNo) return message.warning('请填写发票号码')
+
+  const formData = new FormData()
+  formData.append('file', tempInvoiceFile.value)
+  formData.append('invoiceType', '1') // 业务发票默认进项
+  formData.append('invoiceName', invoiceForm.invoiceName)
+  formData.append('invoiceNo', invoiceForm.invoiceNo)
+  if (invoiceForm.amount) formData.append('amount', String(invoiceForm.amount))
+  if (invoiceForm.taxAmount) formData.append('taxAmount', String(invoiceForm.taxAmount))
+
+  try {
+    await uploadBusinessInvoice(currentInvoiceFormId.value, formData)
+    message.success('发票上传成功')
+    invoiceModalVisible.value = false
+  } catch (error) {
+    message.error('发票上传失败')
+  }
+}
+
+// 提交创建水单
+const handleSubmitCreateRemittance = async () => {
+  if (!remittanceFormData.remittanceName) {
+    message.warning('请输入收汇名称')
+    return
+  }
+  if (!remittanceFormData.remittanceDate) {
+    message.warning('请选择收汇日期')
+    return
+  }
+  if (!remittanceFormData.remittanceAmount || remittanceFormData.remittanceAmount <= 0) {
+    message.warning('请输入收汇金额')
+    return
+  }
+  if (!remittanceFormData.photoUrl) {
+    message.warning('请上传水单照片')
+    return
+  }
+
+  createRemittanceLoading.value = true
+  try {
+    // 1. 创建水单
+    const remittanceData = {
+      remittanceName: remittanceFormData.remittanceName,
+      remittanceDate: remittanceFormData.remittanceDate ? dayjs(remittanceFormData.remittanceDate).format('YYYY-MM-DD') : undefined,
+      remittanceAmount: remittanceFormData.remittanceAmount,
+      currency: remittanceFormData.currency,
+      remarks: remittanceFormData.remarks,
+      photoUrl: remittanceFormData.photoUrl
+    }
+
+    const result: any = await createRemittance(remittanceData)
+    const remittanceId = result?.data?.data?.id || result?.data?.id
+    
+    if (!remittanceId) {
+      throw new Error('创建水单失败，未返回水单ID')
+    }
+
+    // 2. 关联申报单（传递水单金额作为关联金额）
+    await relateToForm(remittanceId, currentFormIdForRemittance.value, remittanceFormData.remittanceAmount)
+
+    // 3. 提交审核
+    await submitRemittanceAudit(remittanceId)
+
+    message.success('水单创建、关联并提交审核成功！')
+    createRemittanceVisible.value = false
+    loadData()
+  } catch (error: any) {
+    message.error(error?.message || '操作失败')
+  } finally {
+    createRemittanceLoading.value = false
+  }
+}
+
+// 上传水单照片
+const handleUploadRemittancePhoto = async (file: File) => {
+  try {
+    const response: any = await uploadFile(file, 'remittance')
+    const data = response.data
+    if (data?.code === 200) {
+      remittanceFormData.photoUrl = data.data?.url || data.data
+      message.success('上传成功')
+    } else {
+      message.error('上传失败')
+    }
+  } catch (error) {
+    message.error('上传失败')
+  }
+  return false // 阻止默认上传
+}
+
+// 移除水单照片
+const handleRemoveRemittancePhoto = () => {
+  remittanceFormData.photoUrl = ''
+  remittanceFormData.fileList = []
+}
+
+// 获取水单文件扩展名
+const getRemittanceFileExtension = () => {
+  if (!remittanceFormData.photoUrl) return 'FILE'
+  const parts = remittanceFormData.photoUrl.split('.')
+  const ext = parts[parts.length - 1]?.split('?')[0]?.toUpperCase()
+  return ext || 'FILE'
+}
+
+// 预览水单文件
+const previewRemittanceFile = () => {
+  if (remittanceFormData.photoUrl) {
+    window.open(remittanceFormData.photoUrl, '_blank')
+  }
 }
 
 // 下载单证
@@ -1085,14 +1374,8 @@ const handleConfirmGenerate = async () => {
 const getStatusText = (status: number) => {
   const statusMap: Record<number, string> = {
     0: '草稿',
-    1: '待初审',
-    2: '待上传定金水单',
-    3: '定金待审核',
-    4: '待上传尾款水单',
-    5: '尾款待审核',
-    6: '待上传提货单',
-    7: '提货单待审核',
-    8: '已完成',
+    1: '待审核',
+    2: '已完成',
     9: '退回待审'
   }
   return statusMap[status] || '未知'
@@ -1102,15 +1385,9 @@ const getStatusText = (status: number) => {
 const getStatusColor = (status: number) => {
   const colorMap: Record<number, string> = {
     0: 'default',      // 草稿
-    1: 'processing',   // 待初审
-    2: 'blue',         // 待上传定金水单
-    3: 'orange',       // 定金待审核
-    4: 'blue',         // 待上传尾款水单
-    5: 'orange',       // 尾款待审核
-    6: 'blue',         // 待上传提货单
-    7: 'orange',       // 提货单待审核
-    8: 'success',      // 已完成
-    9: 'error'         // 退回待审 (用红色表示警告/待审核状态)
+    1: 'processing',   // 待审核
+    2: 'success',      // 已完成
+    9: 'warning'       // 退回待审
   }
   return colorMap[status] || 'default'
 }
@@ -1472,6 +1749,13 @@ const handleReturnApply = (record: DeclarationRecord) => {
   returnApplyForm.id = record.id
   returnApplyForm.reason = '申报错误'
   returnApplyVisible.value = true
+}
+
+const handleReturnAudit = (record: DeclarationRecord) => {
+  returnAuditForm.id = record.id
+  returnAuditForm.approved = true
+  returnAuditForm.remark = '已核对数据，通过'
+  returnAuditVisible.value = true
 }
 
 const submitReturnApply = async () => {

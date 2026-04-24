@@ -36,7 +36,7 @@ public class RoleController {
 
     @GetMapping
     @Operation(summary = "获取角色列表")
-    @RequiresPermissions("role:list")
+    @RequiresPermissions("role:view")
     public Result<List<Role>> getRoleList() {
         List<Role> roles = roleService.list();
         try {
@@ -53,7 +53,7 @@ public class RoleController {
 
     @GetMapping("/page")
     @Operation(summary = "分页查询角色列表")
-    @RequiresPermissions("role:list")
+    @RequiresPermissions("role:view")
     public Result<IPage<Role>> getRolePage(
             @Valid PageParam pageParam,
             Role role) {
@@ -63,7 +63,7 @@ public class RoleController {
 
     @GetMapping("/{id}")
     @Operation(summary = "获取角色详情")
-    @RequiresPermissions("role:query")
+    @RequiresPermissions("role:view")
     public Result<Role> getRole(@PathVariable Long id) {
         Role role = roleService.getById(id);
         if (role == null) {
@@ -74,7 +74,7 @@ public class RoleController {
 
     @PostMapping
     @Operation(summary = "创建角色")
-    @RequiresPermissions("role:add")
+    @RequiresPermissions("role:create")
     public Result<Role> createRole(@Valid @RequestBody Role role) {
         boolean result = roleService.saveRole(role);
         if (result) {
@@ -162,6 +162,43 @@ public class RoleController {
         }
     }
 
+    @GetMapping("/all")
+    @Operation(summary = "获取所有角色列表(用于下拉选择)")
+    public Result<List<Role>> getAllRoles() {
+        List<Role> roles = roleService.list(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Role>()
+                        .eq(Role::getStatus, 1)
+                        .orderByAsc(Role::getId));
+        return Result.success(roles);
+    }
+
+    @GetMapping("/users/{roleId}")
+    @Operation(summary = "获取角色的所有用户列表")
+    @RequiresPermissions("role:user")
+    public Result<List<com.declaration.entity.User>> getRoleUsers(
+            @Parameter(description = "角色ID", required = true) @PathVariable Long roleId) {
+        List<com.declaration.entity.User> users = roleService.getRoleUsers(roleId);
+        return Result.success(users);
+    }
+
+    @PostMapping("/users/batch-assign")
+    @Operation(summary = "批量为用户分配角色")
+    @RequiresPermissions("role:assign")
+    public Result<Boolean> batchAssignUserRoles(@RequestBody BatchAssignDTO dto) {
+        boolean result = roleService.batchAssignUserRoles(dto.getUserIds(), dto.getRoleIds());
+        return result ? Result.success("分配成功", true) : Result.fail("分配失败");
+    }
+
+    @DeleteMapping("/users/{userId}/roles/{roleId}")
+    @Operation(summary = "移除用户的角色")
+    @RequiresPermissions("role:assign")
+    public Result<Boolean> removeUserRole(
+            @Parameter(description = "用户ID", required = true) @PathVariable Long userId,
+            @Parameter(description = "角色ID", required = true) @PathVariable Long roleId) {
+        boolean result = roleService.removeUserRole(userId, roleId);
+        return result ? Result.success("移除成功", true) : Result.fail("移除失败");
+    }
+
     /**
      * 角色分配DTO
      */
@@ -178,5 +215,14 @@ public class RoleController {
     public static class RoleMenuDTO {
         private Long roleId;
         private List<Long> menuIds;
+    }
+
+    /**
+     * 批量分配DTO
+     */
+    @Data
+    public static class BatchAssignDTO {
+        private List<Long> userIds;
+        private List<Long> roleIds;
     }
 }

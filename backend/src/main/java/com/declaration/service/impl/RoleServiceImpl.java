@@ -40,6 +40,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
     private final RoleMenuDao roleMenuDao;
     private final PermissionService permissionService;
     private final MenuService menuService;
+    private final com.declaration.dao.UserDao userDao;
 
     @Override
     public IPage<Role> getRolePage(PageParam pageParam, Role role) {
@@ -246,5 +247,93 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
 
         log.info("为管理员角色[{}]分配了{}个菜单权限", role.getRoleName(), allMenuIds.size());
         return true;
+    }
+
+    @Override
+    public List<com.declaration.entity.User> getRoleUsers(Long roleId) {
+        // 查询该角色下的所有用户ID
+        List<UserRole> userRoles = userRoleDao.selectList(
+                new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, roleId));
+        
+        if (CollUtil.isEmpty(userRoles)) {
+            return List.of();
+        }
+
+        // 获取用户ID列表
+        List<Long> userIds = userRoles.stream()
+                .map(UserRole::getUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        // 查询用户详情
+        return listUsersByIds(userIds);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean batchAssignUserRoles(List<Long> userIds, List<Long> roleIds) {
+        if (CollUtil.isEmpty(userIds) || CollUtil.isEmpty(roleIds)) {
+            log.warn("用户ID列表或角色ID列表为空");
+            return false;
+        }
+
+        // 批量插入用户角色关联
+        for (Long userId : userIds) {
+            for (Long roleId : roleIds) {
+                // 检查是否已存在
+                long count = userRoleDao.selectCount(
+                        new LambdaQueryWrapper<UserRole>()
+                                .eq(UserRole::getUserId, userId)
+                                .eq(UserRole::getRoleId, roleId));
+                
+                if (count == 0) {
+                    UserRole userRole = new UserRole();
+                    userRole.setUserId(userId);
+                    userRole.setRoleId(roleId);
+                    userRoleDao.insert(userRole);
+                    log.info("为用户[{}]分配角色[{}]", userId, roleId);
+                }
+            }
+            // 清除用户权限缓存
+            permissionService.clearUserPermissionCache(userId);
+        }
+
+        log.info("批量为用户分配角色: {}个用户, {}个角色", userIds.size(), roleIds.size());
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean removeUserRole(Long userId, Long roleId) {
+        int deleted = userRoleDao.delete(
+                new LambdaQueryWrapper<UserRole>()
+                        .eq(UserRole::getUserId, userId)
+                        .eq(UserRole::getRoleId, roleId));
+        
+        if (deleted > 0) {
+            // 清除用户权限缓存
+            permissionService.clearUserPermissionCache(userId);
+            log.info("移除用户[{}]的角色[{}]", userId, roleId);
+            return true;
+        }
+        
+        log.warn("用户[{}]的角色[{}]不存在", userId, roleId);
+        return false;
+    }
+
+    /**
+     * 根据用户ID列表查询用户
+     */
+    private List<com.declaration.entity.User> listUsersByIds(List<Long> userIds) {
+        if (CollUtil.isEmpty(userIds)) {
+            return List.of();
+        }
+        
+        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.declaration.entity.User> wrapper = 
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+        wrapper.in(com.declaration.entity.User::getId, userIds);
+        wrapper.eq(com.declaration.entity.User::getStatus, 1); // 只查询启用的用户
+        
+        return userDao.selectList(wrapper);
     }
 }

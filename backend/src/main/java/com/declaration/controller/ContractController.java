@@ -66,7 +66,7 @@ public class ContractController {
      */
     @GetMapping("/templates")
     @Operation(summary = "分页查询合同模板")
-    @RequiresPermissions("business:contract:template:query")
+    @RequiresPermissions("business:contract:template:view")
     public Result<Page<ContractTemplate>> getTemplates(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer current,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
@@ -99,7 +99,7 @@ public class ContractController {
      */
     @GetMapping("/templates/enabled")
     @Operation(summary = "获取所有启用的合同模板")
-    @RequiresPermissions("business:contract:template:query")
+    @RequiresPermissions("business:contract:template:view")
     public Result<List<ContractTemplate>> getEnabledTemplates(
             @Parameter(description = "模板类型") @RequestParam(required = false) String templateType) {
         LambdaQueryWrapper<ContractTemplate> wrapper = new LambdaQueryWrapper<>();
@@ -121,7 +121,7 @@ public class ContractController {
      */
     @PostMapping("/template")
     @Operation(summary = "新增合同模板")
-    @RequiresPermissions("business:contract:template:add")
+    @RequiresPermissions("business:contract:template:create")
     public Result<ContractTemplate> addTemplate(@RequestBody ContractTemplate template) {
         template.setStatus(1); // 默认启用
         boolean saved = contractTemplateService.save(template);
@@ -215,7 +215,7 @@ public class ContractController {
      */
     @GetMapping("/generations")
     @Operation(summary = "分页查询合同生成记录")
-    @RequiresPermissions("business:contract:generation:query")
+    @RequiresPermissions("business:contract:generation:view")
     public Result<Page<ContractGeneration>> getGenerations(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer current,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
@@ -268,7 +268,6 @@ public class ContractController {
      */
     @GetMapping("/by-declaration/{declarationFormId}")
     @Operation(summary = "根据申报单ID获取相关合同")
-    @RequiresPermissions("business:contract:generation:query")
     public Result<List<ContractGeneration>> getContractsByDeclaration(
             @Parameter(description = "申报单ID") @PathVariable Long declarationFormId) {
         
@@ -358,7 +357,7 @@ public class ContractController {
      */
     @PostMapping("/generation/{id}/replace")
     @Operation(summary = "替换合同文件")
-    @RequiresPermissions("business:contract:edit")
+    @RequiresPermissions("business:contract:update")
     public Result<ContractGeneration> replaceContractFile(
             @Parameter(description = "合同ID") @PathVariable Long id,
             @Parameter(description = "新合同文件") @RequestParam("file") MultipartFile file) {

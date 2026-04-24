@@ -73,6 +73,11 @@ public class DeclarationProduct {
     private BigDecimal amount;
 
     /**
+     * 金额是否锁定: 1-锁定(用户手动输入), 0-自动计算
+     */
+    private Integer amountLocked;
+
+    /**
      * 毛重(KGS)
      */
     private BigDecimal grossWeight;

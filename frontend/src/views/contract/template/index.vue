@@ -28,7 +28,7 @@
     <!-- 操作按钮区域 -->
     <a-card class="operation-card">
       <a-space>
-        <a-button v-permission="['business:contract:template:add']" type="primary" @click="openAddModal">
+        <a-button v-permission="['business:contract:template:create']" type="primary" @click="openAddModal">
           <template #icon><PlusOutlined /></template>
           新增模板
         </a-button>

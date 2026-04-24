@@ -27,7 +27,7 @@
     <!-- 操作按钮区域 -->
     <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="showAddModal" v-permission="['system:config:add']" class="ui-btn-cta">
+        <a-button type="primary" @click="showAddModal" v-permission="['system:config:create']" class="ui-btn-cta">
           <template #icon><plus-outlined /></template>
           新增配置
         </a-button>

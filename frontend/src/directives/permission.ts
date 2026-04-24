@@ -19,7 +19,7 @@ export function checkPermission(value: string[]): boolean {
       return false
     }
 
-    return permissions.some(permission => value.includes(permission))
+    return permissions.some(permission => permission === '*:*:*' || value.includes(permission))
   } catch (error) {
     console.warn('权限检查失败:', error)
     return false

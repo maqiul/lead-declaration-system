@@ -19,7 +19,7 @@ import java.util.*;
 public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplementMapper, FinancialSupplement> implements FinancialSupplementService {
 
     private final DeclarationRemittanceService remittanceService;
-    
+
     // 数字格式化器
     private static final DecimalFormat AMOUNT_FORMAT = new DecimalFormat("#,##0.00");
     private static final DecimalFormat RATE_FORMAT = new DecimalFormat("0.####");
@@ -28,161 +28,153 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
     public Map<String, Object> getCalculationDetail(Long formId) {
         Map<String, Object> result = new LinkedHashMap<>();
         List<String> calculationSteps = new ArrayList<>();
-        
+
         // 1. 查询财务补充记录
         FinancialSupplement supp = lambdaQuery()
                 .eq(FinancialSupplement::getFormId, formId)
                 .one();
+
+        // 2. 查询该申报单关联的所有已审核水单
+        List<Map<String, Object>> remittances = remittanceService.getRemittancesByFormId(formId);
         
-        // 2. 查询所有水单记录
-        List<DeclarationRemittance> remittances = remittanceService.lambdaQuery()
-                .eq(DeclarationRemittance::getFormId, formId)
-                .list();
-        
-        // 3. 分离定金和尾款
-        List<DeclarationRemittance> deposits = new ArrayList<>();
-        List<DeclarationRemittance> balances = new ArrayList<>();
-        
+        // 3. 过滤已审核的水单(status=2)
+        List<Map<String, Object>> auditedRemittances = new ArrayList<>();
         if (remittances != null) {
-            for (DeclarationRemittance r : remittances) {
-                if (r.getRemittanceType() != null && r.getRemittanceType() == 1) {
-                    deposits.add(r);
-                } else if (r.getRemittanceType() != null && r.getRemittanceType() == 2) {
-                    balances.add(r);
+            for (Map<String, Object> r : remittances) {
+                if (r.get("status") != null && ((Integer) r.get("status")) == 2) {
+                    auditedRemittances.add(r);
                 }
             }
         }
-        
-        // 4. 计算定金汇总
-        BigDecimal depositAmount = BigDecimal.ZERO;         // 定金原币金额汇总
-        BigDecimal depositCny = BigDecimal.ZERO;            // 定金人民币汇总
-        BigDecimal depositWeightedRate = BigDecimal.ZERO;   // 加权平均汇率
-        
-        List<Map<String, Object>> depositDetails = new ArrayList<>();
-        for (DeclarationRemittance d : deposits) {
-            BigDecimal amt = d.getRemittanceAmount() != null ? d.getRemittanceAmount() : BigDecimal.ZERO;
-            BigDecimal rate = d.getExchangeRate() != null ? d.getExchangeRate() : BigDecimal.ONE;
-            BigDecimal cny = amt.multiply(rate).setScale(2, RoundingMode.HALF_UP);
+
+        // 4. 统一计算所有已审核水单（不区分定金尾款）
+        BigDecimal totalCny = BigDecimal.ZERO;               // 人民币汇总
+        BigDecimal totalBankFeeCny = BigDecimal.ZERO;         // 银行手续费(CNY)汇总
+        Set<String> bankNames = new LinkedHashSet<>();
+        // 按币种分组统计原币金额
+        Map<String, BigDecimal> currencyOriginalAmounts = new LinkedHashMap<>();
+
+        List<Map<String, Object>> remittanceDetails = new ArrayList<>();
+        for (Map<String, Object> r : auditedRemittances) {
+            // 使用关联金额（分配给该申报单的金额），如果没有则用水单全额
+            BigDecimal relationAmt = r.get("relationAmount") != null ? (BigDecimal) r.get("relationAmount") : null;
+            BigDecimal fullAmt = r.get("remittanceAmount") != null ? (BigDecimal) r.get("remittanceAmount") : BigDecimal.ZERO;
+            BigDecimal amt = (relationAmt != null && relationAmt.compareTo(BigDecimal.ZERO) > 0) ? relationAmt : fullAmt;
+            BigDecimal taxRate = r.get("taxRate") != null ? (BigDecimal) r.get("taxRate") : BigDecimal.ZERO;
+            String currency = r.get("currency") != null ? (String) r.get("currency") : "USD";
             
-            depositAmount = depositAmount.add(amt);
-            depositCny = depositCny.add(cny);
-            
+            // 计算人民币金额: 原币金额 × 汇率
+            BigDecimal cnyAmount = amt.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+            totalCny = totalCny.add(cnyAmount);
+
+            // 按币种统计原币金额
+            currencyOriginalAmounts.merge(currency, amt, BigDecimal::add);
+
+            // 计算银行手续费：直接用 关联金额 × 手续费率
+            BigDecimal feeRate = r.get("bankFeeRate") != null ? (BigDecimal) r.get("bankFeeRate") : BigDecimal.ZERO;
+            BigDecimal proportionalFee = amt.multiply(feeRate).setScale(4, RoundingMode.HALF_UP);
+            // 手续费转CNY: 原币手续费 × 汇率
+            BigDecimal bankFeeCny = proportionalFee.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+            totalBankFeeCny = totalBankFeeCny.add(bankFeeCny);
+
+            // 收集银行名称
+            String bankName = r.get("bankAccountName") != null ? (String) r.get("bankAccountName") : "";
+            if (!bankName.isEmpty()) {
+                bankNames.add(bankName);
+            }
+
             Map<String, Object> detail = new LinkedHashMap<>();
             detail.put("amount", amt);
-            detail.put("exchangeRate", rate);
-            detail.put("cny", cny);
-            detail.put("remittanceName", d.getRemittanceName());
-            depositDetails.add(detail);
-            
-            calculationSteps.add(String.format("定金: %s USD × %s = %s CNY", 
-                    AMOUNT_FORMAT.format(amt), RATE_FORMAT.format(rate), AMOUNT_FORMAT.format(cny)));
+            detail.put("fullAmount", fullAmt);
+            detail.put("relationAmount", relationAmt);
+            detail.put("taxRate", taxRate);
+            detail.put("cnyAmount", cnyAmount);
+            detail.put("remittanceName", r.get("remittanceName"));
+            detail.put("bankAccountName", bankName);
+            detail.put("bankFee", proportionalFee);       // 按比例调整后的手续费（原币）
+            detail.put("bankFeeCny", bankFeeCny);           // 手续费CNY
+            detail.put("bankFeeRate", feeRate);
+            detail.put("currency", currency);
+            remittanceDetails.add(detail);
+
+            calculationSteps.add(String.format("收汇: %s %s × %s = %s CNY, 手续费: %s %s = %s CNY",
+                    AMOUNT_FORMAT.format(amt), currency, RATE_FORMAT.format(taxRate), AMOUNT_FORMAT.format(cnyAmount),
+                    AMOUNT_FORMAT.format(proportionalFee), currency, AMOUNT_FORMAT.format(bankFeeCny)));
         }
-        
-        // 计算定金加权平均汇率
-        if (depositAmount.compareTo(BigDecimal.ZERO) > 0) {
-            depositWeightedRate = depositCny.divide(depositAmount, 4, RoundingMode.HALF_UP);
+
+        // 计算加权平均汇率（只对同币种有意义，多币种时显示综合汇率）
+        BigDecimal totalOriginalAmount = currencyOriginalAmounts.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal weightedRate = BigDecimal.ZERO;
+        if (totalOriginalAmount.compareTo(BigDecimal.ZERO) > 0) {
+            weightedRate = totalCny.divide(totalOriginalAmount, 4, RoundingMode.HALF_UP);
         }
-        
-        // 5. 计算尾款汇总
-        BigDecimal balanceAmount = BigDecimal.ZERO;         // 尾款原币金额汇总
-        BigDecimal balanceCny = BigDecimal.ZERO;            // 尾款人民币汇总
-        BigDecimal balanceWeightedRate = BigDecimal.ZERO;   // 加权平均汇率
-        
-        List<Map<String, Object>> balanceDetails = new ArrayList<>();
-        for (DeclarationRemittance b : balances) {
-            BigDecimal amt = b.getRemittanceAmount() != null ? b.getRemittanceAmount() : BigDecimal.ZERO;
-            BigDecimal rate = b.getExchangeRate() != null ? b.getExchangeRate() : BigDecimal.ONE;
-            BigDecimal cny = amt.multiply(rate).setScale(2, RoundingMode.HALF_UP);
-            
-            balanceAmount = balanceAmount.add(amt);
-            balanceCny = balanceCny.add(cny);
-            
-            Map<String, Object> detail = new LinkedHashMap<>();
-            detail.put("amount", amt);
-            detail.put("exchangeRate", rate);
-            detail.put("cny", cny);
-            detail.put("remittanceName", b.getRemittanceName());
-            balanceDetails.add(detail);
-            
-            calculationSteps.add(String.format("尾款: %s USD × %s = %s CNY", 
-                    AMOUNT_FORMAT.format(amt), RATE_FORMAT.format(rate), AMOUNT_FORMAT.format(cny)));
-        }
-        
-        // 计算尾款加权平均汇率
-        if (balanceAmount.compareTo(BigDecimal.ZERO) > 0) {
-            balanceWeightedRate = balanceCny.divide(balanceAmount, 4, RoundingMode.HALF_UP);
-        }
-        
-        // 6. 计算总货物金额
-        BigDecimal totalGoodsAmount = depositCny.add(balanceCny);
-        calculationSteps.add(String.format("总货物金额: %s + %s = %s CNY", 
-                AMOUNT_FORMAT.format(depositCny), AMOUNT_FORMAT.format(balanceCny), AMOUNT_FORMAT.format(totalGoodsAmount)));
-        
-        // 7. 获取财务补充参数
-        BigDecimal taxRefundRate = supp != null && supp.getTaxRefundRate() != null 
+        String foreignExchangeBank = String.join("、", bankNames);
+
+        // 5. 计算总货物金额
+        BigDecimal totalGoodsAmount = totalCny;
+        calculationSteps.add(String.format("总货物金额: %s CNY", AMOUNT_FORMAT.format(totalGoodsAmount)));
+
+        // 6. 获取财务补充参数
+        BigDecimal taxRefundRate = supp != null && supp.getTaxRefundRate() != null
                 ? supp.getTaxRefundRate().divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP)  // 百分比转小数
                 : BigDecimal.ZERO;
-        BigDecimal bankFeeRate = supp != null && supp.getBankFeeRate() != null 
-                ? supp.getBankFeeRate().divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP)    // 百分比转小数
-                : BigDecimal.ZERO;
-        BigDecimal freightAmount = supp != null && supp.getFreightAmount() != null 
+        BigDecimal freightAmount = supp != null && supp.getFreightAmount() != null
                 ? supp.getFreightAmount() : BigDecimal.ZERO;
-        BigDecimal customsAmount = supp != null && supp.getCustomsAmount() != null 
+        BigDecimal customsAmount = supp != null && supp.getCustomsAmount() != null
                 ? supp.getCustomsAmount() : BigDecimal.ZERO;
-        String foreignExchangeBank = supp != null ? supp.getForeignExchangeBank() : "";
-        
-        // 8. 计算退税加成金额: 总金额 * (1 + 退税点)
+
+        // 6.1 银行手续费已在上方循环中累加完毕（totalBankFeeCny）
+        // 计算综合手续费率（信息展示用）
+        BigDecimal bankFeeRate = BigDecimal.ZERO;
+        if (totalCny.compareTo(BigDecimal.ZERO) > 0) {
+            bankFeeRate = totalBankFeeCny.divide(totalCny, 6, RoundingMode.HALF_UP);
+        }
+
+        // 7. 计算退税加成金额: 总金额 * (1 + 退税点)
         BigDecimal onePlusTaxRate = BigDecimal.ONE.add(taxRefundRate);
         BigDecimal amountWithTaxRefund = totalGoodsAmount.multiply(onePlusTaxRate).setScale(2, RoundingMode.HALF_UP);
-        
+
         BigDecimal taxRatePercent = taxRefundRate.multiply(new BigDecimal("100"));
-        calculationSteps.add(String.format("退税加成: %s × (1 + %s%%) = %s CNY", 
+        calculationSteps.add(String.format("退税加成: %s × (1 + %s%%) = %s CNY",
                 AMOUNT_FORMAT.format(totalGoodsAmount), RATE_FORMAT.format(taxRatePercent), AMOUNT_FORMAT.format(amountWithTaxRefund)));
-        
-        // 9. 扣除货代发票
+
+        // 8. 扣除货代发票
         calculationSteps.add(String.format("减 货代发票: -%s CNY", AMOUNT_FORMAT.format(freightAmount)));
-        
-        // 10. 扣除海关代理发票
+
+        // 9. 扣除海关代理发票
         calculationSteps.add(String.format("减 海关代理发票: -%s CNY", AMOUNT_FORMAT.format(customsAmount)));
-        
-        // 11. 计算银行手续费: 总金额 * 手续费率
-        BigDecimal bankFeeAmount = totalGoodsAmount.multiply(bankFeeRate).setScale(2, RoundingMode.HALF_UP);
+
+        // 10. 银行手续费直接用累加值（已按关联比例分摊并转CNY）
+        BigDecimal bankFeeAmount = totalBankFeeCny;
         BigDecimal bankFeePercent = bankFeeRate.multiply(new BigDecimal("100"));
-        calculationSteps.add(String.format("减 银行手续费: %s × %s%% = -%s CNY", 
-                AMOUNT_FORMAT.format(totalGoodsAmount), RATE_FORMAT.format(bankFeePercent), AMOUNT_FORMAT.format(bankFeeAmount)));
-        
-        // 12. 计算最终开票金额
+        calculationSteps.add(String.format("减 银行手续费合计: -%s CNY (综合费率≈%s%%)",
+                AMOUNT_FORMAT.format(bankFeeAmount), RATE_FORMAT.format(bankFeePercent)));
+
+        // 11. 计算最终开票金额
         BigDecimal invoiceAmount = amountWithTaxRefund
                 .subtract(freightAmount)
                 .subtract(customsAmount)
                 .subtract(bankFeeAmount)
                 .setScale(2, RoundingMode.HALF_UP);
-        
-        calculationSteps.add(String.format("开票金额: %s - %s - %s - %s = %s CNY", 
-                AMOUNT_FORMAT.format(amountWithTaxRefund), 
-                AMOUNT_FORMAT.format(freightAmount), 
+
+        calculationSteps.add(String.format("开票金额: %s - %s - %s - %s = %s CNY",
+                AMOUNT_FORMAT.format(amountWithTaxRefund),
+                AMOUNT_FORMAT.format(freightAmount),
                 AMOUNT_FORMAT.format(customsAmount),
-                AMOUNT_FORMAT.format(bankFeeAmount), 
+                AMOUNT_FORMAT.format(bankFeeAmount),
                 AMOUNT_FORMAT.format(invoiceAmount)));
-        
-        // 13. 组装返回结果
-        // 定金信息
-        result.put("depositAmount", depositAmount);
-        result.put("depositExchangeRate", depositWeightedRate);
-        result.put("depositCny", depositCny);
-        result.put("depositDetails", depositDetails);
-        result.put("depositCount", deposits.size());
-        
-        // 尾款信息
-        result.put("balanceAmount", balanceAmount);
-        result.put("balanceExchangeRate", balanceWeightedRate);
-        result.put("balanceCny", balanceCny);
-        result.put("balanceDetails", balanceDetails);
-        result.put("balanceCount", balances.size());
-        
+
+        // 12. 组装返回结果
+        // 收汇信息
+        result.put("totalOriginalAmount", totalOriginalAmount);
+        result.put("weightedExchangeRate", weightedRate);
+        result.put("totalCny", totalCny);
+        result.put("remittanceDetails", remittanceDetails);
+        result.put("remittanceCount", auditedRemittances.size());
+
         // 汇总金额
         result.put("totalGoodsAmount", totalGoodsAmount);
-        
+
         // 财务参数
         result.put("taxRefundRate", taxRatePercent);
         result.put("amountWithTaxRefund", amountWithTaxRefund);
@@ -191,35 +183,19 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
         result.put("bankFeeRate", bankFeePercent);
         result.put("bankFeeAmount", bankFeeAmount);
         result.put("foreignExchangeBank", foreignExchangeBank);
-        
+
         // 最终结果
         result.put("invoiceAmount", invoiceAmount);
-        
+
         // 完整计算步骤
         result.put("calculationSteps", calculationSteps);
-        
+
         // 为前端兼容添加字段别名
         result.put("amountWithTax", result.get("amountWithTaxRefund"));
         result.put("freightAmount", result.get("freightInvoiceAmount"));
         result.put("customsAmount", result.get("customsInvoiceAmount"));
         result.put("bankFee", result.get("bankFeeAmount"));
-        
-        // 合并定金和尾款为统一的 remittanceDetails 列表
-        List<Map<String, Object>> remittanceDetails = new ArrayList<>();
-        for (Map<String, Object> detail : depositDetails) {
-            Map<String, Object> item = new LinkedHashMap<>(detail);
-            item.put("type", 1);
-            item.put("cnyAmount", detail.get("cny"));
-            remittanceDetails.add(item);
-        }
-        for (Map<String, Object> detail : balanceDetails) {
-            Map<String, Object> item = new LinkedHashMap<>(detail);
-            item.put("type", 2);
-            item.put("cnyAmount", detail.get("cny"));
-            remittanceDetails.add(item);
-        }
-        result.put("remittanceDetails", remittanceDetails);
-        
+
         return result;
     }
 }

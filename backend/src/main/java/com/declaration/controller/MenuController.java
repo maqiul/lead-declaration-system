@@ -33,7 +33,7 @@ public class MenuController {
 
     @GetMapping
     @Operation(summary = "获取菜单列表")
-    @RequiresPermissions("menu:list")
+    @RequiresPermissions("menu:view")
     public Result<List<Menu>> getMenuList() {
         List<Menu> menus = menuService.list();
         return Result.success(menus);
@@ -41,7 +41,7 @@ public class MenuController {
 
     @GetMapping("/tree")
     @Operation(summary = "获取菜单树结构")
-    @RequiresPermissions("menu:list")
+    @RequiresPermissions("menu:view")
     public Result<List<Menu>> getMenuTree() {
         List<Menu> menuTree = menuService.getMenuTree();
         return Result.success(menuTree);
@@ -56,7 +56,7 @@ public class MenuController {
 
     @GetMapping("/page")
     @Operation(summary = "分页查询菜单列表")
-    @RequiresPermissions("menu:list")
+    @RequiresPermissions("menu:view")
     public Result<IPage<Menu>> getMenuPage(
             @Valid PageParam pageParam,
             Menu menu) {
@@ -66,7 +66,7 @@ public class MenuController {
 
     @GetMapping("/{id}")
     @Operation(summary = "获取菜单详情")
-    @RequiresPermissions("menu:query")
+    @RequiresPermissions("menu:view")
     public Result<Menu> getMenu(@Parameter(description = "菜单ID") @PathVariable Long id) {
         Menu menu = menuService.getById(id);
         if (menu == null) {
@@ -77,7 +77,7 @@ public class MenuController {
 
     @PostMapping
     @Operation(summary = "创建菜单")
-    @RequiresPermissions("menu:add")
+    @RequiresPermissions("menu:create")
     public Result<Menu> createMenu(@Valid @RequestBody Menu menu) {
         boolean result = menuService.saveMenu(menu);
         if (result) {
@@ -115,7 +115,7 @@ public class MenuController {
 
     @GetMapping("/button/{parentId}")
     @Operation(summary = "获取按钮权限列表")
-    @RequiresPermissions("menu:list")
+    @RequiresPermissions("menu:view")
     public Result<List<Menu>> getButtonPermissions(@Parameter(description = "父级菜单ID") @PathVariable Long parentId) {
         List<Menu> buttons = menuService.getButtonsByParentId(parentId);
         return Result.success(buttons);

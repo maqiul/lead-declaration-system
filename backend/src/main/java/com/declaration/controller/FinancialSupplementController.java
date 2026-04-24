@@ -93,7 +93,7 @@ public class FinancialSupplementController {
 
     @GetMapping("/form/{formId}")
     @Operation(summary = "获取申报单关联的财务补充记录")
-    @RequiresPermissions("business:declaration:query")
+    @RequiresPermissions("business:declaration:view")
     public Result<FinancialSupplement> getByFormId(
             @Parameter(description = "申报单ID") @PathVariable Long formId) {
         FinancialSupplement supp = supplementService.lambdaQuery()
@@ -104,7 +104,7 @@ public class FinancialSupplementController {
 
     @GetMapping("/form/{formId}/calculation-detail")
     @Operation(summary = "获取开票明细计算过程")
-    @RequiresPermissions("business:declaration:query")
+    @RequiresPermissions("business:declaration:view")
     public Result<Map<String, Object>> getCalculationDetail(
             @Parameter(description = "申报单ID") @PathVariable Long formId) {
         // 获取计算结果
@@ -138,7 +138,7 @@ public class FinancialSupplementController {
 
     @PostMapping
     @Operation(summary = "创建财务开票补充记录")
-    @RequiresPermissions("business:declaration:financeSupplement")
+    @RequiresPermissions("business:declaration:finance:supplement")
     public Result<FinancialSupplement> createSupplement(
             @RequestBody FinancialSupplement supplement) {
         
@@ -158,7 +158,7 @@ public class FinancialSupplementController {
         
         @PutMapping("/{id}")
     @Operation(summary = "更新财务开票补充记录")
-    @RequiresPermissions("business:declaration:financeSupplement")
+    @RequiresPermissions("business:declaration:finance:supplement")
     public Result<Void> updateSupplement(
             @Parameter(description = "记录ID") @PathVariable Long id,
             @RequestBody FinancialSupplement supplement) {
@@ -170,7 +170,7 @@ public class FinancialSupplementController {
     
     @GetMapping
     @Operation(summary = "分页查询财务补充单证")
-    @RequiresPermissions("business:declaration:query")
+    @RequiresPermissions("business:declaration:view")
     public Result<IPage<FinancialSupplement>> getPage(
             @Parameter(description = "分页参数") PageParam pageParam,
             @Parameter(description = "申报单号") @RequestParam(required = false) String formNo,
@@ -194,7 +194,7 @@ public class FinancialSupplementController {
 
     @GetMapping("/form/{formId}/export-finance-calculation")
     @Operation(summary = "导出开票计算明细单")
-    @RequiresPermissions("business:declaration:financeSupplement")
+    @RequiresPermissions("business:declaration:finance:supplement")
     public Result<String> exportFinanceCalculation(@PathVariable Long formId) {
         ByteArrayOutputStream outputStream = null;
         XSSFWorkbook workbook = null;

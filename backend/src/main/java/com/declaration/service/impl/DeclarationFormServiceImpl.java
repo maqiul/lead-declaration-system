@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.declaration.dao.DeclarationFormDao;
 import com.declaration.dao.DeclarationProductDao;
 import com.declaration.dao.DeliveryOrderDao;
+import com.declaration.dao.RemittanceFormRelationDao;
 import com.declaration.dto.AuditHistoryDTO;
 import com.declaration.dto.DeclarationStatisticsDTO;
 import com.declaration.entity.*;
@@ -50,6 +51,7 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     private final DeclarationAttachmentService attachmentService;
     private final DeclarationProductDao declarationProductDao;
     private final DeliveryOrderDao deliveryOrderDao;
+    private final RemittanceFormRelationDao remittanceFormRelationDao;
     private final OperationLogService operationLogService;
     private final BusinessAuditRecordDao auditRecordDao;
     private final RuntimeService runtimeService;
@@ -210,20 +212,59 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                             .eq(DeclarationProduct::getFormId, id)
                             .list()
                 );
-                
+
                 CompletableFuture<List<DeclarationCarton>> cartonsFuture = CompletableFuture.supplyAsync(() ->
                     cartonService.lambdaQuery()
                             .eq(DeclarationCarton::getFormId, id)
                             .orderByAsc(DeclarationCarton::getSortOrder)
                             .list()
                 );
-                
-                CompletableFuture<List<DeclarationRemittance>> remittancesFuture = CompletableFuture.supplyAsync(() ->
-                    remittanceService.lambdaQuery()
-                            .eq(DeclarationRemittance::getFormId, id)
-                            .orderByAsc(DeclarationRemittance::getRemittanceDate)
-                            .list()
-                );
+
+                CompletableFuture<List<DeclarationRemittance>> remittancesFuture = CompletableFuture.supplyAsync(() -> {
+                    // 通过关联表查询申报单关联的水单
+                    List<RemittanceFormRelation> relations = remittanceFormRelationDao.selectList(
+                        new LambdaQueryWrapper<RemittanceFormRelation>()
+                            .eq(RemittanceFormRelation::getFormId, id)
+                            .orderByAsc(RemittanceFormRelation::getCreateTime)
+                    );
+                    
+                    if (relations.isEmpty()) {
+                        log.info("💰 查询申报单ID={} 的水单关联，结果: 0条", id);
+                        return new ArrayList<>();
+                    }
+                    
+                    // 获取所有关联的水单ID
+                    List<Long> remittanceIds = relations.stream()
+                        .map(RemittanceFormRelation::getRemittanceId)
+                        .collect(Collectors.toList());
+                    
+                    log.info("💰 申报单ID={} 关联的水单ID列表: {}", id, remittanceIds);
+                    
+                    // 查询水单详情
+                    List<DeclarationRemittance> remittances = remittanceService.lambdaQuery()
+                        .in(DeclarationRemittance::getId, remittanceIds)
+                        .orderByAsc(DeclarationRemittance::getRemittanceDate)
+                        .list();
+                    
+                    // 填充关联金额到水单对象（使用动态字段）
+                    Map<Long, BigDecimal> amountMap = relations.stream()
+                        .collect(Collectors.toMap(
+                            RemittanceFormRelation::getRemittanceId,
+                            r -> r.getRelationAmount() != null ? r.getRelationAmount() : BigDecimal.ZERO,
+                            BigDecimal::add
+                        ));
+                    
+                    for (DeclarationRemittance remittance : remittances) {
+                        // 通过设置 totalRelatedAmount 字段传递关联金额
+                        remittance.setTotalRelatedAmount(amountMap.get(remittance.getId()));
+                    }
+                    
+                    log.info("💰 查询申报单ID={} 的水单，结果数量: {}", id, remittances.size());
+                    if (!remittances.isEmpty()) {
+                        log.info("💰 水单详情: {}", remittances);
+                    }
+                    return remittances;
+                });
                 
                 CompletableFuture<List<DeclarationAttachment>> attachmentsFuture = CompletableFuture.supplyAsync(() ->
                     attachmentService.lambdaQuery()
@@ -586,7 +627,12 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
 
     // ================== 审核相关方法实现 ==================
 
+    /**
+     * 审核水单
+     * @deprecated 已废弃,请使用 DeclarationRemittanceService.auditRemittance()
+     */
     @Override
+    @Deprecated
     @Transactional(rollbackFor = Exception.class)
     public boolean auditRemittance(Long id, boolean approved, String remark) {
         try {
@@ -594,25 +640,25 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             if (remittance == null) {
                 throw new RuntimeException("水单不存在");
             }
-            
+
             // 获取申报单 ID 和水单类型
             Long formId = remittance.getFormId();
             Integer remittanceType = remittance.getRemittanceType(); // 1-定金 2-尾款
-            
+
             remittance.setStatus(approved ? 1 : 2); // 1-已审核 2-已驳回
             remittance.setAuditRemark(remark);
             if (StpUtil.isLogin()) {
                 remittance.setAuditBy(StpUtil.getLoginIdAsLong());
             }
             remittance.setAuditTime(LocalDateTime.now());
-            
+
             boolean result = remittanceService.updateById(remittance);
-            
+
             // 注意：审核历史记录应该在提交申请时创建，不是在审核时
             // 这里只需要更新水单状态即可
-            recordAuditLog("水单审核", "AUDIT", approved ? "审核通过" : "审核驳回", 
+            recordAuditLog("水单审核", "AUDIT", approved ? "审核通过" : "审核驳回",
                     "水单ID: " + id + ", 结果: " + (approved ? "通过" : "驳回") + ", 备注: " + remark);
-            
+
             log.info("审核水单成功, ID: {}, approved: {}", id, approved);
             return result;
         } catch (Exception e) {
@@ -731,7 +777,7 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
         if (approved) {
             // 通过：重置为草稿状态，并终止工作流
             form.setStatus(0);
-            
+
             // 终止 Flowable 任务
             try {
                 List<ProcessInstance> instances = runtimeService.createProcessInstanceQuery()
@@ -746,6 +792,14 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                 // 这里可以选择是否抛出异常回滚状态，通常为了业务闭环建议回滚
                 throw new RuntimeException("终止工作流失败: " + e.getMessage());
             }
+            
+            // 处理水单关联关系：取消所有已关联的水单
+            try {
+                handleRemittanceRelations(id);
+            } catch (Exception e) {
+                log.error("处理水单关联关系失败", e);
+                // 水单处理失败不影响主流程，继续执行
+            }
         } else {
             // 驳回：恢复到之前的状态
             form.setStatus(record.getPreStatus());
@@ -758,6 +812,35 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                 "申报单ID: " + id + ", 结果: " + (approved ? "通过" : "驳回") + ", 备注: " + record.getAuditRemark());
         
         return result;
+    }
+
+    /**
+     * 处理水单关联关系：取消申报单与所有水单的关联
+     * @param formId 申报单ID
+     */
+    private void handleRemittanceRelations(Long formId) {
+        log.info("开始处理申报单 {} 的水单关联关系", formId);
+        
+        // 查询该申报单关联的所有水单
+        List<RemittanceFormRelation> relations = remittanceFormRelationDao.selectList(
+            new LambdaQueryWrapper<RemittanceFormRelation>()
+                .eq(RemittanceFormRelation::getFormId, formId)
+        );
+        
+        if (relations.isEmpty()) {
+            log.info("申报单 {} 没有关联的水单", formId);
+            return;
+        }
+        
+        log.info("申报单 {} 关联了 {} 个水单，开始取消关联", formId, relations.size());
+        
+        // 删除所有关联关系
+        for (RemittanceFormRelation relation : relations) {
+            remittanceFormRelationDao.deleteById(relation.getId());
+            log.info("已取消水单 {} 与申报单 {} 的关联", relation.getRemittanceId(), formId);
+        }
+        
+        log.info("申报单 {} 的水单关联关系处理完成", formId);
     }
 
     /**

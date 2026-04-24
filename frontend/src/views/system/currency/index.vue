@@ -30,7 +30,7 @@
     <!-- 操作按钮区域 -->
     <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="openAddModal" v-permission="['system:currency:add']" class="ui-btn-cta">
+        <a-button type="primary" @click="openAddModal" v-permission="['system:currency:create']" class="ui-btn-cta">
           <template #icon><PlusOutlined /></template>
           新增货币
         </a-button>
@@ -60,12 +60,12 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="openEditModal(record as CurrencyInfo)" v-permission="['system:currency:edit']" class="font-medium text-blue-600">编辑</a-button>
+              <a-button type="link" size="small" @click="openEditModal(record as CurrencyInfo)" v-permission="['system:currency:update']" class="font-medium text-blue-600">编辑</a-button>
               <a-popconfirm
                 title="确定要切换状态吗？"
                 @confirm="toggleStatus(record as CurrencyInfo)"
               >
-                <a-button type="link" size="small" :danger="record.status === 1" v-permission="['system:currency:edit']" class="font-medium">
+                <a-button type="link" size="small" :danger="record.status === 1" v-permission="['system:currency:update']" class="font-medium">
                   {{ record.status === 1 ? '禁用' : '启用' }}
                 </a-button>
               </a-popconfirm>

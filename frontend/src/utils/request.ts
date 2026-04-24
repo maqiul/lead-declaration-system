@@ -44,7 +44,9 @@ service.interceptors.response.use(
     }
   },
   (error) => {
-    message.error(error.message || '网络错误')
+    // 优先使用后端返回的业务错误信息
+    const backendMsg = error.response?.data?.message
+    message.error(backendMsg || error.message || '网络错误')
     return Promise.reject(error)
   }
 )

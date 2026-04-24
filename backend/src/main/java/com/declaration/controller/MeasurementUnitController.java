@@ -33,7 +33,7 @@ public class MeasurementUnitController {
 
     @GetMapping()
     @Operation(summary = "获取计量单位列表（分页）")
-    @RequiresPermissions("system:measurement-unit:list")
+    @RequiresPermissions("system:measurement-unit:view")
     public Result<Page<MeasurementUnit>> getList(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String unitType,
@@ -77,7 +77,6 @@ public class MeasurementUnitController {
 
     @GetMapping("/active")
     @Operation(summary = "获取启用的计量单位")
-    @RequiresPermissions("system:measurement-unit:list")
     public Result<List<MeasurementUnit>> getActiveList() {
         List<MeasurementUnit> units = measurementUnitService.getActiveUnits();
         return Result.success(units);
@@ -85,7 +84,6 @@ public class MeasurementUnitController {
 
     @GetMapping("/code/{unitCode}")
     @Operation(summary = "根据代码获取计量单位")
-    @RequiresPermissions("system:measurement-unit:query")
     public Result<MeasurementUnit> getByCode(@PathVariable String unitCode) {
         MeasurementUnit unit = measurementUnitService.getByUnitCode(unitCode);
         return Result.success(unit);
@@ -93,7 +91,7 @@ public class MeasurementUnitController {
 
     @PostMapping
     @Operation(summary = "新增计量单位")
-    @RequiresPermissions("system:measurement-unit:add")
+    @RequiresPermissions("system:measurement-unit:create")
     public Result<Boolean> add(@RequestBody MeasurementUnit unit) {
         // 校验单位代码全系统唯一
         if (StringUtils.hasText(unit.getUnitCode())) {

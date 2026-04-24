@@ -34,7 +34,7 @@ public class OrganizationController {
 
     @GetMapping
     @Operation(summary = "获取组织列表")
-    @RequiresPermissions("org:list")
+    @RequiresPermissions("org:view")
     public Result<List<Organization>> getOrgList() {
         List<Organization> orgs = organizationService.list();
         return Result.success(orgs);
@@ -42,7 +42,7 @@ public class OrganizationController {
 
     @GetMapping("/tree")
     @Operation(summary = "获取组织树结构")
-    @RequiresPermissions("org:list")
+    @RequiresPermissions("org:view")
     public Result<List<Organization>> getOrgTree() {
         List<Organization> orgTree = organizationService.getOrgTree();
         return Result.success(orgTree);
@@ -50,7 +50,7 @@ public class OrganizationController {
 
     @GetMapping("/page")
     @Operation(summary = "分页查询组织列表")
-    @RequiresPermissions("org:list")
+    @RequiresPermissions("org:view")
     public Result<IPage<Organization>> getOrgPage(
             @Valid PageParam pageParam,
             Organization organization) {
@@ -60,7 +60,7 @@ public class OrganizationController {
 
     @GetMapping("/{id}")
     @Operation(summary = "获取组织详情")
-    @RequiresPermissions("org:query")
+    @RequiresPermissions("org:view")
     public Result<Organization> getOrg(
             @Parameter(description = "组织ID", required = true) @PathVariable Long id) {
         Organization organization = organizationService.getById(id);
@@ -72,7 +72,7 @@ public class OrganizationController {
 
     @PostMapping
     @Operation(summary = "创建组织")
-    @RequiresPermissions("org:add")
+    @RequiresPermissions("org:create")
     public Result<Organization> createOrg(@Valid @RequestBody Organization organization) {
         boolean result = organizationService.saveOrg(organization);
         if (result) {

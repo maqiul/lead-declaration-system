@@ -34,7 +34,7 @@ public class TransportModeController {
      */
     @GetMapping
     @Operation(summary = "分页查询运输方式")
-    @RequiresPermissions("system:transport:list")
+    @RequiresPermissions("system:transport:view")
     public Result<Page<TransportMode>> getTransportModes(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer page,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
@@ -74,7 +74,7 @@ public class TransportModeController {
      */
     @PostMapping
     @Operation(summary = "新增运输方式")
-    @RequiresPermissions("system:transport:add")
+    @RequiresPermissions("system:transport:create")
     public Result<Void> addTransportMode(@RequestBody TransportMode transportMode) {
         // 检查名称是否重复
         boolean nameExists = transportModeService.lambdaQuery()
@@ -107,7 +107,7 @@ public class TransportModeController {
      */
     @PutMapping("/{id}")
     @Operation(summary = "修改运输方式")
-    @RequiresPermissions("system:transport:edit")
+    @RequiresPermissions("system:transport:update")
     public Result<Void> updateTransportMode(
             @Parameter(description = "运输方式ID") @PathVariable Long id,
             @RequestBody TransportMode transportMode) {
@@ -171,7 +171,7 @@ public class TransportModeController {
      */
     @PostMapping("/{id}/toggle-status")
     @Operation(summary = "启用/禁用运输方式")
-    @RequiresPermissions("system:transport:edit")
+    @RequiresPermissions("system:transport:update")
     public Result<Void> toggleStatus(
             @Parameter(description = "运输方式ID") @PathVariable Long id,
             @Parameter(description = "状态 0-禁用 1-启用") @RequestParam Integer status) {

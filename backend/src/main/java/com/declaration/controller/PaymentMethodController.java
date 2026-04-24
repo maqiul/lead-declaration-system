@@ -28,7 +28,7 @@ public class PaymentMethodController {
 
     @GetMapping
     @Operation(summary = "分页查询支付方式")
-    @RequiresPermissions("system:payment:list")
+    @RequiresPermissions("system:payment:view")
     public Result<Page<PaymentMethod>> getPaymentMethods(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer page,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
@@ -59,7 +59,7 @@ public class PaymentMethodController {
 
     @PostMapping
     @Operation(summary = "新增支付方式")
-    @RequiresPermissions("system:payment:add")
+    @RequiresPermissions("system:payment:create")
     public Result<Void> addPaymentMethod(@RequestBody PaymentMethod paymentMethod) {
         // 检查名称是否重复
         boolean nameExists = paymentMethodService.lambdaQuery()
@@ -89,7 +89,7 @@ public class PaymentMethodController {
 
     @PutMapping("/{id}")
     @Operation(summary = "修改支付方式")
-    @RequiresPermissions("system:payment:edit")
+    @RequiresPermissions("system:payment:update")
     public Result<Void> updatePaymentMethod(
             @Parameter(description = "支付方式ID") @PathVariable Long id,
             @RequestBody PaymentMethod paymentMethod) {
@@ -147,7 +147,7 @@ public class PaymentMethodController {
 
     @PostMapping("/{id}/toggle-status")
     @Operation(summary = "启用/禁用支付方式")
-    @RequiresPermissions("system:payment:edit")
+    @RequiresPermissions("system:payment:update")
     public Result<Void> toggleStatus(
             @Parameter(description = "支付方式ID") @PathVariable Long id,
             @Parameter(description = "状态 0-禁用 1-启用") @RequestParam Integer status) {

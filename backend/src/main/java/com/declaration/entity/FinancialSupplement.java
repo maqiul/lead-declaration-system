@@ -64,7 +64,7 @@ public class FinancialSupplement {
 
     @Schema(description = "外汇银行ID")
     private Long foreignExchangeBankId;
-    
+
     @Schema(description = "外汇银行名称")
     private String foreignExchangeBank;
 
@@ -102,7 +102,7 @@ public class FinancialSupplement {
 
     @TableField(fill = FieldFill.INSERT)
     private Long createBy;
-    
+
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private Long updateBy;
 }

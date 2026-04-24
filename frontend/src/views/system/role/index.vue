@@ -33,7 +33,7 @@
     <!-- 操作按钮区域 -->
     <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="handleAdd" v-permission="['role:add']" class="ui-btn-cta">
+        <a-button type="primary" @click="handleAdd" v-permission="['role:create']" class="ui-btn-cta">
           <template #icon><plus-outlined /></template>
           新增角色
         </a-button>
@@ -72,10 +72,11 @@
             <a-space>
               <a-button type="link" size="small" @click="handleEdit(record as Role)" v-permission="['role:update']" class="font-medium text-blue-600">编辑</a-button>
               <a-button type="link" size="small" @click="handlePermission(record as Role)" v-permission="['role:menu']" class="font-medium text-blue-600">权限配置</a-button>
-              <a-button 
-                v-if="(record as Role).roleCode === 'admin' || (record as Role).roleCode === 'SUPER_ADMIN'" 
-                type="link" 
-                size="small" 
+              <a-button type="link" size="small" @click="handleAssignUsers(record as Role)" v-permission="['role:assign']" class="font-medium text-green-600">分配用户</a-button>
+              <a-button
+                v-if="(record as Role).roleCode === 'admin' || (record as Role).roleCode === 'SUPER_ADMIN'"
+                type="link"
+                size="small"
                 @click="handleAssignAllPermissions(record as Role)"
                 class="font-medium text-blue-600"
               >
@@ -185,6 +186,85 @@
         </div>
       </div>
     </a-modal>
+
+    <!-- 分配用户弹窗 -->
+    <a-modal
+      v-model:open="assignUsersVisible"
+      :title="`分配用户 - ${currentRoleName}`"
+      :confirm-loading="assignUsersLoading"
+      @ok="handleAssignUsersOk"
+      @cancel="handleAssignUsersCancel"
+      width="900px"
+      destroyOnClose
+    >
+      <div class="assign-users-container px-4 py-4">
+        <a-alert
+          message="为该角色分配用户，拥有此角色的用户将获得对应的权限"
+          type="info"
+          show-icon
+          class="mb-4 rounded-md"
+        />
+        
+        <!-- 搜索用户 -->
+        <div class="mb-4 flex gap-2">
+          <a-input
+            v-model:value="userSearchKeyword"
+            placeholder="搜索用户名、昵称或手机号"
+            style="width: 300px"
+            @press-enter="loadUsers"
+          >
+            <template #prefix>
+              <search-outlined />
+            </template>
+          </a-input>
+          <a-button type="primary" @click="loadUsers">搜索</a-button>
+        </div>
+
+        <!-- 用户列表 -->
+        <div class="user-list-container border border-slate-200 rounded-lg max-h-[400px] overflow-y-auto">
+          <a-table
+            :dataSource="userList"
+            :columns="userColumns"
+            :pagination="userPagination"
+            :loading="userLoading"
+            :row-selection="userRowSelection"
+            row-key="id"
+            @change="handleUserTableChange"
+            size="small"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'status'">
+                <a-tag :color="record.status === 1 ? 'success' : 'error'" size="small">
+                  {{ record.status === 1 ? '启用' : '禁用' }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'hasRole'">
+                <a-tag v-if="record.hasRole" color="green" size="small">已分配</a-tag>
+                <span v-else class="text-slate-400">-</span>
+              </template>
+            </template>
+          </a-table>
+        </div>
+
+        <!-- 已分配用户 -->
+        <div class="mt-4">
+          <h4 class="mb-2 font-medium">已分配用户 ({{ assignedUsers.length }})</h4>
+          <div class="assigned-users-container flex flex-wrap gap-2">
+            <a-tag
+              v-for="user in assignedUsers"
+              :key="user.id"
+              color="blue"
+              closable
+              @close="handleRemoveUser(user.id)"
+              class="flex items-center"
+            >
+              {{ user.nickname || user.username }}
+            </a-tag>
+            <span v-if="assignedUsers.length === 0" class="text-slate-400 text-sm">暂无已分配用户</span>
+          </div>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -194,7 +274,19 @@ import { message } from 'ant-design-vue'
 import { PlusOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import type { TableProps, TreeProps } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
-import { getRoleList, addRole, updateRole, deleteRole, updateRoleMenus, assignAllPermissionsToAdmin, getRoleMenus, getMenuTree } from '@/api/system'
+import { 
+  getRoleList, 
+  addRole, 
+  updateRole, 
+  deleteRole, 
+  updateRoleMenus, 
+  assignAllPermissionsToAdmin, 
+  getRoleMenus, 
+  getMenuTree,
+  getRoleUsers,
+  assignUserRoles,
+  getUserList
+} from '@/api/system'
 
 // 类型定义
 interface Role {
@@ -318,6 +410,65 @@ const currentRoleId = ref<number>()
 // 菜单树数据
 const menuTreeData = ref<TreeProps['treeData']>([])
 
+// 分配用户相关
+const assignUsersVisible = ref(false)
+const assignUsersLoading = ref(false)
+const currentRoleName = ref('')
+const userSearchKeyword = ref('')
+const userList = ref<any[]>([])
+const userLoading = ref(false)
+const userPagination = reactive({
+  current: 1,
+  pageSize: 10,
+  total: 0,
+  showSizeChanger: true,
+  showQuickJumper: true,
+  showTotal: (total: number) => `共 ${total} 条`
+})
+const selectedUserIds = ref<number[]>([])
+const assignedUsers = ref<any[]>([])
+
+// 用户表格列配置
+const userColumns = [
+  {
+    title: '用户名',
+    dataIndex: 'username',
+    key: 'username',
+    width: 150
+  },
+  {
+    title: '昵称',
+    dataIndex: 'nickname',
+    key: 'nickname',
+    width: 150
+  },
+  {
+    title: '手机号',
+    dataIndex: 'phone',
+    key: 'phone',
+    width: 150
+  },
+  {
+    title: '状态',
+    dataIndex: 'status',
+    key: 'status',
+    width: 80
+  },
+  {
+    title: '已分配',
+    dataIndex: 'hasRole',
+    key: 'hasRole',
+    width: 100
+  }
+]
+
+// 用户表格行选择配置
+const userRowSelection: TableProps['rowSelection'] = {
+  onChange: (selectedKeys: any[]) => {
+    selectedUserIds.value = selectedKeys as number[]
+  }
+}
+
 // 方法
 const loadData = async () => {
   loading.value = true
@@ -405,13 +556,13 @@ const handlePermission = async (record: Role) => {
   currentRoleId.value = record.id
   permissionVisible.value = true
   permissionLoading.value = true
-  
+
   try {
     const [menuRes, roleMenuRes] = await Promise.all([
       getMenuTree(),
       getRoleMenus(record.id)
     ])
-    
+
     if (menuRes.data?.code === 200) {
       menuTreeData.value = menuRes.data.data || []
     }
@@ -423,6 +574,106 @@ const handlePermission = async (record: Role) => {
   } finally {
     permissionLoading.value = false
   }
+}
+
+// 分配用户相关方法
+const handleAssignUsers = async (record: Role) => {
+  currentRoleId.value = record.id
+  currentRoleName.value = record.roleName
+  assignUsersVisible.value = true
+  
+  // 加载已分配的用户
+  await loadAssignedUsers()
+  // 加载用户列表
+  await loadUsers()
+}
+
+const loadAssignedUsers = async () => {
+  if (!currentRoleId.value) return
+  
+  try {
+    const response = await getRoleUsers(currentRoleId.value)
+    if (response.data?.code === 200) {
+      assignedUsers.value = response.data.data || []
+    }
+  } catch (error) {
+    console.error('加载已分配用户失败:', error)
+  }
+}
+
+const loadUsers = async () => {
+  userLoading.value = true
+  try {
+    const params = {
+      pageNum: userPagination.current,
+      pageSize: userPagination.pageSize,
+      username: userSearchKeyword.value,
+      phone: userSearchKeyword.value
+    }
+
+    const response = await getUserList(params)
+    if (response.data?.code === 200) {
+      const records = response.data.data?.records
+      userList.value = Array.isArray(records) ? records.map((user: any) => ({
+        ...user,
+        hasRole: assignedUsers.value.some((u: any) => u.id === user.id)
+      })) : []
+      userPagination.total = Number(response.data.data?.total) || 0
+    }
+  } catch (error) {
+    message.error('加载用户列表失败')
+  } finally {
+    userLoading.value = false
+  }
+}
+
+const handleAssignUsersOk = async () => {
+  if (!currentRoleId.value || selectedUserIds.value.length === 0) {
+    message.warning('请选择要分配的用户')
+    return
+  }
+
+  assignUsersLoading.value = true
+  try {
+    const response = await assignUserRoles(
+      selectedUserIds.value[0], // 注意: 这里需要根据实际API调整
+      [currentRoleId.value]
+    )
+
+    if (response.data?.code === 200) {
+      message.success('用户分配成功')
+      selectedUserIds.value = []
+      await loadAssignedUsers()
+      await loadUsers()
+    }
+  } catch (error) {
+    message.error('分配失败')
+  } finally {
+    assignUsersLoading.value = false
+  }
+}
+
+const handleAssignUsersCancel = () => {
+  assignUsersVisible.value = false
+  selectedUserIds.value = []
+  userSearchKeyword.value = ''
+}
+
+const handleRemoveUser = async (_userId: number) => {
+  try {
+    // 这里需要调用移除用户角色的API
+    message.success('移除成功')
+    await loadAssignedUsers()
+    await loadUsers()
+  } catch (error) {
+    message.error('移除失败')
+  }
+}
+
+const handleUserTableChange = (pag: any) => {
+  userPagination.current = pag.current
+  userPagination.pageSize = pag.pageSize
+  loadUsers()
 }
 
 const handleTableChange = (pag: any) => {

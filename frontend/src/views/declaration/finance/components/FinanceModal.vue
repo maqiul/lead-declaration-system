@@ -126,31 +126,6 @@
                       placeholder="如: 13 表示 13%"
                     />
                   </a-form-item>
-                  <a-form-item label="外汇银行">
-                    <a-select
-                      v-model:value="formData.foreignExchangeBankId"
-                      placeholder="请选择外汇银行"
-                      style="width: 100%"
-                      :loading="bankLoading"
-                      @change="handleBankChange"
-                    >
-                      <a-select-option v-for="bank in bankAccounts" :key="bank.id" :value="bank.id">
-                        {{ bank.accountName }} - {{ bank.bankName }}
-                        <span v-if="bank.serviceFeeRate != null" style="color: #999; font-size: 12px;"> (手续费: {{ bank.serviceFeeRate }}%)</span>
-                      </a-select-option>
-                    </a-select>
-                  </a-form-item>
-                  <a-form-item label="银行手续费率 (%)">
-                    <a-input-number 
-                      v-model:value="formData.bankFeeRate" 
-                      style="width: 100%" 
-                      :min="0" 
-                      :max="10" 
-                      :precision="3"
-                      :disabled="true"
-                      placeholder="选择银行后自动填充"
-                    />
-                  </a-form-item>
                   <a-form-item>
                     <a-space>
                       <a-button type="primary" @click="handleGenerateCalculation" :loading="calcLoading">
@@ -168,31 +143,26 @@
               <a-card title="开票明细计算" size="small" :loading="calcLoading">
                 <template v-if="calculationDetail">
                   <div class="calculation-box">
-                    <!-- 定金明细 -->
+                    <!-- 收汇明细 -->
                     <div class="calc-section">
-                      <div class="calc-title" style="color: #1890ff;">定金收汇明细</div>
-                      <div class="calc-row" v-for="item in calculationDetail.depositDetails" :key="item.remittanceName">
-                        <span class="calc-label">{{ item.remittanceName ? String(item.remittanceName) : '定金' }}:</span>
-                        <span class="calc-value">{{ formatMoney(item.amount) }} {{ item.currency || 'USD' }} × {{ item.exchangeRate }} = {{ formatMoney(item.cny) }} CNY</span>
+                      <div class="calc-title" style="color: #1890ff;">收汇明细</div>
+                      <div v-for="item in calculationDetail.remittanceDetails" :key="item.remittanceName">
+                        <div class="calc-row">
+                          <span class="calc-label">{{ item.remittanceName || '收汇' }}:</span>
+                          <span class="calc-value">
+                            {{ formatMoney(item.amount) }} {{ item.currency || 'USD' }}
+                            <span v-if="item.relationAmount && item.fullAmount && item.relationAmount !== item.fullAmount" style="color: #999; font-size: 11px;">(水单全额: {{ formatMoney(item.fullAmount) }})</span>
+                            × {{ item.taxRate }} = {{ formatMoney(item.cnyAmount) }} CNY
+                          </span>
+                        </div>
+                        <div class="calc-row" style="font-size: 12px; color: #666; margin-left: 20px;">
+                          <span>银行: {{ item.bankAccountName || '-' }} | 手续费率: {{ ((item.bankFeeRate || 0) * 100).toFixed(2) }}% | 手续费: {{ formatMoney(item.bankFee || 0) }} {{ item.currency || 'USD' }} = {{ formatMoney(item.bankFeeCny || 0) }} CNY</span>
+                        </div>
                       </div>
-                      <div class="calc-row total">
-                        <span class="calc-label">定金合计:</span>
-                        <span class="calc-value highlight">{{ formatMoney(calculationDetail.depositCny) }} CNY</span>
-                      </div>
-                    </div>
-                    
-                    <a-divider />
-                    
-                    <!-- 尾款明细 -->
-                    <div class="calc-section">
-                      <div class="calc-title" style="color: #fa8c16;">尾款收汇明细</div>
-                      <div class="calc-row" v-for="item in calculationDetail.balanceDetails" :key="item.remittanceName">
-                        <span class="calc-label">{{ item.remittanceName ? String(item.remittanceName) : '尾款' }}:</span>
-                        <span class="calc-value">{{ formatMoney(item.amount) }} {{ item.currency || 'USD' }} × {{ item.exchangeRate }} = {{ formatMoney(item.cny) }} CNY</span>
-                      </div>
-                      <div class="calc-row total">
-                        <span class="calc-label">尾款合计:</span>
-                        <span class="calc-value highlight">{{ formatMoney(calculationDetail.balanceCny) }} CNY</span>
+                      <div class="calc-row total" style="margin-top: 8px;">
+                        <span class="calc-label">收汇合计:</span>
+                        <span class="calc-value highlight">{{ formatMoney(calculationDetail.totalGoodsAmount) }} CNY</span>
+                        <span v-if="calculationDetail.weightedExchangeRate" style="margin-left: 12px; color: #999; font-size: 12px;">加权平均汇率: {{ calculationDetail.weightedExchangeRate }}</span>
                       </div>
                     </div>
                     
@@ -200,9 +170,8 @@
                     
                     <!-- 总货物金额 -->
                     <div class="calc-section">
-                      <div class="calc-title">汇总</div>
                       <div class="calc-row">
-                        <span class="calc-label">总货物金额 (定金+尾款):</span>
+                        <span class="calc-label">总货物金额:</span>
                         <span class="calc-value highlight">{{ formatMoney(calculationDetail.totalGoodsAmount) }} CNY</span>
                       </div>
                     </div>
@@ -233,8 +202,8 @@
                         <span class="calc-value">{{ formatMoney(calculationDetail.customsInvoiceAmount || 0) }} CNY</span>
                       </div>
                       <div class="calc-row deduct">
-                        <span class="calc-label">- 银行手续费 ({{ formatMoney(calculationDetail.totalGoodsAmount) }} × {{ calculationDetail.bankFeeRate }}%):</span>
-                        <span class="calc-value">{{ formatMoney(calculationDetail.bankFeeAmount) }} CNY</span>
+                        <span class="calc-label">- 银行手续费合计:</span>
+                        <span class="calc-value">{{ formatMoney(calculationDetail.bankFeeAmount) }} CNY <span style="font-size: 11px; color: #999;">（综合费率≈{{ calculationDetail.bankFeeRate }}%）</span></span>
                       </div>
                     </div>
                     <a-divider />
@@ -252,10 +221,6 @@
                       <div class="calc-row" v-if="formData.taxRefundAmount">
                         <span class="calc-label">退税金额:</span>
                         <span class="calc-value" style="color: #52c41a;">+{{ formatMoney(formData.taxRefundAmount) }} CNY</span>
-                      </div>
-                      <div class="calc-row" v-if="calculationDetail.foreignExchangeBank">
-                        <span class="calc-label">外汇银行:</span>
-                        <span class="calc-value">{{ calculationDetail.foreignExchangeBank }}</span>
                       </div>
                     </div>
                   </div>
@@ -280,10 +245,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted,  computed } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import {  DownloadOutlined } from '@ant-design/icons-vue'
-import { getFinancialSupplement, createFinancialSupplement, updateFinancialSupplement, exportFinanceCalculation, getEnabledBankAccounts, uploadFile, getDeclarationDetail, getCalculationDetail } from '@/api/business/declaration'
+import { DownloadOutlined } from '@ant-design/icons-vue'
+import { getFinancialSupplement, createFinancialSupplement, updateFinancialSupplement, exportFinanceCalculation, uploadFile, getDeclarationDetail, getCalculationDetail } from '@/api/business/declaration'
 
 interface Props {
   visible: boolean
@@ -304,7 +269,6 @@ const loading = ref(false)
 const saveLoading = ref(false)
 const calcLoading = ref(false)
 const exportLoading = ref(false)
-const bankLoading = ref(false)
 
 // 确保 formId 是数字类型
 const formIdNum = computed(() => {
@@ -328,9 +292,6 @@ const formData = reactive({
   detailsFileUrl: '',
   detailsFileName: '',
   taxRefundRate: undefined as number | undefined,
-  foreignExchangeBankId: undefined as number | undefined,
-  foreignExchangeBank: '', // 银行名称
-  bankFeeRate: undefined as number | undefined,
   currency: 'CNY',
   totalGoodsAmount: undefined as number | undefined,
   amountWithTaxRefund: undefined as number | undefined,
@@ -339,14 +300,17 @@ const formData = reactive({
   taxRefundAmount: undefined as number | undefined
 })
 
-// 监听 formIdNum 变化，更新 formData.formId
+// 监听 formIdNum 变化，更新 formData.formId 并重新加载数据
 watch(formIdNum, (newVal) => {
   if (newVal) {
     formData.formId = newVal
+    // 当 formId 变化时，重新加载数据
+    if (visible.value) {
+      init()
+    }
   }
 })
 
-const bankAccounts = ref<any[]>([])
 const calculationDetail = ref<any>(null)
 const uploading = ref({
   freight: false as boolean,
@@ -366,7 +330,32 @@ watch(visible, (val) => {
 })
 
 const init = async () => {
-    console.log('Initializing finance form...', 'formId:', props.formId, 'formIdNum:', formIdNum.value)
+  console.log('Initializing finance form...', 'formId:', props.formId, 'formIdNum:', formIdNum.value)
+  
+  // 先重置表单数据，避免旧数据残留
+  formData.id = undefined
+  formData.formId = formIdNum.value
+  formData.formNo = props.formNo
+  formData.freightAmount = undefined
+  formData.freightInvoiceNo = ''
+  formData.freightFileName = ''
+  formData.freightFileUrl = ''
+  formData.customsAmount = undefined
+  formData.customsInvoiceNo = ''
+  formData.customsFileName = ''
+  formData.customsFileUrl = ''
+  formData.customsReceiptFileUrl = ''
+  formData.customsReceiptFileName = ''
+  formData.detailsFileUrl = ''
+  formData.detailsFileName = ''
+  formData.taxRefundRate = undefined
+  formData.totalGoodsAmount = undefined
+  formData.amountWithTaxRefund = undefined
+  formData.bankFeeAmount = undefined
+  formData.invoiceAmount = undefined
+  formData.taxRefundAmount = undefined
+  calculationDetail.value = null
+
   loading.value = true
   try {
     // 1. 先加载申报单信息以获取币种
@@ -388,30 +377,16 @@ const init = async () => {
         if (declarationData && declarationData.currency) {
           formData.currency = declarationData.currency
           console.log('设置币种:', declarationData.currency)
+        } else {
+          formData.currency = 'CNY' // 默认币种
         }
       } catch (error) {
         console.warn('获取申报单信息失败:', error)
-        // 如果获取失败，使用默认币种
-        formData.currency = formData.currency || 'CNY'
+        formData.currency = 'CNY'
       }
     }
-    
-    // 2. 根据币种加载对应的银行账户列表
-    if (formData.currency) {
-      const bankRes = await getEnabledBankAccounts(formData.currency)
-      console.log('银行账户响应:', bankRes)
-      // 兼容多种响应格式
-      if (bankRes.data) {
-        if (bankRes.data.code === 200 && bankRes.data.data) {
-          bankAccounts.value = bankRes.data.data || []
-        } else if (Array.isArray(bankRes.data)) {
-          bankAccounts.value = bankRes.data
-        }
-      }
-      console.log('银行账户列表:', bankAccounts.value)
-    }
-    
-    // 3. 加载已有财务资料
+
+    // 2. 加载已有财务资料
     if (formIdNum.value) {
       const response = await getFinancialSupplement(formIdNum.value)
       console.log('财务补充响应:', response)
@@ -427,69 +402,45 @@ const init = async () => {
       console.log('财务补充数据:', financeData)
       if (financeData) {
         if(financeData.id) formData.id = financeData.id
-        // 使用详细字段而不是整个对象覆盖，避免覆盖未提供的字段
-        if (financeData.freightAmount !== undefined) formData.freightAmount = financeData.freightAmount
+        if (financeData.freightAmount !== undefined && financeData.freightAmount !== null) formData.freightAmount = financeData.freightAmount
         if (financeData.freightInvoiceNo) formData.freightInvoiceNo = financeData.freightInvoiceNo
         if (financeData.freightFileUrl) formData.freightFileUrl = financeData.freightFileUrl
         if (financeData.freightFileName) formData.freightFileName = financeData.freightFileName
-                
-        if (financeData.customsAmount !== undefined) formData.customsAmount = financeData.customsAmount
+
+        if (financeData.customsAmount !== undefined && financeData.customsAmount !== null) formData.customsAmount = financeData.customsAmount
         if (financeData.customsInvoiceNo) formData.customsInvoiceNo = financeData.customsInvoiceNo
         if (financeData.customsFileUrl) formData.customsFileUrl = financeData.customsFileUrl
         if (financeData.customsFileName) formData.customsFileName = financeData.customsFileName
-                
+
+        if (financeData.customsReceiptFileUrl) formData.customsReceiptFileUrl = financeData.customsReceiptFileUrl
+        if (financeData.customsReceiptFileName) formData.customsReceiptFileName = financeData.customsReceiptFileName
+
         if (financeData.detailsFileUrl) formData.detailsFileUrl = financeData.detailsFileUrl
         if (financeData.detailsFileName) formData.detailsFileName = financeData.detailsFileName
-                
-        if (financeData.taxRefundRate !== undefined) formData.taxRefundRate = financeData.taxRefundRate
-        if (financeData.foreignExchangeBankId) {
-          formData.foreignExchangeBankId = financeData.foreignExchangeBankId
-          // 当加载已有银行ID时，尝试从银行列表中获取手续费率
-          if (bankAccounts.value && bankAccounts.value.length > 0) {
-            const selectedBank = bankAccounts.value.find(b => b.id === Number(financeData.foreignExchangeBankId))
-            if (selectedBank && selectedBank.serviceFeeRate !== undefined && selectedBank.serviceFeeRate !== null) {
-              formData.bankFeeRate = selectedBank.serviceFeeRate * 100  // 将银行配置的小数形式转换为百分比
-            } else {
-              // 如果银行不存在或没有手续费率，则使用数据库中存储的值
-              if (financeData.bankFeeRate !== undefined) {
-                formData.bankFeeRate = financeData.bankFeeRate
-              }
-            }
-          } else {
-            // 如果银行列表还没加载，暂时使用数据库中存储的值
-            if (financeData.bankFeeRate !== undefined) {
-              formData.bankFeeRate = financeData.bankFeeRate
-            }
-          }
-        } else if (financeData.bankFeeRate !== undefined) {
-          // 如果没有银行ID但有手续费率，直接使用（这种情况应该很少见）
-          formData.bankFeeRate = financeData.bankFeeRate
-        }
-        if (financeData.foreignExchangeBank) formData.foreignExchangeBank = financeData.foreignExchangeBank
-        
+
+        if (financeData.taxRefundRate !== undefined && financeData.taxRefundRate !== null) formData.taxRefundRate = financeData.taxRefundRate
+
         // 添加计算结果字段
-        if (financeData.totalGoodsAmount !== undefined) formData.totalGoodsAmount = financeData.totalGoodsAmount
-        if (financeData.amountWithTaxRefund !== undefined) formData.amountWithTaxRefund = financeData.amountWithTaxRefund
-        if (financeData.bankFeeAmount !== undefined) formData.bankFeeAmount = financeData.bankFeeAmount
-        if (financeData.invoiceAmount !== undefined) formData.invoiceAmount = financeData.invoiceAmount
-        
-        // // 确保币种字段正确
-        // if (financeData.currency) {
-        //   formData.currency = financeData.currency
-        // }
+        if (financeData.totalGoodsAmount !== undefined && financeData.totalGoodsAmount !== null) formData.totalGoodsAmount = financeData.totalGoodsAmount
+        if (financeData.amountWithTaxRefund !== undefined && financeData.amountWithTaxRefund !== null) formData.amountWithTaxRefund = financeData.amountWithTaxRefund
+        if (financeData.bankFeeAmount !== undefined && financeData.bankFeeAmount !== null) formData.bankFeeAmount = financeData.bankFeeAmount
+        if (financeData.invoiceAmount !== undefined && financeData.invoiceAmount !== null) formData.invoiceAmount = financeData.invoiceAmount
+        if (financeData.taxRefundAmount !== undefined && financeData.taxRefundAmount !== null) formData.taxRefundAmount = financeData.taxRefundAmount
+
         // 解析计算明细JSON（如果存在）或使用后端返回的计算明细
         if (financeData.calculationDetail) {
           try {
             calculationDetail.value = JSON.parse(financeData.calculationDetail);
           } catch (e) {
             console.warn('解析计算明细JSON失败:', e);
-            calculationDetail.value = financeData.calculationDetail || null;
+            calculationDetail.value = null;
           }
         } else {
-          calculationDetail.value = financeData.calculationDetail || null;
+          calculationDetail.value = null;
         }
       }
     }
+    console.log('初始化完成，最终formData:', formData)
   } catch (error) {
     console.error('初始化财务补充表单失败:', error)
     message.error('初始化失败')
@@ -528,48 +479,6 @@ const handleUpload = async (info: any, fileType: 'freight' | 'customs' | 'custom
     message.error('上传失败: ' + (error.message || '网络错误'))
   } finally {
     uploading.value[fileType] = false
-  }
-}
-
-const handleBankChange = (value: any) => {
-  console.log('银行选择变化:', { 
-    value, 
-    bankAccounts: bankAccounts.value,
-    currency: formData.currency 
-  })
-  
-  if (!value) {
-    formData.foreignExchangeBankId = undefined
-    formData.foreignExchangeBank = ''
-    // 当取消选择银行时，清空手续费率
-    formData.bankFeeRate = undefined
-    return
-  }
-  const selectedBank = bankAccounts.value.find(b => b.id === value)
-  console.log('找到的银行:', selectedBank)
-  
-  if (selectedBank) {
-    formData.foreignExchangeBankId = selectedBank.id
-    formData.foreignExchangeBank = selectedBank.bankName || selectedBank.accountName || ''
-    console.log('设置银行信息:', {
-      id: selectedBank.id,
-      bankName: selectedBank.bankName,
-      accountName: selectedBank.accountName,
-      bankFeeRate: selectedBank.serviceFeeRate
-    })
-    // 自动设置银行手续费率（将小数转换为百分比形式）
-    if (selectedBank.serviceFeeRate !== undefined && selectedBank.serviceFeeRate !== null) {
-      formData.bankFeeRate = selectedBank.serviceFeeRate * 100  // 数据库中存储的是小数形式，显示时转换为百分比
-    } else {
-      // 如果银行没有设置手续费率，则清空
-      formData.bankFeeRate = undefined
-    }
-  } else {
-    console.error('未找到ID为', value, '的银行')
-    // 如果找不到银行，清空相关字段
-    formData.foreignExchangeBankId = undefined
-    formData.foreignExchangeBank = ''
-    formData.bankFeeRate = undefined
   }
 }
 
@@ -637,9 +546,6 @@ const handleSave = async () => {
       detailsFileUrl: formData.detailsFileUrl,
       detailsFileName: formData.detailsFileName,
       taxRefundRate: formData.taxRefundRate,
-      foreignExchangeBankId: formData.foreignExchangeBankId,
-      foreignExchangeBank: formData.foreignExchangeBank,
-      bankFeeRate: formData.bankFeeRate,
       currency: formData.currency
     }
     

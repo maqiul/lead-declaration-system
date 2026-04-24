@@ -69,7 +69,7 @@ public class WorkflowController {
 
     @GetMapping("/definition")
     @Operation(summary = "获取流程定义列表")
-    @RequiresPermissions("workflow:definition:list")
+    @RequiresPermissions("workflow:definition:view")
     public Result<IPage<ProcessDefinition>> getProcessDefinitions(
             @RequestParam(required = false, defaultValue = "1") Integer pageNum,
             @RequestParam(required = false, defaultValue = "10") Integer pageSize,
@@ -154,7 +154,7 @@ public class WorkflowController {
 
     @GetMapping("/instances/my")
     @Operation(summary = "获取我的流程实例")
-    @RequiresPermissions("workflow:instance:list")
+    @RequiresPermissions("workflow:instance:view")
     public Result<IPage<ProcessInstance>> getMyProcessInstances(
             @RequestParam(required = false, defaultValue = "1") Integer pageNum,
             @RequestParam(required = false, defaultValue = "10") Integer pageSize,
@@ -187,7 +187,7 @@ public class WorkflowController {
     
     @GetMapping("/instances/running")
     @Operation(summary = "获取运行中的流程实例")
-    @RequiresPermissions("workflow:instance:list")
+    @RequiresPermissions("workflow:instance:view")
     public Result<IPage<ProcessInstance>> getRunningProcessInstances(
             @RequestParam(required = false, defaultValue = "1") Integer pageNum,
             @RequestParam(required = false, defaultValue = "10") Integer pageSize,
@@ -254,7 +254,7 @@ public class WorkflowController {
 
     @GetMapping("/tasks/assigned")
     @Operation(summary = "获取我的待办任务")
-    @RequiresPermissions("workflow:task:list")
+    @RequiresPermissions("workflow:task:view")
     public Result<IPage<TaskInstance>> getMyAssignedTasks(
             @RequestParam(required = false, defaultValue = "1") Integer pageNum,
             @RequestParam(required = false, defaultValue = "10") Integer pageSize,
@@ -291,7 +291,7 @@ public class WorkflowController {
 
     @GetMapping("/tasks/candidate")
     @Operation(summary = "获取我的候选任务")
-    @RequiresPermissions("workflow:task:list")
+    @RequiresPermissions("workflow:task:view")
     public Result<IPage<TaskInstance>> getMyCandidateTasks(
             @RequestParam(required = false, defaultValue = "1") Integer pageNum,
             @RequestParam(required = false, defaultValue = "10") Integer pageSize,
@@ -331,7 +331,7 @@ public class WorkflowController {
 
     @GetMapping("/tasks/completed")
     @Operation(summary = "获取我的已完成任务")
-    @RequiresPermissions("workflow:task:list")
+    @RequiresPermissions("workflow:task:view")
     public Result<IPage<TaskInstance>> getMyCompletedTasks(
             @RequestParam(required = false, defaultValue = "1") Integer pageNum,
             @RequestParam(required = false, defaultValue = "10") Integer pageSize,
@@ -411,7 +411,7 @@ public class WorkflowController {
 
     @GetMapping("/instance/tasks/{instanceId}")
     @Operation(summary = "获取流程实例任务列表")
-    @RequiresPermissions("workflow:task:list")
+    @RequiresPermissions("workflow:task:view")
     public Result<List<TaskInstance>> getTasksByProcessInstance(@Parameter(description = "流程实例ID") @PathVariable String instanceId) {
         List<TaskInstance> tasks = processInstanceService.getTasksByProcessInstance(instanceId);
         return Result.success(tasks);

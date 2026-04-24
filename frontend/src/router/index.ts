@@ -109,19 +109,19 @@ export const asyncRoutes: RouteRecordRaw[] = [
         path: 'transport-mode',
         name: 'TransportMode',
         component: () => import('@/views/system/transport-mode/index.vue'),
-        meta: { title: '运输方式', icon: 'CarOutlined', permission: 'system:transport:list' }
+        meta: { title: '运输方式', icon: 'CarOutlined', permission: 'system:transport:view' }
       },
       {
         path: 'payment-method',
         name: 'PaymentMethod',
         component: () => import('@/views/system/payment-method/index.vue'),
-        meta: { title: '支付方式', icon: 'MoneyCollectOutlined', permission: 'system:payment:list' }
+        meta: { title: '支付方式', icon: 'MoneyCollectOutlined', permission: 'system:payment:view' }
       },
       {
         path: 'currency',
         name: 'Currency',
         component: () => import('@/views/system/currency/index.vue'),
-        meta: { title: '货币管理', icon: 'MoneyCollectOutlined', permission: 'system:currency:list' }
+        meta: { title: '货币管理', icon: 'MoneyCollectOutlined', permission: 'system:currency:view' }
       },
       {
         path: 'measurement-unit',
@@ -199,6 +199,40 @@ export const asyncRoutes: RouteRecordRaw[] = [
         name: 'Task',
         component: () => import('@/views/workflow/task/index.vue'),
         meta: { title: '我的任务', icon: 'CheckCircleOutlined' }
+      }
+    ]
+  },
+  {
+    path: '/remittance',
+    component: Layout,
+    name: 'Remittance',
+    meta: { title: '水单管理', icon: 'AccountBookOutlined' },
+    children: [
+      {
+        path: 'list',
+        name: 'RemittanceList',
+        component: () => import('@/views/remittance/list/index.vue'),
+        meta: { title: '水单列表', icon: 'ListOutlined' }
+      },
+      {
+        path: 'audit',
+        name: 'RemittanceAudit',
+        component: () => import('@/views/remittance/audit/index.vue'),
+        meta: { title: '水单审核', icon: 'AuditOutlined', permission: 'business:remittance:audit' }
+      }
+    ]
+  },
+  {
+    path: '/finance-invoice',
+    component: Layout,
+    name: 'FinanceInvoice',
+    meta: { title: '发票管理', icon: 'FileTextOutlined', permission: 'finance:invoice:view' },
+    children: [
+      {
+        path: 'index',
+        name: 'FinanceInvoiceIndex',
+        component: () => import('@/views/finance/invoice/index.vue'),
+        meta: { title: '发票台账', icon: 'FileTextOutlined' }
       }
     ]
   },

@@ -19,8 +19,12 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" @click="handleSearch" v-permission="['workflow:instance:list']">搜索</a-button>
-            <a-button @click="handleReset" v-permission="['workflow:instance:list']">重置</a-button>
+            <a-button type="primary" @click="handleSearch" v-permission="['workflow:instance:view']">搜索</a-button>
+            <a-button @click="handleReset" v-permission="['workflow:instance:view']">重置</a-button>
+            <a-button type="primary" @click="handleStartProcess" v-permission="['workflow:instance:start']">
+              <template #icon><plus-outlined /></template>
+              发起流程
+            </a-button>
           </a-space>
         </a-form-item>
       </a-form>
@@ -45,7 +49,7 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record as ProcessInstance)" v-permission="['workflow:instance:list']">查看</a-button>
+              <a-button type="link" size="small" @click="handleView(record as ProcessInstance)" v-permission="['workflow:instance:view']">查看</a-button>
               <a-button 
                 v-if="record.status === 0" 
                 type="link" 
@@ -144,6 +148,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { PlusOutlined } from '@ant-design/icons-vue'
 import { getRunningProcessInstances, suspendProcessInstance, activateProcessInstance, terminateProcessInstance, getTasksByProcessInstance } from '@/api/workflow'
 
 const router = useRouter()
@@ -364,6 +369,11 @@ const handleViewBusiness = (businessKey: string | undefined) => {
       query: { action: 'view', id: businessKey }
     })
   }
+}
+
+const handleStartProcess = () => {
+  message.info('发起流程功能待实现')
+  // TODO: 跳转到发起流程页面或弹出流程选择框
 }
 
 const handleSuspend = async (instanceId: string) => {

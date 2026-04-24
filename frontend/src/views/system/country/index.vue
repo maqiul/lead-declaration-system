@@ -33,7 +33,7 @@
     <!-- 操作区域 -->
     <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="handleAdd" v-permission="['system:country:add']" class="ui-btn-cta">
+        <a-button type="primary" @click="handleAdd" v-permission="['system:country:create']" class="ui-btn-cta">
           <template #icon><plus-outlined /></template>
           新增国家
         </a-button>
@@ -63,8 +63,8 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as CountryInfo)" v-permission="['system:country:edit']" class="text-blue-600 font-medium">编辑</a-button>
-              <a-button type="link" size="small" :danger="record.status === 1" @click="handleToggleStatus(record as CountryInfo)" v-permission="['system:country:edit']" class="font-medium">
+              <a-button type="link" size="small" @click="handleEdit(record as CountryInfo)" v-permission="['system:country:update']" class="text-blue-600 font-medium">编辑</a-button>
+              <a-button type="link" size="small" :danger="record.status === 1" @click="handleToggleStatus(record as CountryInfo)" v-permission="['system:country:update']" class="font-medium">
                 {{ record.status === 1 ? '禁用' : '启用' }}
               </a-button>
               <a-popconfirm

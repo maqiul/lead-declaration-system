@@ -9,8 +9,8 @@ import zhCN from 'ant-design-vue/es/locale/zh_CN'
 
 const themeConfig = {
   token: {
-    colorPrimary: '#2563EB',
-    borderRadius: 8,
+    colorPrimary: '#FA8C16',
+    borderRadius: 6,
     fontFamily: "'Source Sans 3', sans-serif"
   }
 }

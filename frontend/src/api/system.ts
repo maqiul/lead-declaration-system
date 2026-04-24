@@ -149,6 +149,40 @@ export function updateRoleMenus(data: { roleId: number; menuIds: number[] }) {
   })
 }
 
+// 获取角色的用户列表
+export function getRoleUsers(roleId: number) {
+  return request({
+    url: `/role/users/${roleId}`,
+    method: 'get'
+  })
+}
+
+// 为用户分配角色
+export function assignUserRoles(userId: number, roleIds: number[]) {
+  return request({
+    url: `/user/roles`,
+    method: 'post',
+    data: { userId, roleIds }
+  })
+}
+
+// 批量为用户分配角色
+export function batchAssignUserRoles(userIds: number[], roleIds: number[]) {
+  return request({
+    url: `/role/users/batch-assign`,
+    method: 'post',
+    data: { userIds, roleIds }
+  })
+}
+
+// 获取所有角色列表(用于下拉选择)
+export function getAllRoles() {
+  return request({
+    url: '/role/all',
+    method: 'get'
+  })
+}
+
 // 组织管理相关API
 export interface OrgQueryParams {
   orgName?: string

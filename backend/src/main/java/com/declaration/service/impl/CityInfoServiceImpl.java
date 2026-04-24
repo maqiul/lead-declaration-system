@@ -96,8 +96,17 @@ public class CityInfoServiceImpl extends ServiceImpl<CityInfoDao, CityInfo> impl
         cityInfo.setStatus(status);
         cityInfo.setUpdateTime(LocalDateTime.now());
         cityInfo.setUpdateBy(StpUtil.getLoginIdAsString());
-        
+
         updateById(cityInfo);
+    }
+
+    @Override
+    public List<CityInfo> getEnabledList() {
+        LambdaQueryWrapper<CityInfo> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(CityInfo::getStatus, 1)
+               .orderByAsc(CityInfo::getSort)
+               .orderByDesc(CityInfo::getId);
+        return this.list(wrapper);
     }
 
     // @Override

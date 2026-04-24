@@ -25,7 +25,7 @@
         v-model:selected-keys="selectedKeys"
         :open-keys="openKeys"
         mode="inline"
-        theme="dark"
+        theme="light"
         :items="menuItems"
         @click="handleMenuClick"
         @openChange="handleOpenChange"
@@ -236,15 +236,30 @@ const loadSystemConfig = async () => {
 const loadMenuData = async () => {
   try {
     loading.value = true
+    console.log('=== 加载菜单数据 ===')
     const response = await getUserRoutes()
-    menuData.value = (response.data?.data && Array.isArray(response.data.data)) 
-      ? response.data.data 
-      : getDefaultMenu()
+    console.log('后端返回的菜单数据:', response.data)
+    console.log('菜单数据详情:', JSON.stringify(response.data?.data, null, 2))
     
+    menuData.value = (response.data?.data && Array.isArray(response.data.data))
+      ? response.data.data
+      : getDefaultMenu()
+
+    console.log('处理后的 menuData.value:', JSON.stringify(menuData.value, null, 2))
+    
+    // 检查是否包含水单管理菜单
+    const hasRemittanceMenu = menuData.value?.some((m: any) => 
+      m.path === '/remittance' || m.menuName === '水单管理' || 
+      m.children?.some((c: any) => c.path === '/remittance' || c.menuName === '水单管理')
+    )
+    console.log('是否包含水单管理菜单:', hasRemittanceMenu)
+
     if (!menuData.value || menuData.value.length === 0) {
+      console.log('菜单数据为空，使用默认菜单')
       menuData.value = getDefaultMenu()
     }
   } catch (error) {
+    console.error('加载菜单数据失败:', error)
     menuData.value = getDefaultMenu()
   } finally {
     loading.value = false
@@ -294,12 +309,11 @@ const getDefaultMenu = () => [
 
 // 菜单项配置
 const menuItems = computed(() => {
-  const convertMenu = (menus: any[]): any[] => {
-    // 添加更严格的空值检查
+  const convertMenu = (menus: any[], parentPath: string = ''): any[] => {
     if (!menus || !Array.isArray(menus)) {
       return []
     }
-    
+
     return menus
       .filter(menu => {
         if (!menu) return false
@@ -309,12 +323,28 @@ const menuItems = computed(() => {
       })
       .map(menu => {
         if (!menu) return null
-        
+
+        // 计算完整绝对路径，作为唯一的 Key
+        let fullPath = menu.path
+        if (!fullPath) {
+            fullPath = `menu-${menu.id}`
+        } else {
+            // 如果是相对路径，拼接到父路径后面
+            if (!fullPath.startsWith('/')) {
+                const base = parentPath.endsWith('/') ? parentPath.slice(0, -1) : parentPath
+                fullPath = `${base}/${fullPath}`
+            }
+            // 如果是根节点且没有 /，加上 /
+            if (!fullPath.startsWith('/') && !parentPath) {
+                fullPath = '/' + fullPath
+            }
+        }
+
         const menuItem: any = {
-          key: menu?.path || `menu-${menu?.id || Math.random()}`,
+          key: fullPath, // 使用完整路径作为 Key，避免冲突
           label: menu?.menuName || '未知菜单'
         }
-        
+
         // 安全地处理图标
         if (menu?.icon) {
           try {
@@ -323,32 +353,32 @@ const menuItems = computed(() => {
               menuItem.icon = () => h(IconComponent)
             }
           } catch (error) {
-            // 图标组件创建失败
+            // 忽略图标错误
           }
         }
-        
+
         // 安全地处理子菜单
         if (menu?.children && Array.isArray(menu.children) && menu.children.length > 0) {
           try {
             const filteredChildren = menu.children.filter((child: any) => {
               if (!child) return false
-              // 检查子菜单是否应该显示：status=1 且 isShow/is_show 不为 0
               const isChildVisible = child?.isShow !== 0 && child?.is_show !== 0
               return child?.status === 1 && child?.menuType !== 3 && isChildVisible
             })
             if (filteredChildren.length > 0) {
-              menuItem.children = convertMenu(filteredChildren)
+              // 递归时传入当前的 fullPath 作为 parentPath
+              menuItem.children = convertMenu(filteredChildren, fullPath)
             }
           } catch (error) {
-            // 子菜单处理失败
+            // 忽略子菜单错误
           }
         }
-        
+
         return menuItem
       })
-      .filter(item => item !== null) // 过滤掉null项
+      .filter(item => item !== null)
   }
-  
+
   return convertMenu(Array.isArray(menuData.value) ? menuData.value : [])
 })
 
@@ -380,47 +410,23 @@ const getIconComponent = (iconName: string) => {
 let menuClickTimeout: any = null
 
 const handleMenuClick = ({ key }: { key: string | number }) => {
-  // 添加安全检查
-  if (!key) {
-    return
-  }
-  
+  if (!key) return
+
   if (menuClickTimeout) {
     clearTimeout(menuClickTimeout)
   }
-  
+
   menuClickTimeout = setTimeout(() => {
     try {
-      const findMenuPath = (menus: any[], targetKey: string, parentPath: string = ''): string | null => {
-        if (!Array.isArray(menus)) return null
-        
-        for (const menu of menus) {
-          if (!menu) continue
-          
-          const menuKey = menu.path || `menu-${menu.id}`
-          
-          if (menuKey === targetKey) {
-            const fullPath = parentPath ? `${parentPath}/${menu.path}` : menu.path
-            return fullPath
-          }
-          
-          if (menu.children && Array.isArray(menu.children)) {
-            const childPath = findMenuPath(menu.children, targetKey, menu.path)
-            if (childPath) return childPath
-          }
-        }
-        return null
-      }
+      // Key 现在是完整的绝对路径 (例如 /remittance/list)
+      const path = key.toString()
+      console.log('菜单点击，跳转路径:', path)
       
-      const path = findMenuPath(menuData.value, key.toString())
-      
-      if (path) {
-        router.push(path).catch(() => {})
-      } else {
-        router.push(`/${key}`).catch(() => {})
-      }
+      router.push(path).catch(() => {
+        // 忽略跳转失败（例如点击了当前页）
+      })
     } catch (error) {
-      // 菜单点击处理异常
+      console.error('菜单点击处理异常:', error)
     } finally {
       menuClickTimeout = null
     }
@@ -525,7 +531,7 @@ onMounted(() => {
 <style scoped>
 .layout-wrapper {
   height: 100vh;
-  background: linear-gradient(145deg, #F8FAFC 0%, #EEF2FF 50%, #E0E7FF 100%);
+  background: #F0F2F5;
   overflow-x: hidden;
 }
 
@@ -536,9 +542,9 @@ onMounted(() => {
   left: 0;
   top: 0;
   bottom: 0;
-  background: linear-gradient(180deg, #0F172A 0%, #1E293B 100%) !important;
-  box-shadow: 4px 0 24px rgba(15, 23, 42, 0.15);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: #FFFFFF !important;
+  box-shadow: 1px 0 0 #E2E8F0;
+  border-right: 1px solid #E2E8F0;
   display: flex;
   flex-direction: column;
 }
@@ -551,17 +557,17 @@ onMounted(() => {
   justify-content: center;
   margin: 16px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
   cursor: pointer;
 }
 
 .logo:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.2);
+  background: #EFF6FF;
+  border-color: #BFDBFE;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
 }
 
 .logo-inner {
@@ -574,11 +580,11 @@ onMounted(() => {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  background: linear-gradient(135deg, #FA8C16, #FA541C);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 2px 8px rgba(250, 140, 22, 0.3);
 }
 
 .logo-icon-wrap--mini {
@@ -593,14 +599,10 @@ onMounted(() => {
 }
 
 .logo-text {
-  color: white;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.5px;
-  background: linear-gradient(135deg, #E0E7FF, #C7D2FE, #A5B4FC);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #FA8C16;
 }
 
 /* 顶栏 */
@@ -616,6 +618,7 @@ onMounted(() => {
   justify-content: space-between;
   height: 64px !important;
   z-index: 100 !important;
+  border-bottom: 1px solid #F0F0F0;
 }
 
 .header-left {
@@ -700,12 +703,12 @@ onMounted(() => {
   margin: 24px;
   padding: 24px;
   background: #ffffff;
-  border-radius: 20px;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
-  border: 1px solid rgba(226, 232, 240, 0.5);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid #E2E8F0;
   min-height: calc(100vh - 64px - 64px - 48px);
   box-sizing: border-box;
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 @media (max-width: 768px) {
@@ -737,44 +740,54 @@ onMounted(() => {
 }
 
 :deep(.modern-menu .ant-menu-item) {
-  margin: 3px 12px !important;
-  border-radius: 12px !important;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  height: 42px !important;
-  line-height: 42px !important;
-  color: rgba(255, 255, 255, 0.6) !important;
+  margin: 4px 0 !important;
+  width: 100% !important;
+  border-radius: 0 !important;
+  transition: all 0.3s !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  color: rgba(0, 0, 0, 0.65) !important;
 }
 
 :deep(.modern-menu .ant-menu-item:hover) {
-  background: rgba(255, 255, 255, 0.08) !important;
-  color: rgba(255, 255, 255, 0.95) !important;
+  color: #FA8C16 !important;
 }
 
 :deep(.modern-menu .ant-menu-item-selected) {
-  background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%) !important;
-  box-shadow: 0 4px 16px rgba(30, 64, 175, 0.3) !important;
+  background: #FFF7E6 !important;
+  color: #FA8C16 !important;
   font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+:deep(.modern-menu .ant-menu-item-selected::after) {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-right: 3px solid #FA8C16;
 }
 
 :deep(.modern-menu .ant-menu-submenu-title) {
-  margin: 3px 12px !important;
-  border-radius: 12px !important;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  height: 42px !important;
-  line-height: 42px !important;
-  color: rgba(255, 255, 255, 0.6) !important;
+  margin: 4px 0 !important;
+  width: 100% !important;
+  border-radius: 0 !important;
+  transition: all 0.3s !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  color: rgba(0, 0, 0, 0.65) !important;
 }
 
 :deep(.modern-menu .ant-menu-submenu-title:hover) {
-  background: rgba(255, 255, 255, 0.08) !important;
-  color: rgba(255, 255, 255, 0.95) !important;
+  color: #FA8C16 !important;
 }
 
 :deep(.modern-menu .ant-menu-submenu-arrow) {
-  color: rgba(255, 255, 255, 0.35) !important;
+  color: rgba(0, 0, 0, 0.45) !important;
 }
 
 :deep(.modern-menu .ant-menu-sub) {
-  background: transparent !important;
+  background: #FAFAFA !important;
 }
 </style>

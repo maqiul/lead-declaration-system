@@ -35,7 +35,7 @@ public class CurrencyInfoController {
      */
     @GetMapping
     @Operation(summary = "分页查询货币信息")
-    @RequiresPermissions("system:currency:list")
+    @RequiresPermissions("system:currency:view")
     public Result<Page<CurrencyInfo>> getCurrencies(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer current,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
@@ -93,7 +93,7 @@ public class CurrencyInfoController {
      */
     @PostMapping
     @Operation(summary = "新增货币信息")
-    @RequiresPermissions("system:currency:add")
+    @RequiresPermissions("system:currency:create")
     public Result<Void> addCurrency(@RequestBody CurrencyInfo currency) {
         // 检查货币代码是否重复
         boolean exists = currencyInfoService.lambdaQuery()
@@ -129,7 +129,7 @@ public class CurrencyInfoController {
      */
     @PutMapping("/{id}")
     @Operation(summary = "修改货币信息")
-    @RequiresPermissions("system:currency:edit")
+    @RequiresPermissions("system:currency:update")
     public Result<Void> updateCurrency(
             @Parameter(description = "货币ID") @PathVariable Long id,
             @RequestBody CurrencyInfo currency) {
@@ -187,7 +187,7 @@ public class CurrencyInfoController {
      */
     @PostMapping("/{id}/toggle-status")
     @Operation(summary = "启用/禁用货币信息")
-    @RequiresPermissions("system:currency:edit")
+    @RequiresPermissions("system:currency:update")
     public Result<Void> toggleStatus(
             @Parameter(description = "货币ID") @PathVariable Long id) {
         

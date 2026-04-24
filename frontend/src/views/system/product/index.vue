@@ -27,7 +27,7 @@
     <!-- 操作按钮区域 -->
     <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="openAddModal" v-permission="['system:product:add']" class="ui-btn-cta">
+        <a-button type="primary" @click="openAddModal" v-permission="['system:product:create']" class="ui-btn-cta">
           <template #icon><plus-outlined /></template>
           新增商品
         </a-button>

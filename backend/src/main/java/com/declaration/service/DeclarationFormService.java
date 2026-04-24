@@ -90,6 +90,11 @@ public interface DeclarationFormService extends IService<DeclarationForm> {
      * @param remark 审核备注
      * @return 是否审核成功
      */
+    /**
+     * 审核水单
+     * @deprecated 已废弃,请使用 DeclarationRemittanceService.auditRemittance()
+     */
+    @Deprecated
     boolean auditRemittance(Long id, boolean approved, String remark);
 
     /**

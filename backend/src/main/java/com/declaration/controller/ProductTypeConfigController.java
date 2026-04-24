@@ -4,10 +4,11 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.declaration.annotation.RequiresPermissions;
 import com.declaration.common.Result;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.TypeReference;
+import com.declaration.entity.DeclarationElement;
 import com.declaration.entity.ProductTypeConfig;
 import com.declaration.service.ProductTypeConfigService;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -30,11 +31,10 @@ import java.util.List;
 public class ProductTypeConfigController {
 
     private final ProductTypeConfigService productTypeConfigService;
-    private final ObjectMapper objectMapper;
 
     @GetMapping("/list")
     @Operation(summary = "获取商品类型列表")
-    @RequiresPermissions("system:product:list")
+    @RequiresPermissions("system:product:view")
     public Result<IPage<ProductTypeConfig>> getList(
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize,
@@ -50,7 +50,6 @@ public class ProductTypeConfigController {
 
     @GetMapping("/enabled")
     @Operation(summary = "获取所有启用的商品类型")
-    @RequiresPermissions("system:product:list")
     public Result<List<ProductTypeConfig>> getEnabledList() {
         try {
             List<ProductTypeConfig> list = productTypeConfigService.getEnabledList();
@@ -63,7 +62,6 @@ public class ProductTypeConfigController {
 
     @GetMapping("/types")
     @Operation(summary = "获取商品类型列表（用于下拉选择）")
-    @RequiresPermissions("system:product:list")
     public Result<List<ProductTypeConfig>> getProductTypes() {
         try {
             List<ProductTypeConfig> list = productTypeConfigService.getEnabledList();
@@ -76,7 +74,7 @@ public class ProductTypeConfigController {
 
     @GetMapping("/{id}")
     @Operation(summary = "获取商品类型详情")
-    @RequiresPermissions("system:product:query")
+    @RequiresPermissions("system:product:view")
     public Result<ProductTypeConfig> getById(@PathVariable Long id) {
         ProductTypeConfig config = productTypeConfigService.getById(id);
         if (config == null) {
@@ -85,9 +83,10 @@ public class ProductTypeConfigController {
         // 解析申报要素
         if (config.getElementsConfig() != null) {
             try {
-                List<?> elements = objectMapper.readValue(config.getElementsConfig(), List.class);
-                config.setElements((List) elements);
-            } catch (JsonProcessingException e) {
+                List<DeclarationElement> elementsList = JSON.parseObject(config.getElementsConfig(), 
+                    new TypeReference<List<DeclarationElement>>(){});
+                config.setElements(elementsList);
+            } catch (Exception e) {
                 log.error("解析申报要素失败", e);
             }
         }
@@ -96,12 +95,12 @@ public class ProductTypeConfigController {
 
     @PostMapping
     @Operation(summary = "新增商品类型")
-    @RequiresPermissions("system:product:add")
+    @RequiresPermissions("system:product:create")
     public Result<String> add(@RequestBody ProductTypeConfig config) {
         try {
             // 序列化申报要素
             if (config.getElements() != null && !config.getElements().isEmpty()) {
-                config.setElementsConfig(objectMapper.writeValueAsString(config.getElements()));
+                config.setElementsConfig(JSON.toJSONString(config.getElements()));
             }
             
             // 检查HS编码是否已存在
@@ -132,7 +131,7 @@ public class ProductTypeConfigController {
             
             // 序列化申报要素
             if (config.getElements() != null && !config.getElements().isEmpty()) {
-                config.setElementsConfig(objectMapper.writeValueAsString(config.getElements()));
+                config.setElementsConfig(JSON.toJSONString(config.getElements()));
             }
             
             config.setUpdateBy(StpUtil.getLoginIdAsLong());

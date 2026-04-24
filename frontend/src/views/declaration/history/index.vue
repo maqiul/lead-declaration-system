@@ -32,7 +32,7 @@
           </a-select>
         </a-col>
         <a-col :span="6">
-          <a-button type="primary" @click="loadHistory" v-permission="['business:declaration:list']">查询</a-button>
+          <a-button type="primary" @click="loadHistory" v-permission="['business:declaration:view']">查询</a-button>
         </a-col>
       </a-row>
     </a-card>
@@ -58,8 +58,8 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="viewDetail(record.id)" v-permission="['business:declaration:query']">查看详情</a-button>
-              <a-button type="link" size="small" @click="editForm(record.id)" v-permission="['business:declaration:edit']">编辑</a-button>
+              <a-button type="link" size="small" @click="viewDetail(record.id)" v-permission="['business:declaration:view']">查看详情</a-button>
+              <a-button type="link" size="small" @click="editForm(record.id)" v-permission="['business:declaration:update']">编辑</a-button>
               <a-button type="link" size="small" @click="exportForm(record.id)" v-permission="['business:declaration:export']">导出</a-button>
             </a-space>
           </template>

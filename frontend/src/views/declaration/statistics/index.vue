@@ -20,7 +20,7 @@
             />
           </div>
           <div class="filter-actions">
-            <a-button type="primary" @click="loadStatistics" :loading="loading" v-permission="['business:declaration:statistics']">
+            <a-button type="primary" @click="loadStatistics" :loading="loading" v-permission="['business:declaration:view']">
               <template #icon>
                 <ReloadOutlined />
               </template>

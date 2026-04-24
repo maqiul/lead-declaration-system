@@ -37,6 +37,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -67,13 +68,14 @@ public class DeclarationFormController {
     private final ObjectMapper objectMapper;
     private final UserService userService;
     private final BusinessAuditRecordDao auditRecordDao;
+    private final InvoiceService invoiceService; // 新增发票服务
 
     /**
      * 获取申报单统计数据
      */
     @GetMapping("/statistics")
     @Operation(summary = "获取申报单统计数据")
-    @RequiresPermissions("business:declaration:statistics")
+    @RequiresPermissions("business:declaration:view")
     public Result<DeclarationStatisticsDTO> getStatistics() {
         DeclarationStatisticsDTO statistics = declarationFormService.getStatistics();
         return Result.success(statistics);
@@ -81,10 +83,12 @@ public class DeclarationFormController {
 
     /**
      * 保存水单信息
+     * @deprecated 已废弃,请使用 RemittanceController.createRemittance()
      */
+    @Deprecated
     @PostMapping("/{id}/remittance")
-    @Operation(summary = "保存水单信息")
-    @RequiresPermissions("business:declaration:edit")
+    @Operation(summary = "保存水单信息(已废弃)")
+    @RequiresPermissions("business:declaration:update")
     public Result<DeclarationRemittance> saveRemittance(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody DeclarationRemittance remittance) {
@@ -112,7 +116,7 @@ public class DeclarationFormController {
      */
     @PostMapping("/{id}/attachments/{attachmentId}/replace")
     @Operation(summary = "替换申报单附件")
-    @RequiresPermissions("business:declaration:edit")
+    @RequiresPermissions("business:declaration:update")
     public Result<DeclarationAttachment> replaceAttachment(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Parameter(description = "附件ID") @PathVariable Long attachmentId,
@@ -224,7 +228,7 @@ public class DeclarationFormController {
      */
     @PutMapping("/remittance/{remittanceId}")
     @Operation(summary = "更新水单信息")
-    @RequiresPermissions("business:declaration:edit")
+    @RequiresPermissions("business:declaration:update")
     public Result<Void> updateRemittance(
             @PathVariable Long remittanceId,
             @RequestBody DeclarationRemittance remittance) {
@@ -630,7 +634,7 @@ public class DeclarationFormController {
      */
     @GetMapping("/{id}/tasks")
     @Operation(summary = "获取申报单的当前流程任务列表")
-    @RequiresPermissions("business:declaration:query")
+    @RequiresPermissions("business:declaration:view")
     public Result<List<Map<String, Object>>> getActiveTasks(
             @Parameter(description = "申报单ID") @PathVariable Long id) {
 
@@ -713,7 +717,7 @@ public class DeclarationFormController {
      */
     @GetMapping("/batch-tasks")
     @Operation(summary = "批量获取申报单的活跃任务")
-    @RequiresPermissions("business:declaration:query")
+    @RequiresPermissions("business:declaration:view")
     public Result<Map<String, List<String>>> getBatchActiveTasks(
             @Parameter(description = "申报单ID列表，逗号分隔") @RequestParam String ids) {
 
@@ -793,11 +797,12 @@ public class DeclarationFormController {
 
     @GetMapping
     @Operation(summary = "分页查询申报单")
-    @RequiresPermissions("business:declaration:list")
+    @RequiresPermissions("business:declaration:view")
     public Result<IPage<DeclarationForm>> getDeclarations(
             @Parameter(description = "分页参数") PageParam pageParam,
             @Parameter(description = "申报单号") @RequestParam(required = false) String formNo,
-            @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
+            @Parameter(description = "状态") @RequestParam(required = false) Integer status,
+            @Parameter(description = "排除的状态") @RequestParam(required = false) Integer excludeStatus) {
 
         Page<DeclarationForm> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
 
@@ -811,6 +816,9 @@ public class DeclarationFormController {
             }
             if (status != null) {
                 queryWrapper.eq(DeclarationForm::getStatus, status);
+            }
+            if (excludeStatus != null) {
+                queryWrapper.ne(DeclarationForm::getStatus, excludeStatus);
             }
 
             // 组织级数据权限隔离：有审核权限可查看所有数据
@@ -929,7 +937,7 @@ public class DeclarationFormController {
 
     @PostMapping("/draft")
     @Operation(summary = "保存草稿")
-    @RequiresPermissions("business:declaration:add")
+    @RequiresPermissions("business:declaration:create")
     @Idempotent(prefix = "sys:idempotent:draft:", expireTime = 3, message = "草稿正在保存中，请勿重复点击！")
     public Result<JSONObject> saveDraft(@RequestBody DeclarationForm form) {
         try {
@@ -956,7 +964,7 @@ public class DeclarationFormController {
 
     @GetMapping("/{id}")
     @Operation(summary = "获取申报单详情")
-    @RequiresPermissions("business:declaration:query")
+    @RequiresPermissions("business:declaration:view")
     public Result<DeclarationForm> getDeclaration(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
@@ -981,7 +989,7 @@ public class DeclarationFormController {
     @PostMapping
     @SaIgnore
     @Operation(summary = "新增申报单")
-    @RequiresPermissions("business:declaration:add")
+    @RequiresPermissions("business:declaration:create")
     @Idempotent(prefix = "sys:idempotent:create:", expireTime = 5, message = "申报单正在创建中，请勿重复提交！")
     public Result<Long> createDeclaration(@Valid @RequestBody DeclarationForm form) {
         // 生成申报单号
@@ -1009,7 +1017,7 @@ public class DeclarationFormController {
     @PutMapping("/{id}")
     @Operation(summary = "更新申报单")
     @RequiresPermissions("business:declaration:update")
-    @Idempotent(prefix = "sys:idempotent:update:", expireTime = 5, message = "申报单正在更新中，请勿重复提交！")
+    @Idempotent(prefix = "sys:idempotent:edit:", expireTime = 5, message = "申报单正在更新中，请勿重复提交！")
     public Result<Void> updateDeclaration(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @Valid @RequestBody DeclarationForm form) {
@@ -1054,9 +1062,8 @@ public class DeclarationFormController {
      * 提交申报单
      */
     @PostMapping("/{id}/submit")
-    @SaIgnore
     @Operation(summary = "提交申报单")
-    @RequiresPermissions("business:declaration:update")
+    @RequiresPermissions("business:declaration:submit")
     @Idempotent(prefix = "sys:idempotent:submit:", expireTime = 5, message = "申报单正在提交中，请勿重复操作！")
     public Result<String> submitDeclaration(@Parameter(description = "申报单ID") @PathVariable Long id) {
         log.info("调用提交申报单");
@@ -1147,7 +1154,7 @@ public class DeclarationFormController {
      */
     @GetMapping("/{formId}/products")
     @Operation(summary = "获取申报单产品列表")
-    @RequiresPermissions("business:declaration:list")
+    @RequiresPermissions("business:declaration:view")
     public Result<List<DeclarationProduct>> getProducts(@Parameter(description = "申报单ID") @PathVariable Long formId) {
         List<DeclarationProduct> products = declarationProductService.lambdaQuery()
                 .eq(DeclarationProduct::getFormId, formId)
@@ -1193,7 +1200,7 @@ public class DeclarationFormController {
      */
     @GetMapping("/{formId}/cartons")
     @Operation(summary = "获取申报单箱子列表")
-    @RequiresPermissions("business:declaration:list")
+    @RequiresPermissions("business:declaration:view")
     public Result<List<DeclarationCarton>> getCartons(@Parameter(description = "申报单ID") @PathVariable Long formId) {
         List<DeclarationCarton> cartons = declarationCartonService.lambdaQuery()
                 .eq(DeclarationCarton::getFormId, formId)
@@ -1239,7 +1246,7 @@ public class DeclarationFormController {
      */
     @GetMapping("/carton-products/{cartonId}")
     @Operation(summary = "获取箱子产品关联")
-    @RequiresPermissions("business:declaration:list")
+    @RequiresPermissions("business:declaration:view")
     public Result<List<DeclarationCartonProduct>> getCartonProducts(
             @Parameter(description = "箱子ID") @PathVariable Long cartonId) {
         List<DeclarationCartonProduct> cartonProducts = declarationCartonProductService.lambdaQuery()
@@ -1453,7 +1460,7 @@ public class DeclarationFormController {
      */
     @GetMapping("/{id}/attachments/pickup")
     @Operation(summary = "获取提货单附件列表")
-    @RequiresPermissions("business:declaration:query")
+    @RequiresPermissions("business:declaration:view")
     public Result<List<DeclarationAttachment>> getPickupAttachments(
             @Parameter(description = "申报单ID") @PathVariable Long id) {
         List<DeclarationAttachment> attachments = attachmentService.lambdaQuery()
@@ -1518,7 +1525,7 @@ public class DeclarationFormController {
      */
     @PostMapping("/{id}/delivery-order")
     @Operation(summary = "提交提货单")
-    @RequiresPermissions("business:declaration:deliveryOrder:add")
+    @RequiresPermissions("business:declaration:delivery:create")
     public Result<Long> saveDeliveryOrder(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody DeliveryOrder deliveryOrder) {
@@ -1541,7 +1548,7 @@ public class DeclarationFormController {
      */
     @GetMapping("/{id}/delivery-orders")
     @Operation(summary = "获取提货单列表")
-    @RequiresPermissions("business:declaration:deliveryOrder")
+    @RequiresPermissions("business:declaration:delivery:view")
     public Result<List<DeliveryOrder>> getDeliveryOrders(
             @Parameter(description = "申报单ID") @PathVariable Long id) {
 
@@ -1554,7 +1561,7 @@ public class DeclarationFormController {
      */
     @PutMapping("/delivery-order/{deliveryOrderId}")
     @Operation(summary = "更新提货单")
-    @RequiresPermissions("business:declaration:deliveryOrder:edit")
+    @RequiresPermissions("business:declaration:delivery:update")
     public Result<Void> updateDeliveryOrder(
             @Parameter(description = "提货单ID") @PathVariable Long deliveryOrderId,
             @RequestBody DeliveryOrder deliveryOrder) {
@@ -1582,7 +1589,7 @@ public class DeclarationFormController {
      */
     @DeleteMapping("/delivery-order/{deliveryOrderId}")
     @Operation(summary = "删除提货单")
-    @RequiresPermissions("business:declaration:deliveryOrder:delete")
+    @RequiresPermissions("business:declaration:delivery:delete")
     public Result<Void> deleteDeliveryOrder(
             @Parameter(description = "提货单ID") @PathVariable Long deliveryOrderId) {
 
@@ -1607,10 +1614,12 @@ public class DeclarationFormController {
 
     /**
      * 审核水单（定金/尾款）
+     * @deprecated 已废弃,请使用 RemittanceController中的审核接口
      */
+    @Deprecated
     @PostMapping("/remittance/{remittanceId}/audit")
-    @Operation(summary = "审核水单")
-    @RequiresPermissions("business:declaration:audit")
+    @Operation(summary = "审核水单(已废弃)")
+    @RequiresPermissions("business:remittance:audit")
     public Result<Void> auditRemittance(
             @Parameter(description = "水单ID") @PathVariable Long remittanceId,
             @RequestBody Map<String, Object> params) {
@@ -1625,9 +1634,17 @@ public class DeclarationFormController {
                 && (Boolean.TRUE.equals(approvedObj) || "true".equals(approvedObj.toString()));
         String remark = params.get("remark") != null ? params.get("remark").toString() : "";
 
-        boolean result = declarationFormService.auditRemittance(remittanceId, approved, remark);
-        if (result) {
-            return Result.success();
+        // 调用新的水单审核服务(集成Flowable) - 废弃的旧接口,仅做兼容
+        try {
+            java.math.BigDecimal taxRate = null;
+            Long bankAccountId = null;
+            boolean result = remittanceService.auditRemittance(remittanceId, approved, bankAccountId, taxRate, remark);
+            if (result) {
+                return Result.success();
+            }
+        } catch (Exception e) {
+            log.error("兼容旧接口审核水单失败", e);
+            return Result.fail("审核失败: " + e.getMessage());
         }
         return Result.fail("审核水单失败");
     }
@@ -1637,7 +1654,7 @@ public class DeclarationFormController {
      */
     @PostMapping("/delivery-order/{deliveryOrderId}/audit")
     @Operation(summary = "审核提货单")
-    @RequiresPermissions("business:declaration:deliveryOrder:audit")
+    @RequiresPermissions("business:declaration:audit:delivery")
     public Result<Void> auditDeliveryOrder(
             @Parameter(description = "提货单ID") @PathVariable Long deliveryOrderId,
             @RequestBody Map<String, Object> params) {
@@ -1664,7 +1681,7 @@ public class DeclarationFormController {
      */
     @PostMapping("/{id}/apply-return")
     @Operation(summary = "申请退回草稿")
-    @RequiresPermissions("business:declaration:return-apply")
+    @RequiresPermissions("business:declaration:return:apply")
     public Result<Void> applyReturnToDraft(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody Map<String, String> params) {
@@ -1682,7 +1699,7 @@ public class DeclarationFormController {
      */
     @PostMapping("/{id}/audit-return")
     @Operation(summary = "审核退回草稿申请")
-    @RequiresPermissions("business:declaration:return-audit")
+    @RequiresPermissions("business:declaration:audit:return")
     public Result<Void> auditReturnToDraft(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody Map<String, Object> params) {
@@ -1704,7 +1721,7 @@ public class DeclarationFormController {
      */
     @GetMapping("/{id}/return-history")
     @Operation(summary = "获取退回申请审核历史")
-    @RequiresPermissions("business:declaration:query")
+    @RequiresPermissions("business:declaration:view")
     public Result<List<AuditHistoryDTO>> getReturnAuditHistory(
             @Parameter(description = "申报单 ID") @PathVariable Long id) {
 
@@ -1729,5 +1746,82 @@ public class DeclarationFormController {
         String datePrefix = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String randomSuffix = String.valueOf(System.currentTimeMillis() % 10000);
         return "DEC" + datePrefix + randomSuffix;
+    }
+
+    // ========================================
+    // 业务发票管理接口 (Category = 1)
+    // ========================================
+
+    /**
+     * 获取申报单关联的业务发票列表
+     */
+    @GetMapping("/{id}/business-invoices")
+    @Operation(summary = "获取业务发票列表")
+    @RequiresPermissions("business:declaration:view")
+    public Result<List<DeclarationInvoice>> getBusinessInvoices(
+            @Parameter(description = "申报单ID") @PathVariable Long id) {
+        
+        List<DeclarationInvoice> list = invoiceService.lambdaQuery()
+                .eq(DeclarationInvoice::getFormId, id)
+                .eq(DeclarationInvoice::getCategory, 1) // 仅查询业务发票
+                .eq(DeclarationInvoice::getDeleted, 0)
+                .orderByDesc(DeclarationInvoice::getCreateTime)
+                .list();
+        return Result.success(list);
+    }
+
+    /**
+     * 上传业务发票
+     */
+    @PostMapping("/{id}/business-invoices")
+    @Operation(summary = "上传业务发票")
+    @RequiresPermissions("business:declaration:update")
+    public Result<Void> uploadBusinessInvoice(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam Integer invoiceType,
+            @RequestParam(required = false) String invoiceName,
+            @RequestParam(required = false) String invoiceNo,
+            @RequestParam(required = false) BigDecimal amount,
+            @RequestParam(required = false) BigDecimal taxAmount,
+            @RequestParam(required = false) String remarks) throws IOException {
+
+        DeclarationForm form = declarationFormService.getById(id);
+        if (form == null) return Result.fail("申报单不存在");
+
+        DeclarationInvoice invoice = new DeclarationInvoice();
+        invoice.setFormId(id);
+        invoice.setCategory(1); // 标记为业务发票
+        invoice.setInvoiceType(invoiceType);
+        invoice.setInvoiceName(invoiceName);
+        invoice.setInvoiceNo(invoiceNo);
+        invoice.setAmount(amount);
+        invoice.setTaxAmount(taxAmount);
+        if (amount != null && taxAmount != null) {
+            invoice.setTotalAmount(amount.add(taxAmount));
+        }
+        invoice.setRemarks(remarks);
+
+        // 使用现有的附件上传服务
+        DeclarationAttachment attachment = attachmentService.uploadFile(file, "Invoice");
+        attachment.setFormId(id);
+        attachmentService.updateById(attachment);
+
+        invoice.setFileName(attachment.getFileName());
+        invoice.setFileUrl(attachment.getFileUrl());
+
+        invoiceService.save(invoice);
+        return Result.success();
+    }
+
+    /**
+     * 删除业务发票
+     */
+    @DeleteMapping("/business-invoices/{invoiceId}")
+    @Operation(summary = "删除业务发票")
+    @RequiresPermissions("business:declaration:edit")
+    public Result<Void> deleteBusinessInvoice(@PathVariable Long invoiceId) {
+        invoiceService.removeById(invoiceId);
+        return Result.success();
     }
 }

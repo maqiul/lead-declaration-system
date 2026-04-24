@@ -96,7 +96,7 @@ public class UserController {
     }
 
     @GetMapping("/page")
-    @RequiresPermissions("user:list")
+    @RequiresPermissions("user:view")
     public Result<IPage<User>> getUserPage(
             @Valid PageParam pageParam,
             User user) {
@@ -105,7 +105,7 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    @RequiresPermissions("user:query")
+    @RequiresPermissions("user:view")
     public Result<User> getUser(@PathVariable Long id) {
         User user = userService.getById(id);
         if (user == null) {
@@ -118,7 +118,7 @@ public class UserController {
     }
 
     @PostMapping
-    @RequiresPermissions("user:add")
+    @RequiresPermissions("user:create")
     public Result<User> createUser(@Valid @RequestBody UserWithRolesDTO userDto) {
         // 转换为User实体
         User user = new User();

@@ -71,6 +71,14 @@ public class PermissionServiceImpl implements PermissionService {
             }
         }
 
+        // 管理员(userId=1)拥有所有权限
+        if (userId != null && userId == 1L) {
+            Set<String> adminPerms = new HashSet<>();
+            adminPerms.add("*:*:*");
+            redisTemplate.opsForValue().set(cacheKey, adminPerms, CACHE_EXPIRE_TIME, TimeUnit.MINUTES);
+            return adminPerms;
+        }
+
         // 查询用户角色
         List<UserRole> userRoles = userRoleDao.selectList(
                 new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));

@@ -51,10 +51,10 @@
 
           <template v-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" @click="handleEdit(record)" v-permission="['business:declaration:financeSupplement']" v-if="record.status === 0">
+              <a-button type="link" @click="handleEdit(record)" v-permission="['business:declaration:finance:supplement']" v-if="record.status === 0">
                 去上传
               </a-button>
-              <a-button type="link" @click="handleView(record)" v-permission="['business:declaration:financeSupplement']" v-else>
+              <a-button type="link" @click="handleView(record)" v-permission="['business:declaration:finance:supplement']" v-else>
                 查看
               </a-button>
             </a-space>
@@ -94,12 +94,10 @@
 import { ref, reactive, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { 
-  getFinancialSupplementList, 
-  auditRemittance,
+import {
+  getFinancialSupplementList,
   auditDeliveryOrder,
   getDeliveryOrders,
-  getRemittanceListByFormId,
 } from '@/api/business/declaration'
 import FinanceModal from './components/FinanceModal.vue'
 
@@ -237,11 +235,6 @@ const formData = reactive({
 // const calculationDetail = ref<any>(null)
 // const calcLoading = ref(false)
 
-// 水单列表
-const remittanceList = ref<any[]>([])
-const remittanceLoading = ref(false)
-const remittanceActiveKeys = ref<string[]>([])
-
 // 提货单列表
 const deliveryOrderList = ref<any[]>([])
 const deliveryLoading = ref(false)
@@ -250,7 +243,7 @@ const deliveryLoading = ref(false)
 const rejectModalVisible = ref(false)
 const rejectRemark = ref('')
 const rejectLoading = ref(false)
-const rejectTarget = ref<{ type: 'remittance' | 'delivery'; item: any } | null>(null)
+const rejectTarget = ref<{ type: 'delivery'; item: any } | null>(null)
 
 // // 加载银行账户列表
 // const loadBankAccounts = async () => {
@@ -269,24 +262,6 @@ const rejectTarget = ref<{ type: 'remittance' | 'delivery'; item: any } | null>(
 //     bankLoading.value = false
 //   }
 // }
-
-// 加载水单列表
-const loadRemittanceList = async (formId: number) => {
-  remittanceLoading.value = true
-  try {
-    const res = await getRemittanceListByFormId(formId)
-    remittanceList.value = res.data || []
-    // 默认展开所有待审核的
-    remittanceActiveKeys.value = remittanceList.value
-      .filter((r: any) => r.auditStatus === 0)
-      .map((r: any) => String(r.id))
-  } catch (error) {
-    console.error('加载水单列表失败', error)
-    remittanceList.value = []
-  } finally {
-    remittanceLoading.value = false
-  }
-}
 
 // 加载提货单列表
 const loadDeliveryOrders = async (formId: number) => {
@@ -489,20 +464,6 @@ const handleView = async (record: any) => {
 // }
 
 
-const confirmAuditRemittance = async (item: any, approved: boolean, remark: string) => {
-  try {
-    await auditRemittance(item.id, { approved, remark })
-    message.success(approved ? '审核通过' : '已驳回')
-    if (formData.formId) {
-      loadRemittanceList(formData.formId)
-    }
-  } catch (error) {
-    console.error('审核失败', error)
-    message.error('审核失败')
-  }
-}
-
-
 const confirmAuditDeliveryOrder = async (item: any, approved: boolean, remark: string) => {
   try {
     await auditDeliveryOrder(item.id, { approved, remark })
@@ -522,14 +483,12 @@ const handleConfirmReject = async () => {
     message.warning('请输入驳回原因')
     return
   }
-  
+
   if (!rejectTarget.value) return
-  
+
   rejectLoading.value = true
   try {
-    if (rejectTarget.value.type === 'remittance') {
-      await confirmAuditRemittance(rejectTarget.value.item, false, rejectRemark.value)
-    } else {
+    if (rejectTarget.value.type === 'delivery') {
       await confirmAuditDeliveryOrder(rejectTarget.value.item, false, rejectRemark.value)
     }
     rejectModalVisible.value = false

@@ -8,37 +8,37 @@
 // 设计系统 — 全局 Design Tokens (Swiss Style)
 // ========================================
 :root {
-  // ---- 色彩 (基于 MASTER.md - 专业蓝 & 物流橙) ----
-  --color-primary:       #2563EB;
-  --color-primary-light: #FFFFFF; // 修改为白色
-  --color-primary-dark:  #1D4ED8;
-  --color-accent:        #F97316; // 物流橙
-  --color-success:       #10B981;
-  --color-warning:       #F59E0B;
-  --color-danger:        #EF4444;
-  --color-info:          #3B82F6;
+  // ---- 色彩 (Ant Design Orange) ----
+  --color-primary:       #FA8C16;
+  --color-primary-light: #FFF7E6;
+  --color-primary-dark:  #D46B08;
+  --color-accent:        #FA541C; 
+  --color-success:       #52C41A;
+  --color-warning:       #FAAD14;
+  --color-danger:        #F5222D;
+  --color-info:          #1890FF;
 
-  // 渐变 (移除紫色，改为极简蓝)
-  --primary-gradient:    linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
-  --secondary-gradient:  linear-gradient(135deg, #3B82F6 0%, #60A5FA 100%);
-  --cta-gradient:        linear-gradient(135deg, #F97316 0%, #FB923C 100%);
+  // 渐变 (Ant Orange 系)
+  --primary-gradient:    linear-gradient(135deg, #FA8C16 0%, #FFA940 100%);
+  --secondary-gradient:  linear-gradient(135deg, #FFA940 0%, #FFC069 100%);
+  --cta-gradient:        linear-gradient(135deg, #FA541C 0%, #FF7875 100%);
 
-  // 表面 & 背景 (均改为白色以符合用户要求)
+  // 表面 & 背景
   --surface-primary:     #FFFFFF;
-  --surface-secondary:   #FFFFFF;
-  --surface-tertiary:    #F8FAFC; // 极浅灰用于微弱区分 (Slate-50)
-  --surface-hover:       #FAFBFC;
+  --surface-secondary:   #FAFAFA;
+  --surface-tertiary:    #F5F5F5;
+  --surface-hover:       #FFF7E6;
   
   // 文字
-  --text-primary:        #0F172A;
-  --text-secondary:      #475569;
-  --text-muted:          #94A3B8;
+  --text-primary:        rgba(0, 0, 0, 0.85);
+  --text-secondary:      rgba(0, 0, 0, 0.45);
+  --text-muted:          rgba(0, 0, 0, 0.25);
 
-  // ---- 圆角 (标准 8px) ----
-  --radius-sm:  4px;
-  --radius-md:  8px;
-  --radius-lg:  12px;
-  --radius-xl:  16px;
+  // ---- 圆角 ----
+  --radius-sm:  2px;
+  --radius-md:  4px;
+  --radius-lg:  8px;
+  --radius-xl:  12px;
 
   // ---- 间距 ----
   --space-xs: 4px;
@@ -47,10 +47,10 @@
   --space-lg: 24px;
   --space-xl: 32px;
 
-  // ---- 阴影 (轻量化) ----
-  --shadow-sm:   0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md:   0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg:   0 10px 15px -3px rgba(37, 99, 235, 0.1);
+  // ---- 阴影 ----
+  --shadow-sm:   0 2px 0 rgba(0, 0, 0, 0.02);
+  --shadow-md:   0 4px 10px rgba(0, 0, 0, 0.1);
+  --shadow-lg:   0 6px 16px rgba(0, 0, 0, 0.08);
 }
 
 // ========================================
@@ -86,7 +86,7 @@ h1, h2, h3, h4, h5, h6 {
   left: 0;
   top: 0;
   bottom: 0;
-  background: #0F172A !important; // 深邃蓝黑 (Slate-900)
+  background: #FFFFFF !important;
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
 }
 
@@ -97,8 +97,7 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: center;
   margin: var(--space-md);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #FA8C16;
 }
 
 .logo-text {
@@ -139,16 +138,16 @@ h1, h2, h3, h4, h5, h6 {
   .ant-menu-item {
     margin: 4px 12px !important;
     border-radius: var(--radius-sm) !important;
-    color: rgba(255, 255, 255, 0.65) !important;
+    color: rgba(0, 0, 0, 0.65) !important;
     
     &.ant-menu-item-selected {
-      background-color: var(--color-primary) !important;
-      color: white !important;
+      background-color: #FFF7E6 !important;
+      color: #FA8C16 !important;
     }
     
     &:hover:not(.ant-menu-item-selected) {
-      color: white !important;
-      background: rgba(255, 255, 255, 0.08) !important;
+      color: #FA8C16 !important;
+      background: #FAFAFA !important;
     }
   }
 }
@@ -180,7 +179,7 @@ h1, h2, h3, h4, h5, h6 {
     border-color: var(--color-primary) !important;
     &:hover {
       background-color: var(--color-primary-dark) !important;
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2) !important;
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.045) !important;
     }
   }
 }
@@ -191,16 +190,16 @@ h1, h2, h3, h4, h5, h6 {
   overflow: hidden;
 
   .ant-table-thead > tr > th {
-    background: #FAFBFC !important;
+    background: #FAFAFA !important;
     font-family: 'Lexend', sans-serif;
     font-weight: 600 !important;
-    color: var(--color-primary) !important;
+    color: rgba(0, 0, 0, 0.85) !important;
     font-size: 13px !important;
-    border-bottom: 2px solid #E2E8F0 !important;
+    border-bottom: 2px solid #F0F0F0 !important;
   }
   
   .ant-table-tbody > tr:hover > td {
-    background-color: #FAFBFC !important;
+    background-color: #FFF7E6 !important;
   }
 }
 
@@ -241,7 +240,7 @@ h1, h2, h3, h4, h5, h6 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-color: #E2E8F0 !important;
+  border-color: #D9D9D9 !important;
 }
 
 // Modal
@@ -284,7 +283,7 @@ h1, h2, h3, h4, h5, h6 {
   .ant-descriptions-item-label {
     font-weight: 600 !important;
     color: var(--text-secondary) !important;
-    background: #FAFBFC !important;
+    background: #FAFAFA !important;
   }
 }
 
@@ -297,7 +296,7 @@ h1, h2, h3, h4, h5, h6 {
 // 搜索区域卡片
 .search-card {
   margin-bottom: var(--space-lg) !important;
-  background: #FAFBFC !important;
+  background: #FAFAFA !important;
 }
 
 // 操作按钮区域卡片
@@ -308,7 +307,7 @@ h1, h2, h3, h4, h5, h6 {
 // 表单内嵌卡片
 .section-card {
   margin-bottom: var(--space-lg) !important;
-  border: 1px solid #E2E8F0 !important;
+  border: 1px solid #F0F0F0 !important;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
   border-radius: var(--radius-lg) !important;
   overflow: hidden;

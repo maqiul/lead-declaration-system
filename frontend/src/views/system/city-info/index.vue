@@ -33,8 +33,8 @@
     <!-- 操作按钮区域 -->
     <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button 
-          v-hasPermi="['system:city-info:add']" 
+        <a-button
+          v-permission="['system:city-info:create']"
           type="primary"
           @click="handleAdd"
           class="ui-btn-cta"
@@ -69,26 +69,26 @@
           
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button 
-                type="link" 
+              <a-button
+                type="link"
                 size="small"
-                v-hasPermi="['system:city-info:query']" 
+                v-permission="['system:city-info:view']"
                 @click="handleView(record)"
                 class="font-medium text-blue-600"
               >
                 详情
               </a-button>
-              <a-button 
-                type="link" 
+              <a-button
+                type="link"
                 size="small"
-                v-hasPermi="['system:city-info:update']" 
+                v-permission="['system:city-info:update']"
                 @click="handleUpdate(record)"
                 class="font-medium text-blue-600"
               >
                 修改
               </a-button>
               <a-popconfirm
-                v-hasPermi="['system:city-info:delete']"
+                v-permission="['system:city-info:delete']"
                 title="确定删除该城市信息吗？"
                 @confirm="handleDelete(record.id)"
               >

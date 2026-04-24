@@ -89,4 +89,30 @@ public interface RoleService extends IService<Role> {
      * @return 是否成功
      */
     boolean assignAllPermissionsToAdmin(Long roleId);
+
+    /**
+     * 获取角色的所有用户列表
+     *
+     * @param roleId 角色ID
+     * @return 用户列表
+     */
+    List<com.declaration.entity.User> getRoleUsers(Long roleId);
+
+    /**
+     * 批量为用户分配角色
+     *
+     * @param userIds 用户ID列表
+     * @param roleIds 角色ID列表
+     * @return 是否成功
+     */
+    boolean batchAssignUserRoles(List<Long> userIds, List<Long> roleIds);
+
+    /**
+     * 移除用户的角色
+     *
+     * @param userId 用户ID
+     * @param roleId 角色ID
+     * @return 是否成功
+     */
+    boolean removeUserRole(Long userId, Long roleId);
 }

@@ -51,7 +51,7 @@ public class TaxRefundController {
      */
     @GetMapping
     @Operation(summary = "获取退税申请列表")
-    @RequiresPermissions("business:tax-refund:list")
+    @RequiresPermissions("business:tax-refund:view")
     public Result<Page<TaxRefundApplication>> getTaxRefundList(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") Integer pageNum,
             @Parameter(description = "每页数量") @RequestParam(defaultValue = "10") Integer pageSize,
@@ -114,7 +114,7 @@ public class TaxRefundController {
      */
     @PostMapping
     @Operation(summary = "创建退税申请")
-    @RequiresPermissions("business:tax-refund:add")
+    @RequiresPermissions("business:tax-refund:create")
     public Result<TaxRefundApplication> createTaxRefund(@RequestBody TaxRefundApplication application) {
         // 获取当前登录用户信息
         if (StpUtil.isLogin()) {
@@ -163,7 +163,7 @@ public class TaxRefundController {
      */
     @PostMapping("/draft")
     @Operation(summary = "保存退税申请草稿")
-    @RequiresPermissions("business:tax-refund:add")
+    @RequiresPermissions("business:tax-refund:create")
     public Result<TaxRefundApplication> saveDraft(@RequestBody TaxRefundApplication application) {
         // 获取当前登录用户信息
         if (StpUtil.isLogin()) {
@@ -207,7 +207,7 @@ public class TaxRefundController {
     }
     @PutMapping("/{id}")
     @Operation(summary = "更新退税申请")
-    @RequiresPermissions("business:tax-refund:edit")
+    @RequiresPermissions("business:tax-refund:update")
     public Result<Void> updateTaxRefund(
             @Parameter(description = "申请ID") @PathVariable Long id,
             @RequestBody TaxRefundApplication application) {
@@ -490,7 +490,7 @@ public class TaxRefundController {
      */
     @PostMapping("/{id}/attach-files")
     @Operation(summary = "关联文件到退税申请")
-    @RequiresPermissions("business:tax-refund:edit")
+    @RequiresPermissions("business:tax-refund:update")
     public Result<Boolean> attachFilesToApplication(
             @Parameter(description = "申请ID") @PathVariable Long id,
             @Parameter(description = "文件URL列表") @RequestBody List<String> fileUrls) {
@@ -599,7 +599,7 @@ public class TaxRefundController {
      */
     @GetMapping("/declarations")
     @Operation(summary = "获取可关联的申报单列表")
-    @RequiresPermissions("business:tax-refund:list")
+    @RequiresPermissions("business:tax-refund:view")
     public Result<List<Map<String, Object>>> getAvailableDeclarations() {
         // 获取已完成的申报单（状态为8-已完成）
         LambdaQueryWrapper<DeclarationForm> wrapper = new LambdaQueryWrapper<>();
@@ -1074,7 +1074,7 @@ public class TaxRefundController {
     @Deprecated
     @PostMapping("/{id}/invoice")
     @Operation(summary = "提交发票(已废弃)")
-    @RequiresPermissions("business:tax-refund:edit")
+    @RequiresPermissions("business:tax-refund:update")
     public Result<Void> submitInvoice(
             @Parameter(description = "申请ID") @PathVariable Long id,
             @RequestBody Map<String, Object> invoiceData) {

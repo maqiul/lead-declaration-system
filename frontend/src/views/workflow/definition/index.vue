@@ -24,8 +24,8 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" @click="handleSearch" v-permission="['workflow:definition:list']">搜索</a-button>
-            <a-button @click="handleReset" v-permission="['workflow:definition:list']">重置</a-button>
+            <a-button type="primary" @click="handleSearch" v-permission="['workflow:definition:view']">搜索</a-button>
+            <a-button @click="handleReset" v-permission="['workflow:definition:view']">重置</a-button>
           </a-space>
         </a-form-item>
       </a-form>

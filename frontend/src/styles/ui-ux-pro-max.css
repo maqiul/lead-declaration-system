@@ -2,50 +2,50 @@
 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* 品牌色彩系统 (基于 MASTER.md - 专业蓝 & 物流橙) */
-  --primary-color: #2563EB;           /* 主色 - 追踪蓝 */
-  --primary-hover: #1D4ED8;          /* 主色悬停 */
-  --primary-light: #FFFFFF;          /* 主色浅色/背景 - 修改为白色 */
-  --secondary-color: #3B82F6;        /* 辅助色 - 天空蓝 */
-  --secondary-light: #F1F5F9;        /* 辅助色浅色 - 稍微深一点点用于区分 */
-  --cta-color: #F97316;              /* CTA色 - 物流橙 */
-  --cta-hover: #EA580C;              /* CTA悬停 */
+  /* 品牌色彩 system (Ant Design Orange) */
+  --primary-color: #FA8C16;           /* 主色 - 蚂蚁金服橙 */
+  --primary-hover: #FFA940;          /* 主色悬停 */
+  --primary-light: #FFF7E6;          /* 主色浅色/背景 */
+  --secondary-color: #FFBB96;        /* 辅助色 */
+  --secondary-light: #FFF2E8;        /* 辅助色浅色 */
+  --cta-color: #FA541C;              /* CTA色 - 火橙 */
+  --cta-hover: #FF7875;              /* CTA悬停 */
   
-  /* 中性色 (Swiss Style - 高对比度) */
+  /* 中性色 (Ant Design Neutral) */
   --bg-primary: #FFFFFF;             /* 主背景 */
-  --bg-secondary: #FFFFFF;           /* 次背景 - 修改为白色 */
-  --bg-tertiary: #FAFBFC;            /* 第三背景 - 极浅灰用于微弱区分 */
-  --text-primary: #1E40AF;           /* 主文字 (蓝色调强调) */
-  --text-secondary: #334155;         /* 次文字 (更深的 Slate-700 提高对比度) */
-  --text-tertiary: #64748B;          /* 第三文字 (Slate-500) */
-  --border-color: #E2E8F0;           /* 边框色 (Slate-200) */
-  --border-light: #F1F5F9;           /* 浅边框 */
+  --bg-secondary: #FAFAFA;           /* 次背景 */
+  --bg-tertiary: #F5F5F5;            /* 第三背景 */
+  --text-primary: rgba(0, 0, 0, 0.88); /* 主文字 */
+  --text-secondary: rgba(0, 0, 0, 0.65); /* 次文字 */
+  --text-tertiary: rgba(0, 0, 0, 0.45); /* 第三文字 */
+  --border-color: #D9D9D9;           /* 边框色 */
+  --border-light: #F0F0F0;           /* 浅边框 */
   
-  /* 状态色 */
-  --success-color: #10B981;
-  --warning-color: #F59E0B;
-  --error-color: #EF4444;
-  --info-color: #3B82F6;
+  /* 状态色 (Ant Design Standard) */
+  --success-color: #52C41A;
+  --warning-color: #FAAD14;
+  --error-color: #F5222D;
+  --info-color: #1890FF;
   
-  /* 尺寸系统 */
-  --border-radius-sm: 4px;           /* 极简风格偏向更锐利的圆角 */
-  --border-radius-md: 8px;           /* 标准圆角 */
-  --border-radius-lg: 12px;
+  /* 尺寸 system */
+  --border-radius-sm: 4px;
+  --border-radius-md: 6px;
+  --border-radius-lg: 8px;
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
   
-  /* 阴影系统 (更轻薄的阴影) */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  --shadow-xl: 0 10px 15px -3px rgba(37, 99, 235, 0.1); /* 带有主色暗示的阴影 */
+  /* 阴影 system */
+  --shadow-sm: 0 2px 0 rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 6px 16px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 9px 28px 8px rgba(0, 0, 0, 0.05);
   
   /* 动效 */
-  --transition-fast: all 0.15s cubic-bezier(0, 0, 0.2, 1);
-  --transition-normal: all 0.25s cubic-bezier(0, 0, 0.2, 1);
+  --transition-fast: all 0.1s cubic-bezier(0.645, 0.045, 0.355, 1);
+  --transition-normal: all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1);
 }
 
 /* 全局字体设置 */
@@ -121,7 +121,7 @@ body {
 .ui-btn-primary:hover {
   background-color: var(--primary-hover);
   border-color: var(--primary-hover);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 2px 4px rgba(250, 140, 22, 0.2);
 }
 
 .ui-btn-cta {
@@ -271,9 +271,9 @@ body {
 }
 
 .ui-tag-primary {
-  background: #EFF6FF;
-  color: #2563EB;
-  border-color: #BFDBFE;
+  background: #FFF7E6;
+  color: #FA8C16;
+  border-color: #FFD591;
 }
 
 /* ----------------------------------------------------------------
