@@ -30,8 +30,14 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" html-type="submit">查询</a-button>
-            <a-button @click="handleReset">重置</a-button>
+            <a-button type="primary" html-type="submit">
+              <template #icon><SearchOutlined /></template>
+              查询
+            </a-button>
+            <a-button @click="handleReset">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
           </a-space>
         </a-form-item>
       </a-form>
@@ -40,7 +46,10 @@
     <a-card :bordered="false">
       <div class="toolbar mb-4">
         <a-space>
-          <a-button type="primary" @click="openModal()" v-permission="['finance:invoice:create']"><PlusOutlined /> 录入发票</a-button>
+          <a-button type="primary" @click="openModal()" v-permission="['finance:invoice:create']">
+            <template #icon><PlusOutlined /></template>
+            录入发票
+          </a-button>
         </a-space>
       </div>
 
@@ -72,17 +81,23 @@
           </template>
           <template v-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" @click="openModal(record)" v-permission="['finance:invoice:update']">编辑</a-button>
+              <a-button type="link" @click="openModal(record)" v-permission="['finance:invoice:update']">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
               <a-button 
                 v-if="record.fileUrl" 
                 type="link"
-                :icon="h(DownloadOutlined)"
                 @click="downloadFile(record.id)"
               >
+                <template #icon><DownloadOutlined /></template>
                 下载
               </a-button>
               <a-popconfirm title="确定删除?" @confirm="handleDelete(record.id)">
-                <a-button type="link" danger v-permission="['finance:invoice:delete']">删除</a-button>
+                <a-button type="link" danger v-permission="['finance:invoice:delete']">
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -143,7 +158,10 @@
             accept=".pdf,.jpg,.jpeg,.png"
             :max-count="1"
           >
-            <a-button><UploadOutlined /> 选择文件</a-button>
+            <a-button>
+              <template #icon><UploadOutlined /></template>
+              选择文件
+            </a-button>
           </a-upload>
         </a-form-item>
         <a-form-item label="备注">
@@ -155,9 +173,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, h } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, UploadOutlined, DownloadOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 import { getFinanceInvoiceList, saveFinanceInvoice, deleteFinanceInvoice, uploadInvoiceFile, downloadInvoiceFile } from '@/api/finance/invoice'
 import { getDeclarationList } from '@/api/business/declaration'

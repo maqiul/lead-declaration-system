@@ -24,8 +24,14 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" @click="handleSearch" v-permission="['workflow:definition:view']">搜索</a-button>
-            <a-button @click="handleReset" v-permission="['workflow:definition:view']">重置</a-button>
+            <a-button type="primary" @click="handleSearch" v-permission="['workflow:definition:view']">
+              <template #icon><SearchOutlined /></template>
+              搜索
+            </a-button>
+            <a-button @click="handleReset" v-permission="['workflow:definition:view']">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
           </a-space>
         </a-form-item>
       </a-form>
@@ -35,11 +41,11 @@
     <a-card class="operation-card">
       <a-space>
         <a-button type="primary" @click="handleDeploy" v-permission="['workflow:definition:deploy']">
-          <template #icon><upload-outlined /></template>
+          <template #icon><UploadOutlined /></template>
           部署流程
         </a-button>
         <a-button @click="handleBatchDisable" :disabled="selectedRowKeys.length === 0" :loading="batchDisableLoading" v-permission="['workflow:definition:update']">
-          <template #icon><stop-outlined /></template>
+          <template #icon><StopOutlined /></template>
           批量停用
         </a-button>
       </a-space>
@@ -64,8 +70,14 @@
           </template>
             <template v-else-if="column.key === 'action'">
               <a-space>
-                <a-button type="link" size="small" @click="handleView(record as ProcessDefinition)" v-permission="['workflow:definition:view']">查看</a-button>
-                <a-button type="link" size="small" @click="handleEdit(record as ProcessDefinition)" v-permission="['workflow:definition:update']">编辑</a-button>
+                <a-button type="link" size="small" @click="handleView(record as ProcessDefinition)" v-permission="['workflow:definition:view']">
+                  <template #icon><EyeOutlined /></template>
+                  查看
+                </a-button>
+                <a-button type="link" size="small" @click="handleEdit(record as ProcessDefinition)" v-permission="['workflow:definition:update']">
+                  <template #icon><EditOutlined /></template>
+                  编辑
+                </a-button>
                 <a-button 
                   v-if="record.status === 1" 
                   type="link" 
@@ -73,6 +85,7 @@
                   @click="handleDisable(record.id)"
                   v-permission="['workflow:definition:update']"
                 >
+                  <template #icon><StopOutlined /></template>
                   停用
                 </a-button>
                 <a-button 
@@ -82,13 +95,17 @@
                   @click="handleEnable(record.id)"
                   v-permission="['workflow:definition:update']"
                 >
+                  <template #icon><CheckCircleOutlined /></template>
                   启用
                 </a-button>
                 <a-popconfirm
                   title="确定要删除这个流程定义吗？"
                   @confirm="handleDelete(record.id)"
                 >
-                  <a-button type="link" size="small" danger v-permission="['workflow:definition:delete']">删除</a-button>
+                  <a-button type="link" size="small" danger v-permission="['workflow:definition:delete']">
+                    <template #icon><DeleteOutlined /></template>
+                    删除
+                  </a-button>
                 </a-popconfirm>
               </a-space>
             </template>
@@ -145,7 +162,7 @@
             accept=".bpmn,.xml"
           >
             <a-button>
-              <template #icon><upload-outlined /></template>
+              <template #icon><UploadOutlined /></template>
               上传BPMN文件
             </a-button>
           </a-upload>
@@ -197,7 +214,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { UploadOutlined, StopOutlined } from '@ant-design/icons-vue'
+import { UploadOutlined, StopOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { TableProps } from 'ant-design-vue'
 import { getDefinitionList, deployProcessDefinition, disableProcessDefinition, enableProcessDefinition, deleteProcessDefinition, getProcessDefinitionXml } from '@/api/workflow'
 // @ts-ignore

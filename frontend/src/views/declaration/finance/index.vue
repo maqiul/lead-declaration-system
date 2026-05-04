@@ -20,8 +20,14 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" html-type="submit">查询</a-button>
-            <a-button @click="resetQuery">重置</a-button>
+            <a-button type="primary" html-type="submit">
+              <template #icon><SearchOutlined /></template>
+              查询
+            </a-button>
+            <a-button @click="resetQuery">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
           </a-space>
         </a-form-item>
       </a-form>
@@ -52,9 +58,11 @@
           <template v-if="column.key === 'action'">
             <a-space>
               <a-button type="link" @click="handleEdit(record)" v-permission="['business:declaration:finance:supplement']" v-if="record.status === 0">
+                <template #icon><UploadOutlined /></template>
                 去上传
               </a-button>
               <a-button type="link" @click="handleView(record)" v-permission="['business:declaration:finance:supplement']" v-else>
+                <template #icon><EyeOutlined /></template>
                 查看
               </a-button>
             </a-space>
@@ -94,6 +102,7 @@
 import { ref, reactive, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { SearchOutlined, ReloadOutlined, UploadOutlined, EyeOutlined } from '@ant-design/icons-vue'
 import {
   getFinancialSupplementList,
   auditDeliveryOrder,

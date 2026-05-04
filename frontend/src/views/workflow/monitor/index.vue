@@ -65,7 +65,10 @@
         <a-col :span="12">
           <a-card title="流程实例监控" :bordered="false">
             <template #extra>
-              <a-button type="link" size="small" @click="loadInstances">刷新</a-button>
+              <a-button type="link" size="small" @click="loadInstances">
+                <template #icon><ReloadOutlined /></template>
+                刷新
+              </a-button>
             </template>
             
             <a-table
@@ -86,6 +89,7 @@
                 <template v-else-if="column.key === 'action'">
                   <a-space>
                     <a-button type="link" size="small" @click="viewInstanceDetail(record as ProcessInstance)">
+                      <template #icon><EyeOutlined /></template>
                       查看
                     </a-button>
                     <a-button 
@@ -95,6 +99,7 @@
                       size="small" 
                       @click="terminateInstance(record as ProcessInstance)"
                     >
+                      <template #icon><StopOutlined /></template>
                       终止
                     </a-button>
                   </a-space>
@@ -108,7 +113,10 @@
         <a-col :span="12">
           <a-card title="全系统活跃任务" :bordered="false">
             <template #extra>
-              <a-button type="link" size="small" @click="loadTasks">刷新</a-button>
+              <a-button type="link" size="small" @click="loadTasks">
+                <template #icon><ReloadOutlined /></template>
+                刷新
+              </a-button>
             </template>
             
             <a-table
@@ -128,6 +136,7 @@
                 </template>
                 <template v-else-if="column.key === 'action'">
                   <a-button type="link" size="small" @click="viewTaskDetail(record as TaskInstance)">
+                    <template #icon><ProfileOutlined /></template>
                     详情
                   </a-button>
                 </template>
@@ -225,7 +234,11 @@ import {
   BranchesOutlined,
   PlayCircleOutlined,
   ClockCircleOutlined,
-  CheckCircleOutlined
+  CheckCircleOutlined,
+  ReloadOutlined,
+  EyeOutlined,
+  StopOutlined,
+  ProfileOutlined
 } from '@ant-design/icons-vue'
 import type { ProcessInstance, TaskInstance } from '@/api/workflow'
 import { 

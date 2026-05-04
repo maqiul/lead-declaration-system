@@ -4,6 +4,7 @@ import com.declaration.entity.DeclarationForm;
 import com.declaration.entity.DeclarationAttachment;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.DeclarationAttachmentService;
+import com.declaration.service.DeclarationMaterialItemService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RuntimeService;
@@ -16,16 +17,23 @@ import org.springframework.stereotype.Component;
 
 /**
  * 申报单流程任务/执行监听器 - 自动同步业务状态
- * 
- * 简化流程:
- * 提交申报 → 生成预录入单 → 审核 → 通过/驳回
- *   - 通过 → 生成海关报关单 → 完成
- *   - 驳回 → 回到草稿
- * 
+ *
+ * 新版流程:
+ * 提交申报 → 生成预录入单 → 初审(deptAudit)
+ *   - 通过 → 生成海关报关单(genCustomsDoc) → 资料提交(materialSubmit) → 资料审核(materialAudit)
+ *          - 通过 → 完成
+ *          - 驳回 → 回 materialSubmit
+ *   - 驳回 → 回草稿
+ *
  * 状态定义:
  * 0 - 草稿
- * 1 - 待审核
- * 2 - 已完成
+ * 1 - 待初审
+ * 2 - 待资料提交（海关报关单已生成）
+ * 3 - 待资料审核
+ * 4 - 待发票提交（资料审核通过后）
+ * 5 - 待发票审核
+ * 6 - 已完成（可进入财务流程）
+ * 9 - 退回待审
  */
 @Slf4j
 @Component("declarationTaskListener")
@@ -34,6 +42,7 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
 
     private final DeclarationFormService declarationFormService;
     private final DeclarationAttachmentService attachmentService;
+    private final DeclarationMaterialItemService materialItemService;
     private final RuntimeService runtimeService;
 
     @Override
@@ -92,47 +101,71 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
     /**
      * 根据当前任务/节点和事件类型更新申报单状态
      *
-     * 简化流程状态定义:
+     * 新版状态定义:
      * 0 - 草稿 (初始状态或驳回后)
-     * 1 - 待审核 (已提交,已生成预录入单)
-     * 2 - 已完成 (审核通过,已生成海关报关单)
+     * 1 - 待初审 (已提交，已生成预录入单)
+     * 2 - 待资料提交 (初审通过，海关报关单已生成)
+     * 3 - 待资料审核 (用户已提交资料)
+     * 4 - 待发票提交 (资料审核通过)
+     * 5 - 待发票审核 (发票已提交)
+     * 6 - 已完成 (发票审核通过)
      */
     private void updateStatusByTask(DeclarationForm form, String taskKey, String eventName, DelegateTask delegateTask) {
         Integer newStatus = null;
 
-        // 根据事件类型处理不同逻辑
+        // 任务完成事件 - 需要判断是通过还是驳回
         if ("end".equals(eventName) || "complete".equals(eventName)) {
-            // 任务完成事件 - 需要判断是通过还是驳回
             Boolean approved = getApprovalVariable(delegateTask);
 
             if (approved == null || approved) {
-                // 通过场景:正常推进状态
                 switch (taskKey) {
-                    case "deptAudit":            // 审核申报完成
-                        newStatus = 2;           // 已完成 (自动生成海关报关单后)
+                    case "genCustomsDoc":         // 海关报关单生成完毕 → 进入待资料提交
+                        newStatus = 2;
+                        break;
+                    case "endEvent":
+                        newStatus = 6;
                         break;
                 }
             } else {
-                // 驳回场景:不更新状态,等待驳回到目标节点后的 create 事件来更新状态
-                log.info("节点 {} 驳回 (approved=false),暂不更新状态", taskKey);
+                log.info("节点 {} 驳回 (approved=false)，暂不更新状态", taskKey);
             }
         }
-        
-        // 任务创建事件 - 处理任务到达时的状态更新(包括驳回回来的情况)
+
+        // 任务创建事件 - 处理任务到达时的状态更新
         if (newStatus == null) {
             switch (taskKey) {
-                case "genPreEntryTask":          // 生成预录入表单 (ServiceTask,不更新状态)
+                case "genPreEntryTask":          // 生成预录入表单 (ServiceTask)
                     break;
-                case "deptAudit":                // 审核申报
-                    newStatus = 1;               // 待审核
+                case "deptAudit":                // 初审
+                    newStatus = 1;
                     break;
                 case "rejectHandler":            // 驳回修改
-                    newStatus = 0;               // 草稿
+                    newStatus = 0;
                     break;
-                case "genCustomsDoc":            // 生成海关报关单 (ServiceTask,不更新状态)
+                case "genCustomsDoc":            // 生成海关报关单 (ServiceTask create)
+                    break;
+                case "materialSubmit":           // 资料提交
+                    newStatus = 2;
+                    // create 时自动同步模板到本申报单
+                    if ("create".equals(eventName) && form.getId() != null) {
+                        try {
+                            materialItemService.syncFromTemplate(form.getId());
+                        } catch (Exception e) {
+                            log.warn("同步资料项模板失败 formId={}", form.getId(), e);
+                        }
+                    }
+                    break;
+                case "materialAudit":            // 资料审核
+                    newStatus = 3;
+                    break;
+                case "invoiceSubmit":            // 业务发票提交
+                    newStatus = 4;
+                    break;
+                case "invoiceAudit":             // 业务发票审核
+                    newStatus = 5;
                     break;
                 case "endEvent":                 // 流程完成
-                    newStatus = 2;               // 已完成
+                    newStatus = 6;
                     break;
             }
         }
@@ -173,7 +206,7 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
 
     /**
      * 判断是否应该更新状态
-     * 简化流程状态更新规则: 0→1→2
+     * 新版流程状态更新规则: 0→1→2→3→4→5→6
      */
     private boolean shouldUpdateStatus(Integer currentStatus, Integer newStatus) {
         if (currentStatus == null || newStatus == null) {
@@ -185,7 +218,17 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
             return true;
         }
 
-        // 正常推进: 0→1→2
+        // 资料审核驳回回到 materialSubmit 需要回调 3 → 2
+        if (newStatus == 2 && currentStatus != null && currentStatus == 3) {
+            return true;
+        }
+
+        // 发票审核驳回回到 invoiceSubmit 需要回调 5 → 4
+        if (newStatus == 4 && currentStatus != null && currentStatus == 5) {
+            return true;
+        }
+
+        // 正常推进: 0→1→2→3→4→5→6
         if (newStatus > currentStatus) {
             return true;
         }

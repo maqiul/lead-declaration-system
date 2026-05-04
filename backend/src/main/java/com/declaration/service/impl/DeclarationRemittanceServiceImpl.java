@@ -175,9 +175,9 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
             throw new RuntimeException("该水单已关联此申报单");
         }
 
-        // 如果没有填写关联金额，默认使用水单全额
+        // 关联金额必须由调用方明确传入且大于 0；不再兽底为水单全额，避免前端传 0 时被错误扩大
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            amount = remittance.getRemittanceAmount();
+            throw new RuntimeException("关联金额必填且必须大于 0");
         }
 
         // 校验关联金额不超过水单总金额

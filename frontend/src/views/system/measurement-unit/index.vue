@@ -57,7 +57,7 @@
     <!-- 操作按钮区域 -->
     <a-card class="ui-card mb-4" :bordered="false">
       <a-space>
-        <a-button type="primary" @click="openAddModal" v-permission="['system:measurement-unit:add']" class="ui-btn-cta">
+        <a-button type="primary" @click="openAddModal" v-permission="['system:measurement-unit:create']" class="ui-btn-cta">
           <template #icon><PlusOutlined /></template>
           新增单位
         </a-button>
@@ -91,9 +91,10 @@
                 type="link" 
                 size="small" 
                 @click="openEditModal(record as MeasurementUnit)" 
-                v-permission="['system:measurement-unit:edit']" 
+                v-permission="['system:measurement-unit:update']" 
                 class="font-medium text-blue-600"
               >
+                <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
               <a-popconfirm
@@ -104,9 +105,12 @@
                   type="link" 
                   size="small" 
                   :danger="record.status === 1" 
-                  v-permission="['system:measurement-unit:edit']" 
+                  v-permission="['system:measurement-unit:update']" 
                   class="font-medium"
                 >
+                  <template #icon>
+                    <component :is="record.status === 1 ? 'StopOutlined' : 'CheckCircleOutlined'" />
+                  </template>
                   {{ record.status === 1 ? '禁用' : '启用' }}
                 </a-button>
               </a-popconfirm>
@@ -121,6 +125,7 @@
                   v-permission="['system:measurement-unit:delete']" 
                   class="font-medium"
                 >
+                  <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
               </a-popconfirm>
@@ -229,7 +234,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { message } from 'ant-design-vue';
-import { SearchOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue';
+import { SearchOutlined, PlusOutlined, ReloadOutlined, EditOutlined, StopOutlined, CheckCircleOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 import { getMeasurementUnitList, addMeasurementUnit, updateMeasurementUnit, deleteMeasurementUnit, toggleMeasurementUnitStatus } from '@/api/system/measurement-unit';
 import type { MeasurementUnit } from '@/api/system/measurement-unit';
 

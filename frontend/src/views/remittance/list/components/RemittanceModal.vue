@@ -53,13 +53,16 @@
       <a-form-item label="关联申报单">
         <div style="margin-bottom: 8px;">
           <a-select
+            v-if="visible"
+            :key="selectKey"
+            v-model:value="selectingFormId"
             show-search
             placeholder="搜索申报单号添加关联"
             :filter-option="false"
             :loading="declarationLoading"
+            allow-clear
             @search="handleSearchDeclaration"
             @change="handleAddRelation"
-            :value="undefined"
             style="width: 100%"
           >
             <a-select-option v-for="item in declarationOptions" :key="item.id" :value="item.id" :disabled="relatedForms.some((r: any) => r.formId === item.id)">
@@ -118,6 +121,7 @@
         <a-upload
           :before-upload="beforeUpload"
           :file-list="fileList"
+          accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/bmp,application/pdf,.pdf,.jpg,.jpeg,.png,.gif,.webp,.bmp"
           @remove="handleRemove"
           :max-count="1"
         >
@@ -135,7 +139,7 @@
           </a-button>
         </div>
         <div v-if="!formData.photoUrl" style="margin-top: 8px; color: #ff4d4f; font-size: 12px;">
-          * 水单文件为必填项，支持图片、PDF等格式
+          * 水单文件为必填项，仅支持图片（jpg/png/gif/webp/bmp）或 PDF
         </div>
       </a-form-item>
     </a-form>
@@ -179,6 +183,8 @@ const fileList = ref<any[]>([])
 const declarationLoading = ref(false)
 const declarationOptions = ref<any[]>([])
 const existingRelations = ref<any[]>([]) // 已有关联关系（数据库中的）
+const selectingFormId = ref<number | undefined>(undefined) // select 当前选中值（选后立刻清空）
+const selectKey = ref(0) // 强制重建 select，避免内部状态残留
 
 // 关联申报单列表（包含金额）
 const relatedForms = ref<any[]>([])
@@ -196,21 +202,46 @@ const totalRelationAmount = computed(() => {
   return relatedForms.value.reduce((sum, item) => sum + (item.relationAmount || 0), 0)
 })
 
-// 添加关联申报单
+// 添加关联申报单：默认分配金额 = min(申报金额, 水单剩余可分配)
 const handleAddRelation = (formId: any) => {
   if (!formId) return
   const form = declarationOptions.value.find((item: any) => item.id === formId)
-  if (form && !relatedForms.value.some((r: any) => r.formId === formId)) {
-    relatedForms.value.push({
-      formId: form.id,
-      formNo: form.formNo,
-      totalAmount: form.totalAmount,
-      currency: form.currency,
-      shipperCompany: form.shipperCompany,
-      relationAmount: formData.remittanceAmount || undefined,
-      isNew: true
-    })
+  if (!form) return
+  if (relatedForms.value.some((r: any) => r.formId === formId)) return
+
+  // 计算水单剩余可分配金额
+  const remittanceTotal = Number(formData.remittanceAmount) || 0
+  const alreadyRelated = relatedForms.value.reduce(
+    (sum: number, it: any) => sum + (Number(it.relationAmount) || 0), 0
+  )
+  const declTotal = Number(form.totalAmount) || 0
+
+  // 如果水单金额未填或为 0，默认取申报金额（避免被 0 截断）；
+  // 提交时会以“合计不超过水单金额”底底拦截
+  let defaultAmount: number
+  if (remittanceTotal <= 0) {
+    defaultAmount = declTotal
+    if (declTotal > 0) {
+      message.info('尚未填写水单金额，已默认以申报金额作为关联金额，请补充水单金额后依需调整')
+    }
+  } else {
+    const remaining = Math.max(0, remittanceTotal - alreadyRelated)
+    // 申报金额 > 水单剩余 → 取水单剩余；否则→ 取申报金额
+    defaultAmount = declTotal > remaining ? remaining : declTotal
   }
+
+  relatedForms.value.push({
+    formId: form.id,
+    formNo: form.formNo,
+    totalAmount: form.totalAmount,
+    currency: form.currency,
+    shipperCompany: form.shipperCompany,
+    relationAmount: defaultAmount,
+    isNew: true
+  })
+
+  // 清空 select 选中值，避免输入框上残留上次选中的标签
+  selectingFormId.value = undefined
 }
 
 // 移除关联
@@ -243,7 +274,7 @@ const initForm = async () => {
       photoUrl: props.remittanceData.photoUrl || ''
     })
     if (props.remittanceData.photoUrl) {
-      fileList.value = [{ uid: '-1', name: '水单照片', url: props.remittanceData.photoUrl }]
+      fileList.value = [{ uid: '-1', name: `水单文件.${getFileExtension(props.remittanceData.photoUrl).toLowerCase()}`, url: props.remittanceData.photoUrl }]
     }
     
     // 加载已关联的申报单
@@ -291,7 +322,14 @@ const loadRelatedForms = async (remittanceId: number) => {
 
 watch(() => props.visible, (val) => {
   if (val) {
+    // 打开时：重置 select 状态并强制重建，避免上次状态残留
+    selectingFormId.value = undefined
+    declarationOptions.value = []
+    selectKey.value++
     initForm()
+  } else {
+    // 关闭时也清理一下，双保险
+    selectingFormId.value = undefined
   }
 })
 
@@ -303,8 +341,8 @@ const handleSearchDeclaration = async (value: string) => {
       current: 1,
       size: 20,
       formNo: value || undefined,
-      status: 2 // 只查询状态为已完成 的申报单
-    })
+      minStatus: 2 // 只查询已提交的申报单（status>=2，排除草稿/待初审）
+    } as any)
     let data = response.data
     if (data?.code === 200) {
       declarationOptions.value = data.data?.records || data.data || []
@@ -318,18 +356,48 @@ const handleSearchDeclaration = async (value: string) => {
   }
 }
 
-// 上传前处理
+// 上传前处理：仅允许图片或 PDF
+const ALLOWED_MIMES = [
+  'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp',
+  'application/pdf'
+]
+const ALLOWED_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'pdf']
+const MAX_SIZE_MB = 20
+
 const beforeUpload = async (file: File) => {
+  // 类型校验
+  const ext = (file.name.split('.').pop() || '').toLowerCase()
+  const mimeOk = ALLOWED_MIMES.includes(file.type)
+  const extOk = ALLOWED_EXTS.includes(ext)
+  if (!mimeOk && !extOk) {
+    message.error(`仅支持图片（jpg/png/gif/webp/bmp）或 PDF文件，当前文件类型：${file.type || ext || '未知'}`)
+    return false
+  }
+  // 大小校验
+  if (file.size / 1024 / 1024 > MAX_SIZE_MB) {
+    message.error(`文件大小不能超过 ${MAX_SIZE_MB}MB`)
+    return false
+  }
+
   try {
     const response = await uploadFile(file, 'remittance')
     let data = response.data
     if (data?.code === 200) {
-      formData.photoUrl = data.data?.url || data.data
+      // 后端返回 DeclarationAttachment，实际字段为 fileUrl；url 是兼容堆兼容的其他结果集
+      const urlFromResp = data.data?.fileUrl || data.data?.url
+      if (!urlFromResp || typeof urlFromResp !== 'string') {
+        console.error('上传返回结果缺少 fileUrl', data.data)
+        message.error('上传成功但未获取到文件地址')
+        return false
+      }
+      formData.photoUrl = urlFromResp
+      fileList.value = [{ uid: String(Date.now()), name: file.name, url: urlFromResp }]
       message.success('上传成功')
     } else {
-      message.error('上传失败')
+      message.error(data?.message || '上传失败')
     }
   } catch (error) {
+    console.error('上传失败', error)
     message.error('上传失败')
   }
   return false // 阻止默认上传
@@ -371,6 +439,14 @@ const handleSubmit = async (submitAudit: boolean = false) => {
     // 前端校验：关联金额不能超过水单金额
     if (formData.remittanceAmount && relatedForms.value.length > 0 && totalRelationAmount.value > formData.remittanceAmount + 0.01) {
       message.warning(`分配金额合计 ${totalRelationAmount.value.toFixed(2)} 超过水单金额 ${formData.remittanceAmount}，请调整`)
+      submitLoading.value = false
+      return
+    }
+
+    // 前端校验：每条关联金额必须 > 0（避免后端报错）
+    const invalid = relatedForms.value.find((r: any) => !r.relationAmount || Number(r.relationAmount) <= 0)
+    if (invalid) {
+      message.warning(`申报单 ${invalid.formNo || invalid.formId} 的关联金额无效，请填写大于 0 的金额`)
       submitLoading.value = false
       return
     }

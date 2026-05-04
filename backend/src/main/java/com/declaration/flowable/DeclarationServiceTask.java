@@ -34,6 +34,13 @@ public class DeclarationServiceTask implements JavaDelegate {
 
         log.info("执行服务任务: 活动ID={}, 业务Key={}", currentActivityId, businessKey);
 
+        // 恢复模式：老流程迁移场景下，跳过资料生成等自动动作（避免重复生成文件）
+        Boolean resumeMode = (Boolean) execution.getVariable("resumeMode");
+        if (Boolean.TRUE.equals(resumeMode)) {
+            log.info("恢复模式：跳过服务任务 {} 的业务动作 businessKey={}", currentActivityId, businessKey);
+            return;
+        }
+
         if (businessKey == null || businessKey.isEmpty()) {
             return;
         }

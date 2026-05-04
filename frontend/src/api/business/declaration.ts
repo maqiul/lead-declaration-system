@@ -215,12 +215,20 @@ export function getActiveTasks(id: number) {
   })
 }
 
-// 批針获坖申报坕的活跃任务（列表页用）
+// 批量获取申报单的活跃任务（列表页用）
 export function getBatchActiveTasks(ids: string) {
   return request({
     url: '/v1/declarations/batch-tasks',
     method: 'get',
     params: { ids }
+  })
+}
+
+// 恢复老流程（将申报单迁移到新版流程对应节点）
+export function resumeDeclarationFlow(id: number | string) {
+  return request({
+    url: `/v1/declarations/${id}/resume-flow`,
+    method: 'post'
   })
 }
 

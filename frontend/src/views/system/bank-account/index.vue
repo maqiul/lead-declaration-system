@@ -80,7 +80,10 @@
           
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="openEditModal(record as BankAccountConfig)" v-permission="['system:bank-account:update']" class="font-medium text-blue-600">编辑</a-button>
+              <a-button type="link" size="small" @click="openEditModal(record as BankAccountConfig)" v-permission="['system:bank-account:update']" class="font-medium text-blue-600">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
               <a-button 
                 v-if="record.isDefault !== 1" 
                 type="link" 
@@ -89,6 +92,7 @@
                 v-permission="['system:bank-account:update']"
                 class="font-medium text-blue-600"
               >
+                <template #icon><StarOutlined /></template>
                 设为默认
               </a-button>
               <a-popconfirm
@@ -102,6 +106,9 @@
                   v-permission="['system:bank-account:update']"
                   class="font-medium"
                 >
+                  <template #icon>
+                    <component :is="record.status === 1 ? 'StopOutlined' : 'CheckCircleOutlined'" />
+                  </template>
                   {{ record.status === 1 ? '禁用' : '启用' }}
                 </a-button>
               </a-popconfirm>
@@ -109,7 +116,10 @@
                 title="确定要删除吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['system:bank-account:delete']" class="font-medium">删除</a-button>
+                <a-button type="link" size="small" danger v-permission="['system:bank-account:delete']" class="font-medium">
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -262,7 +272,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined, SearchOutlined, EditOutlined, StarOutlined, StopOutlined, CheckCircleOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
 import request from '@/utils/request'
 

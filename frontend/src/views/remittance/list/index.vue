@@ -89,7 +89,10 @@
 
           <template v-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record as Remittance)">查看</a-button>
+              <a-button type="link" size="small" @click="handleView(record as Remittance)">
+                <template #icon><EyeOutlined /></template>
+                查看
+              </a-button>
               <a-button
                 type="link"
                 size="small"
@@ -97,6 +100,7 @@
                 v-if="record.status === 0"
                 v-permission="['business:remittance:update']"
               >
+                <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
               <a-button
@@ -106,6 +110,7 @@
                 v-if="record.status === 0"
                 v-permission="['business:remittance:submit']"
               >
+                <template #icon><SendOutlined /></template>
                 提交审核
               </a-button>
               <a-button
@@ -115,6 +120,7 @@
                 v-if="record.status === 1"
                 v-permission="['business:remittance:audit']"
               >
+                <template #icon><AuditOutlined /></template>
                 审核
               </a-button>
               <a-button
@@ -125,6 +131,7 @@
                 v-permission="['business:remittance:audit']"
                 style="color: #fa8c16"
               >
+                <template #icon><ThunderboltOutlined /></template>
                 直接审核
               </a-button>
               <a-button
@@ -135,6 +142,7 @@
                 danger
                 v-permission="['business:remittance:delete']"
               >
+                <template #icon><DeleteOutlined /></template>
                 删除
               </a-button>
               <a-button
@@ -143,6 +151,7 @@
                 @click="handleManageForms(record as Remittance)"
                 v-permission="['business:remittance:update']"
               >
+                <template #icon><LinkOutlined /></template>
                 管理关联
               </a-button>
             </a-space>
@@ -184,7 +193,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import { SearchOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, PlusOutlined, ReloadOutlined, EyeOutlined, EditOutlined, SendOutlined, AuditOutlined, ThunderboltOutlined, DeleteOutlined, LinkOutlined } from '@ant-design/icons-vue'
 import { getRemittanceList, deleteRemittance, submitRemittanceAudit } from '@/api/business/remittance'
 import type { Remittance, RemittanceQueryParams } from '@/api/business/remittance'
 import RemittanceModal from './components/RemittanceModal.vue'

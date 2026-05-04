@@ -52,12 +52,14 @@
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'declarationElements'">
             <a-button type="link" size="small" @click="viewElements(record)" class="text-blue-600 font-medium">
+              <template #icon><EyeOutlined /></template>
               查看申报要素
             </a-button>
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
               <a-button type="link" size="small" @click="openEditModal(record)" v-permission="['system:product:update']" class="text-blue-600 font-medium">
+                <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
               <a-popconfirm
@@ -65,6 +67,7 @@
                 @confirm="handleDelete((record as any).id)"
               >
                 <a-button type="link" danger size="small" v-permission="['system:product:delete']" class="font-medium">
+                  <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
               </a-popconfirm>
@@ -239,7 +242,9 @@ import {
   PlusOutlined,
   ReloadOutlined,
   DeleteOutlined,
-  SearchOutlined
+  SearchOutlined,
+  EditOutlined,
+  EyeOutlined
 } from '@ant-design/icons-vue'
 import {
   getProducts,

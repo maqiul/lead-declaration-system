@@ -76,6 +76,7 @@
                 @click="handleView(record)"
                 class="font-medium text-blue-600"
               >
+                <template #icon><EyeOutlined /></template>
                 详情
               </a-button>
               <a-button
@@ -85,6 +86,7 @@
                 @click="handleUpdate(record)"
                 class="font-medium text-blue-600"
               >
+                <template #icon><EditOutlined /></template>
                 修改
               </a-button>
               <a-popconfirm
@@ -93,6 +95,7 @@
                 @confirm="handleDelete(record.id)"
               >
                 <a-button type="link" size="small" danger class="font-medium">
+                  <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
               </a-popconfirm>
@@ -213,7 +216,10 @@ import { message } from 'ant-design-vue'
 import { 
   SearchOutlined, 
   ReloadOutlined, 
-  PlusOutlined
+  PlusOutlined,
+  EyeOutlined,
+  EditOutlined,
+  DeleteOutlined
 } from '@ant-design/icons-vue'
 import { 
   getCityList, 

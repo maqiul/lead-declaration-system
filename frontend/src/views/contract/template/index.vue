@@ -19,7 +19,10 @@
               <template #icon><SearchOutlined /></template>
               搜索
             </a-button>
-            <a-button @click="handleReset">重置</a-button>
+            <a-button @click="handleReset">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
           </a-space>
         </a-form-item>
       </a-form>
@@ -66,20 +69,32 @@
 
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button v-permission="['business:contract:template:update']" type="link" size="small" @click="openEditModal(record)">编辑</a-button>
+              <a-button v-permission="['business:contract:template:update']" type="link" size="small" @click="openEditModal(record)">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
               <a-upload
                 name="file"
                 :showUploadList="false"
                 :customRequest="(options: any) => handleUpload(options, record.id)"
               >
-                <a-button v-permission="['business:contract:template:upload']" type="link" size="small">上传文件</a-button>
+                <a-button v-permission="['business:contract:template:upload']" type="link" size="small">
+                  <template #icon><UploadOutlined /></template>
+                  上传文件
+                </a-button>
               </a-upload>
-              <a-button v-permission="['business:contract:download']" v-if="record.filePath" type="link" size="small" @click="handleDownload(record)">下载</a-button>
+              <a-button v-permission="['business:contract:download']" v-if="record.filePath" type="link" size="small" @click="handleDownload(record)">
+                <template #icon><DownloadOutlined /></template>
+                下载
+              </a-button>
               <a-popconfirm
                 title="确定要删除这个模板吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button v-permission="['business:contract:template:delete']" type="link" size="small" danger>删除</a-button>
+                <a-button v-permission="['business:contract:template:delete']" type="link" size="small" danger>
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -139,7 +154,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined, SearchOutlined, EditOutlined, UploadOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
 import { getTemplates, uploadTemplate } from '@/api/business/contract'
 import request from '@/utils/request'

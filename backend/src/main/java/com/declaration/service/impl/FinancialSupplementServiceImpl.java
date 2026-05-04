@@ -1,9 +1,11 @@
 package com.declaration.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.declaration.entity.DeclarationMaterialItem;
 import com.declaration.entity.DeclarationRemittance;
 import com.declaration.entity.FinancialSupplement;
 import com.declaration.dao.FinancialSupplementMapper;
+import com.declaration.service.DeclarationMaterialItemService;
 import com.declaration.service.DeclarationRemittanceService;
 import com.declaration.service.FinancialSupplementService;
 import lombok.RequiredArgsConstructor;
@@ -19,10 +21,44 @@ import java.util.*;
 public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplementMapper, FinancialSupplement> implements FinancialSupplementService {
 
     private final DeclarationRemittanceService remittanceService;
+    private final DeclarationMaterialItemService materialItemService;
 
     // 数字格式化器
     private static final DecimalFormat AMOUNT_FORMAT = new DecimalFormat("#,##0.00");
     private static final DecimalFormat RATE_FORMAT = new DecimalFormat("0.####");
+
+    // 资料项发票模板 code（数据源：declaration_material_item.code）
+    private static final String CODE_FREIGHT = "FREIGHT_INVOICE";
+    private static final String CODE_CUSTOMS = "CUSTOMS_AGENT_INVOICE";
+
+    /** 从申报资料项中按 code 读取发票金额，不存在或为 null 时返回 0 */
+    private BigDecimal getInvoiceAmountFromMaterial(Long formId, String code) {
+        if (formId == null || code == null) return BigDecimal.ZERO;
+        List<DeclarationMaterialItem> items = materialItemService.listByFormId(formId);
+        if (items == null) return BigDecimal.ZERO;
+        for (DeclarationMaterialItem item : items) {
+            if (code.equals(item.getCode()) && item.getAmount() != null) {
+                return item.getAmount();
+            }
+        }
+        return BigDecimal.ZERO;
+    }
+
+    /** 从申报资料项中按 code 读取发票号，供 Excel 导出等展示场景使用 */
+    public String getInvoiceNoFromMaterial(Long formId, String code) {
+        if (formId == null || code == null) return null;
+        List<DeclarationMaterialItem> items = materialItemService.listByFormId(formId);
+        if (items == null) return null;
+        for (DeclarationMaterialItem item : items) {
+            if (code.equals(item.getCode())) {
+                return item.getInvoiceNo();
+            }
+        }
+        return null;
+    }
+
+    public static String getFreightCode() { return CODE_FREIGHT; }
+    public static String getCustomsCode() { return CODE_CUSTOMS; }
 
     @Override
     public Map<String, Object> getCalculationDetail(Long formId) {
@@ -118,10 +154,9 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
         BigDecimal taxRefundRate = supp != null && supp.getTaxRefundRate() != null
                 ? supp.getTaxRefundRate().divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP)  // 百分比转小数
                 : BigDecimal.ZERO;
-        BigDecimal freightAmount = supp != null && supp.getFreightAmount() != null
-                ? supp.getFreightAmount() : BigDecimal.ZERO;
-        BigDecimal customsAmount = supp != null && supp.getCustomsAmount() != null
-                ? supp.getCustomsAmount() : BigDecimal.ZERO;
+        // 货代发票 / 报关代理发票金额改从申报资料项实时聚合（financial_supplement 字段已废弃）
+        BigDecimal freightAmount = getInvoiceAmountFromMaterial(formId, CODE_FREIGHT);
+        BigDecimal customsAmount = getInvoiceAmountFromMaterial(formId, CODE_CUSTOMS);
 
         // 6.1 银行手续费已在上方循环中累加完毕（totalBankFeeCny）
         // 计算综合手续费率（信息展示用）

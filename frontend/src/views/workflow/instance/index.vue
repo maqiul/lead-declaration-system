@@ -19,10 +19,16 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" @click="handleSearch" v-permission="['workflow:instance:view']">搜索</a-button>
-            <a-button @click="handleReset" v-permission="['workflow:instance:view']">重置</a-button>
+            <a-button type="primary" @click="handleSearch" v-permission="['workflow:instance:view']">
+              <template #icon><SearchOutlined /></template>
+              搜索
+            </a-button>
+            <a-button @click="handleReset" v-permission="['workflow:instance:view']">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
             <a-button type="primary" @click="handleStartProcess" v-permission="['workflow:instance:start']">
-              <template #icon><plus-outlined /></template>
+              <template #icon><PlusOutlined /></template>
               发起流程
             </a-button>
           </a-space>
@@ -49,7 +55,10 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record as ProcessInstance)" v-permission="['workflow:instance:view']">查看</a-button>
+              <a-button type="link" size="small" @click="handleView(record as ProcessInstance)" v-permission="['workflow:instance:view']">
+                <template #icon><EyeOutlined /></template>
+                查看
+              </a-button>
               <a-button 
                 v-if="record.status === 0" 
                 type="link" 
@@ -57,6 +66,7 @@
                 @click="handleSuspend(record.id)"
                 v-permission="['workflow:instance:suspend']"
               >
+                <template #icon><PauseCircleOutlined /></template>
                 挂起
               </a-button>
               <a-button 
@@ -66,6 +76,7 @@
                 @click="handleActivate(record.id)"
                 v-permission="['workflow:instance:activate']"
               >
+                <template #icon><PlayCircleOutlined /></template>
                 激活
               </a-button>
               <a-popconfirm
@@ -73,7 +84,10 @@
                 title="确定要终止这个流程实例吗？"
                 @confirm="handleTerminate(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['workflow:instance:terminate']">终止</a-button>
+                <a-button type="link" size="small" danger v-permission="['workflow:instance:terminate']">
+                  <template #icon><StopOutlined /></template>
+                  终止
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -148,7 +162,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, PauseCircleOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons-vue'
 import { getRunningProcessInstances, suspendProcessInstance, activateProcessInstance, terminateProcessInstance, getTasksByProcessInstance } from '@/api/workflow'
 
 const router = useRouter()

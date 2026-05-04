@@ -19,8 +19,13 @@
           >
             <a-select-option value="">全部</a-select-option>
             <a-select-option :value="0">草稿</a-select-option>
-            <a-select-option :value="1">待审核</a-select-option>
-            <a-select-option :value="2">已完成</a-select-option>
+            <a-select-option :value="1">待初审</a-select-option>
+            <a-select-option :value="2">待资料提交</a-select-option>
+            <a-select-option :value="3">待资料审核</a-select-option>
+            <a-select-option :value="4">待发票提交</a-select-option>
+            <a-select-option :value="5">待发票审核</a-select-option>
+            <a-select-option :value="6">已完成</a-select-option>
+            <a-select-option :value="9">退回待审</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="日期">
@@ -32,8 +37,14 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" @click="loadData" v-permission="['business:declaration:view']">查询</a-button>
-            <a-button @click="resetSearch">重置</a-button>
+            <a-button type="primary" @click="loadData" v-permission="['business:declaration:view']">
+              <template #icon><SearchOutlined /></template>
+              查询
+            </a-button>
+            <a-button @click="resetSearch">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
           </a-space>
         </a-form-item>
       </a-form>
@@ -94,11 +105,43 @@
                 </a-button>
               </template>
 
-              <!-- 待审核状态: 审核按钮 -->
+              <!-- 待初审状态: 初审按钮 -->
               <template v-if="record.status === 1">
                 <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'deptAudit')" v-permission="['business:declaration:audit:initial']">
                   <template #icon><CheckCircleOutlined /></template>
-                  审核
+                  初审
+                </a-button>
+              </template>
+
+              <!-- 待资料提交状态: 提交资料按钮 -->
+              <template v-if="record.status === 2">
+                <a-button type="link" size="small" style="color: #1677ff;" @click="handleMaterialSubmit(record as any)" v-permission="['business:declaration:material:submit']">
+                  <template #icon><UploadOutlined /></template>
+                  提交资料
+                </a-button>
+              </template>
+
+              <!-- 待资料审核状态: 资料审核按钮 -->
+              <template v-if="record.status === 3">
+                <a-button type="link" size="small" style="color: #52c41a;" @click="handleMaterialAudit(record as any)" v-permission="['business:declaration:audit:material']">
+                  <template #icon><CheckCircleOutlined /></template>
+                  资料审核
+                </a-button>
+              </template>
+
+              <!-- 待发票提交状态: 提交发票按钮 -->
+              <template v-if="record.status === 4">
+                <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoSubmitInvoice(record as any)" v-permission="['business:declaration:invoice:submit']">
+                  <template #icon><UploadOutlined /></template>
+                  提交发票
+                </a-button>
+              </template>
+
+              <!-- 待发票审核状态: 发票审核按钮 -->
+              <template v-if="record.status === 5">
+                <a-button type="link" size="small" style="color: #52c41a;" @click="handleInvoiceAudit(record as any)" v-permission="['business:declaration:audit:invoice']">
+                  <template #icon><CheckCircleOutlined /></template>
+                  发票审核
                 </a-button>
               </template>
 
@@ -110,15 +153,6 @@
                 </a-button>
                 <template #overlay>
                   <a-menu>
-                    <!-- 提货单 (status>=1) -->
-                    <a-menu-item
-                      v-if="record.status >= 1 && checkPermission(['business:declaration:delivery:create'])"
-                      key="pickup"
-                      @click="handlePickupSubmit(record as any)"
-                    >
-                      <UploadOutlined /> 提货单
-                    </a-menu-item>
-
                     <!-- 上传发票 -->
                     <a-menu-item
                       v-if="checkPermission(['business:declaration:update'])"
@@ -128,9 +162,18 @@
                       <FileTextOutlined /> 上传发票
                     </a-menu-item>
 
-                    <!-- 财务补充 (仅财务角色) -->
+                    <!-- 查看资料 (status>=3) -->
                     <a-menu-item
-                      v-if="checkPermission(['business:declaration:finance:supplement'])"
+                      v-if="record.status >= 3"
+                      key="viewMaterial"
+                      @click="handleViewMaterial(record as any)"
+                    >
+                      <FileTextOutlined /> 查看资料
+                    </a-menu-item>
+
+                    <!-- 财务补充 (仅财务角色，需发票审核通过) -->
+                    <a-menu-item
+                      v-if="record.status >= 2 && checkPermission(['business:declaration:finance:supplement'])"
                       key="finance"
                       @click="handleFinanceUpload(record as any)"
                     >
@@ -160,6 +203,15 @@
                       <DownloadOutlined /> 单证下载
                     </a-menu-item>
 
+                    <!-- 恢复老流程：仅当 status 在 2~5 且无活跃任务时显示（老数据修复，需专用权限） -->
+                    <a-menu-item
+                      v-if="record.status >= 2 && record.status <= 5 && (!record.activeTasks || record.activeTasks.length === 0) && checkPermission(['business:declaration:resume:flow'])"
+                      key="resumeFlow"
+                      @click="handleResumeFlow(record as any)"
+                    >
+                      <ReloadOutlined /> 恢复流程
+                    </a-menu-item>
+
                     <!-- 生成合同 -->
                     <a-menu-item
                       v-if="!record.hasContract && checkPermission(['business:declaration:contract'])"
@@ -171,7 +223,7 @@
 
                     <!-- 申请退回草稿 (已提交状态，不包括退回待审) -->
                     <a-menu-item
-                      v-if="record.status >= 1 && record.status !== 9 && checkPermission(['business:declaration:return:apply'])"
+                      v-if="record.status >= 2 && record.status !== 9 && checkPermission(['business:declaration:return:apply'])"
                       key="returnApply"
                       @click="handleReturnApply(record as any)"
                     >
@@ -184,7 +236,7 @@
                       key="returnAudit"
                       @click="handleReturnAudit(record as any)"
                     >
-                      <CheckOutlined /> 退回审核
+                      <AuditOutlined /> 退回审核
                     </a-menu-item>
 
                     <!-- 审核详情 -->
@@ -221,7 +273,10 @@
       width="700px"
     >
       <template #footer>
-        <a-button @click="attachmentModalVisible = false">关闭</a-button>
+        <a-button @click="attachmentModalVisible = false">
+          <template #icon><CloseOutlined /></template>
+          关闭
+        </a-button>
       </template>
       
       <a-list :dataSource="currentAttachments" bordered size="small">
@@ -427,6 +482,20 @@
       @success="loadData"
     />
 
+    <!-- 资料审核弹窗 -->
+    <MaterialAuditModal
+      v-model:open="materialAuditVisible"
+      :form-id="currentFormIdForMaterial"
+      @audited="loadData"
+    />
+
+    <!-- 发票审核弹窗 -->
+    <InvoiceAuditModal
+      v-model:open="invoiceAuditVisible"
+      :form-id="currentFormIdForInvoice"
+      @audited="loadData"
+    />
+
     <!-- 创建水单弹窗 -->
     <a-modal
       v-model:open="createRemittanceVisible"
@@ -487,7 +556,7 @@
             :max-count="1"
           >
             <a-button v-if="!remittanceFormData.photoUrl">
-              <UploadOutlined />
+              <template #icon><UploadOutlined /></template>
               上传文件
             </a-button>
           </a-upload>
@@ -496,6 +565,7 @@
               <FileOutlined /> {{ getRemittanceFileExtension() }}
             </a-tag>
             <a-button type="link" size="small" @click="previewRemittanceFile">
+              <template #icon><EyeOutlined /></template>
               查看文件
             </a-button>
           </div>
@@ -613,7 +683,10 @@
             :max-count="1"
             accept=".pdf,.jpg,.png"
           >
-            <a-button><UploadOutlined /> 选择文件</a-button>
+            <a-button>
+              <template #icon><UploadOutlined /></template>
+              选择文件
+            </a-button>
           </a-upload>
         </a-form-item>
       </a-form>
@@ -625,7 +698,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
-import { PlusOutlined, DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, LinkOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, LinkOutlined, SearchOutlined, CloseOutlined, EyeOutlined, AuditOutlined } from '@ant-design/icons-vue'
 import { checkPermission } from '@/directives/permission'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
@@ -639,6 +712,7 @@ import {
   regenerateAllDocuments,
   regenerateRemittanceReport,
   getBatchActiveTasks,
+  resumeDeclarationFlow,
   applyReturnToDraft,
   auditReturnToDraft,
   getReturnAuditHistory,
@@ -654,6 +728,8 @@ import { useRoute } from 'vue-router'
 
 import FinanceModal from '../finance/components/FinanceModal.vue'
 import RemittanceRelationModal from './components/RemittanceRelationModal.vue'
+import MaterialAuditModal from '../material/components/MaterialAuditModal.vue'
+import InvoiceAuditModal from '../material/components/InvoiceAuditModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -733,6 +809,13 @@ const currentDeclaration = ref<DeclarationRecord | null>(null)
 // 财务补充弹窗
 const financeModalVisible = ref(false)
 const currentRecordForFinance = ref<DeclarationRecord | null>(null)
+
+// 资料审核弹窗
+const materialAuditVisible = ref(false)
+const currentFormIdForMaterial = ref<number | string | null>(null)
+// 发票审核弹窗
+const invoiceAuditVisible = ref(false)
+const currentFormIdForInvoice = ref<number | string | null>(null)
 
 // 关联水单弹窗
 const remittanceRelationVisible = ref(false)
@@ -1015,11 +1098,6 @@ const handleEdit = (record: DeclarationRecord) => {
 //   router.push({ path: '/declaration/form', query })
 // }
 
-// 提货单提交操作 - 跳转到申报单详情页的提货单上传模式
-const handlePickupSubmit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=pickup`)
-}
-
 // 审核申报单
 const handleAudit = (record: DeclarationRecord, taskKey?: string) => {
   const query: Record<string, any> = { id: record.id, mode: 'audit' }
@@ -1031,6 +1109,53 @@ const handleAudit = (record: DeclarationRecord, taskKey?: string) => {
 const handleFinanceUpload = (record: DeclarationRecord) => {
   currentRecordForFinance.value = record
   financeModalVisible.value = true
+}
+
+// 提交申报资料——跳转到主表单 mode=material
+const handleMaterialSubmit = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=material`)
+}
+
+// 查看已提交的资料——跳转到主表单 mode=material且 readonly
+const handleViewMaterial = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=material&readonly=true`)
+}
+
+// 资料审核（跳转到详情页审核）
+const handleMaterialAudit = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=materialAudit`)
+}
+
+// 提交业务发票——跳转到主表单 mode=invoiceUpload
+const handleGoSubmitInvoice = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceUpload`)
+}
+
+// 发票审核（跳转到详情页审核）
+const handleInvoiceAudit = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceAudit`)
+}
+
+// 恢复老流程：老流程在 status=2 就结束，使用本功能一键启动新版流程并跳至对应节点
+const handleResumeFlow = (record: DeclarationRecord) => {
+  Modal.confirm({
+    title: '确认恢复流程？',
+    content: `申报单 ${record.formNo || record.id} 当前状态=${record.status}，将迁移到新版流程对应节点。`,
+    okText: '确认恢复',
+    onOk: async () => {
+      try {
+        const res: any = await resumeDeclarationFlow(record.id)
+        if (res.data?.code === 200) {
+          message.success(`流程已恢复，当前节点：${res.data.data?.targetActivityId || '-'}`)
+          loadData()
+        } else {
+          message.error(res.data?.message || '恢复失败')
+        }
+      } catch (e: any) {
+        message.error('恢复失败: ' + (e.response?.data?.message || e.message || '未知错误'))
+      }
+    }
+  })
 }
 
 // 财务补充保存成功
@@ -1374,8 +1499,12 @@ const handleConfirmGenerate = async () => {
 const getStatusText = (status: number) => {
   const statusMap: Record<number, string> = {
     0: '草稿',
-    1: '待审核',
-    2: '已完成',
+    1: '待初审',
+    2: '待资料提交',
+    3: '待资料审核',
+    4: '待发票提交',
+    5: '待发票审核',
+    6: '已完成',
     9: '退回待审'
   }
   return statusMap[status] || '未知'
@@ -1385,8 +1514,12 @@ const getStatusText = (status: number) => {
 const getStatusColor = (status: number) => {
   const colorMap: Record<number, string> = {
     0: 'default',      // 草稿
-    1: 'processing',   // 待审核
-    2: 'success',      // 已完成
+    1: 'processing',   // 待初审
+    2: 'blue',         // 待资料提交
+    3: 'purple',       // 待资料审核
+    4: 'geekblue',     // 待发票提交
+    5: 'magenta',      // 待发票审核
+    6: 'success',      // 已完成
     9: 'warning'       // 退回待审
   }
   return colorMap[status] || 'default'

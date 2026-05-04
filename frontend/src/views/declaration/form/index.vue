@@ -1,9 +1,12 @@
 <template>
   <div class="declaration-form-page">
-    <a-card :title="(isPickupMode ? '提货单提交' : isInvoiceUploadMode ? '申报单详情 - 上传发票' : '出口申报表单')" >
+    <a-card :title="(isMaterialMode ? (isReadonly ? '申报资料查看' : '提交申报资料') : isMaterialAuditMode ? '申报单详情 - 资料审核' : isInvoiceAuditMode ? '申报单详情 - 发票审核' : isInvoiceUploadMode ? '申报单详情 - 上传发票' : '出口申报表单')" >
       <template #extra>
         <a-space>
-          <a-button @click="goBack">返回列表</a-button>
+          <a-button @click="goBack">
+            <template #icon><RollbackOutlined /></template>
+            返回列表
+          </a-button>
           
           <!-- 审核详情按钮 - 所有状态都显示 -->
           <a-button
@@ -21,38 +24,107 @@
               @click="handleApprove"
               :loading="submitting"
               v-permission="['business:declaration:audit:initial', 'business:declaration:audit:return']"
-            >{{ getAuditActionText() }}通过</a-button>
+            >
+              <template #icon><CheckCircleOutlined /></template>
+              {{ getAuditActionText() }}通过
+            </a-button>
             <a-button
               danger
               @click="handleReject"
               :loading="submitting"
               v-permission="['business:declaration:audit:initial', 'business:declaration:audit:return']"
-            >{{ getAuditActionText() }}驳回</a-button>
+            >
+              <template #icon><CloseCircleOutlined /></template>
+              {{ getAuditActionText() }}驳回
+            </a-button>
           </template>
 
-          <!-- 提货单提交模式下的按钮：状态6（待上传提货单）或状态7（提货单待审核）时显示 -->
-          <template v-else-if="isPickupMode">
-            <a-button 
-              v-if="(formStatus === 1 || formStatus === 2)" 
-              type="primary" 
-              @click="handleSubmitAudit('pickup')" 
-              :loading="submitting" 
-              :disabled="deliveryOrderList.length === 0 || !deliveryOrderList.some(order => order.status === 0)"
-              v-permission="['business:declaration:finance:supplement']"
+          <!-- 资料提交模式下的按钮：状态 2（待资料提交）时显示 -->
+          <template v-else-if="isMaterialMode && !isReadonly">
+            <a-button
+              v-if="formStatus === 2"
+              type="primary"
+              @click="handleSubmitMaterial"
+              :loading="submitting"
+              v-permission="['business:declaration:material:submit']"
             >
-              提交提货单审核
+              <template #icon><UploadOutlined /></template>
+              提交资料审核
             </a-button>
-            
           </template>
-          
-          
+
+          <!-- 资料审核模式下的按钮：状态 3（待资料审核）时显示 -->
+          <template v-else-if="isMaterialAuditMode && formStatus === 3">
+            <a-button
+              type="primary"
+              @click="handleMaterialAuditApprove"
+              :loading="submitting"
+              v-permission="['business:declaration:audit:material']"
+            >
+              <template #icon><CheckCircleOutlined /></template>
+              审核通过
+            </a-button>
+            <a-button
+              danger
+              @click="handleMaterialAuditReject"
+              :loading="submitting"
+              v-permission="['business:declaration:audit:material']"
+            >
+              <template #icon><CloseCircleOutlined /></template>
+              审核驳回
+            </a-button>
+          </template>
+
+          <!-- 发票审核模式下的按钮：状态 5（待发票审核）时显示 -->
+          <template v-else-if="isInvoiceAuditMode && formStatus === 5">
+            <a-button
+              type="primary"
+              @click="handleInvoiceAuditApprove"
+              :loading="submitting"
+              v-permission="['business:declaration:audit:invoice']"
+            >
+              <template #icon><CheckCircleOutlined /></template>
+              审核通过
+            </a-button>
+            <a-button
+              danger
+              @click="handleInvoiceAuditReject"
+              :loading="submitting"
+              v-permission="['business:declaration:audit:invoice']"
+            >
+              <template #icon><CloseCircleOutlined /></template>
+              审核驳回
+            </a-button>
+          </template>
+
+          <!-- 发票提交模式下的按钮：状态 4（待发票提交）时显示 -->
+          <!-- 注意：发票上传模式下 isReadonly 会被置为 true（申报单基本信息只读），
+               但发票区可操作，因此按钮可见不应受 isReadonly 约束 -->
+          <template v-else-if="isInvoiceUploadMode && formStatus === 4">
+            <a-button
+              type="primary"
+              @click="handleSubmitInvoice"
+              :loading="submitting"
+              v-permission="['business:declaration:invoice:submit']"
+            >
+              <template #icon><UploadOutlined /></template>
+              提交发票审核
+            </a-button>
+          </template>
+
           <!-- 普通模式下的按钮 -->
           <template v-else>
             <!-- 保存草稿按钮 -->
-            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" @click="handleSaveDraft" :loading="submitting" v-permission="['business:declaration:create']">保存草稿</a-button>
+            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" @click="handleSaveDraft" :loading="submitting" v-permission="['business:declaration:create']">
+              <template #icon><SaveOutlined /></template>
+              保存草稿
+            </a-button>
             
             <!-- 只在草稿状态且非只读模式下显示提交按钮 -->
-            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" type="primary" @click="handleSubmit" :loading="submitting" v-permission="['business:declaration:submit']">提交申报</a-button>
+            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" type="primary" @click="handleSubmit" :loading="submitting" v-permission="['business:declaration:submit']">
+              <template #icon><SendOutlined /></template>
+              提交申报
+            </a-button>
           </template>
         </a-space>
       </template>
@@ -407,7 +479,10 @@
             
             <template v-else-if="column.key === 'action'">
               <!-- 查看模式下隐藏删除按钮 -->
-                            <a-button v-if="!isFormReadonly && record.id > 0" type="link" danger @click="removeProduct(index)">删除</a-button>
+                            <a-button v-if="!isFormReadonly && record.id > 0" type="link" danger @click="removeProduct(index)">
+                <template #icon><DeleteOutlined /></template>
+                删除
+              </a-button>
             </template>
           </template>
         </a-table>
@@ -516,12 +591,16 @@
         
         <template #footer>
           <a-space>
-            <a-button @click="elementsModalVisible = false">关闭</a-button>
+            <a-button @click="elementsModalVisible = false">
+              <template #icon><CloseOutlined /></template>
+              关闭
+            </a-button>
             <a-button 
               v-if="!isFormReadonly" 
               type="primary"
               @click="handleElementsModalConfirm"
             >
+              <template #icon><CheckOutlined /></template>
               确认
             </a-button>
           </a-space>
@@ -628,14 +707,190 @@
             
             <template v-else-if="column.key === 'action'">
               <!-- 查看模式下隐藏删除按钮 -->
-              <a-button v-if="!isFormReadonly && record.id > 0" type="link" danger @click="removeCarton(index)">删除</a-button>
+              <a-button v-if="!isFormReadonly && record.id > 0" type="link" danger @click="removeCarton(index)">
+                <template #icon><DeleteOutlined /></template>
+                删除
+              </a-button>
             </template>
           </template>
         </a-table>
       </a-card>
 
-      <!-- 业务发票 (状态1及以上显示) -->
-      <a-card v-if="formStatus && formStatus >= 1" title="业务发票" size="small" class="section-card" style="margin-top: 16px;">
+      <!-- 申报资料 (状态 2 及以上显示) -->
+      <a-card v-if="formStatus && formStatus >= 2" title="申报资料" size="small" class="section-card">
+        <a-spin :spinning="materialLoading">
+          <!-- 进度卡片 -->
+          <div class="progress-card">
+            <div class="progress-left">
+              <div class="progress-title">
+                <FileDoneOutlined class="text-blue-500 mr-2" />
+                <span v-if="!isMaterialReadonly">资料上传进度</span>
+                <span v-else>资料查看</span>
+              </div>
+              <div class="progress-desc">
+                共 <b>{{ materialItems.length }}</b> 项资料，必填 <b class="text-red-500">{{ materialRequiredCount }}</b> 项，
+                已上传 <b :class="materialUploadedCount === materialRequiredCount ? 'text-green-500' : 'text-blue-500'">{{ materialUploadedCount }}</b> 项
+              </div>
+            </div>
+            <div class="progress-right">
+              <a-progress
+                type="circle"
+                :percent="materialProgressPercent"
+                :width="60"
+                :stroke-color="materialProgressPercent === 100 ? '#52c41a' : '#1677ff'"
+              />
+            </div>
+          </div>
+
+          <div class="toolbar" v-if="isMaterialEditable">
+            <a-space>
+              <a-button type="primary" size="small" class="material-customize-btn" @click="openAddMaterialRow"
+                        v-permission="['business:declaration:material:customize']">
+                <template #icon><PlusOutlined /></template>
+                新增自定义资料项
+              </a-button>
+            </a-space>
+          </div>
+
+          <a-table
+            :dataSource="materialItems"
+            :columns="materialColumns"
+            :pagination="false"
+            rowKey="id"
+            size="middle"
+            class="material-table"
+            :expandedRowKeys="materialExpandedKeys"
+            :showExpandColumn="false"
+          >
+            <template #expandedRowRender="{ record }">
+              <div class="schema-inline" v-if="parseMaterialSchema(record.formSchema).length">
+                <div
+                  class="schema-field"
+                  v-for="field in parseMaterialSchema(record.formSchema)"
+                  :key="field.key"
+                >
+                  <label class="schema-label">
+                    <span v-if="field.required" class="required-star">*</span>
+                    {{ field.label }}
+                  </label>
+                  <a-input-number
+                    v-if="field.type === 'number'"
+                    :value="getMaterialFieldValue(record as MaterialItem, field.key)"
+                    @update:value="(v: any) => setMaterialFieldValue(record as MaterialItem, field.key, v)"
+                    @blur="saveMaterialRowFields(record as MaterialItem)"
+                    :disabled="!isMaterialEditable"
+                    size="small"
+                    class="schema-input"
+                    :precision="4"
+                  />
+                  <a-date-picker
+                    v-else-if="field.type === 'date'"
+                    :value="getMaterialFieldValue(record as MaterialItem, field.key) || undefined"
+                    value-format="YYYY-MM-DD"
+                    @update:value="(v: any) => { setMaterialFieldValue(record as MaterialItem, field.key, v); saveMaterialRowFields(record as MaterialItem) }"
+                    :disabled="!isMaterialEditable"
+                    size="small"
+                    class="schema-input"
+                  />
+                  <a-select
+                    v-else-if="field.type === 'select'"
+                    :value="getMaterialFieldValue(record as MaterialItem, field.key)"
+                    @update:value="(v: any) => { setMaterialFieldValue(record as MaterialItem, field.key, v); saveMaterialRowFields(record as MaterialItem) }"
+                    :disabled="!isMaterialEditable"
+                    :options="(field.options || []).map((o: string) => ({ label: o, value: o }))"
+                    size="small"
+                    class="schema-input"
+                    allow-clear
+                  />
+                  <a-input
+                    v-else
+                    :value="getMaterialFieldValue(record as MaterialItem, field.key)"
+                    @update:value="(v: any) => setMaterialFieldValue(record as MaterialItem, field.key, v)"
+                    @blur="saveMaterialRowFields(record as MaterialItem)"
+                    :disabled="!isMaterialEditable"
+                    size="small"
+                    class="schema-input"
+                    :maxlength="200"
+                  />
+                </div>
+              </div>
+            </template>
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'name'">
+                <div class="name-cell">
+                  <div class="name-main">
+                    <span class="name-text">{{ record.name }}</span>
+                    <a-tag v-if="record.required === 1" color="red" class="ui-tag">必填</a-tag>
+                    <a-tag v-else class="ui-tag">选填</a-tag>
+                    <a-tag v-if="record.templateId == null" color="blue" class="ui-tag">自定义</a-tag>
+                    <a-tag v-if="parseMaterialSchema(record.formSchema).length" color="purple" class="ui-tag">
+                      <FormOutlined /> 需填写字段
+                    </a-tag>
+                  </div>
+                  <div v-if="record.remark" class="name-remark">{{ record.remark }}</div>
+                </div>
+              </template>
+              <template v-else-if="column.key === 'file'">
+                <template v-if="record.status === 1 && record.fileUrl">
+                  <div class="file-cell file-uploaded">
+                    <FileTextOutlined class="file-icon" />
+                    <div class="file-info">
+                      <a :href="record.fileUrl" target="_blank" class="file-name">{{ record.fileName || '查看附件' }}</a>
+                      <div class="file-time" v-if="record.uploadTime">
+                        {{ formatMaterialDateTime(record.uploadTime) }}
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="file-cell file-empty">
+                    <CloudUploadOutlined class="file-icon" />
+                    <span>尚未上传</span>
+                  </div>
+                </template>
+              </template>
+              <template v-else-if="column.key === 'action'">
+                <a-space v-if="isMaterialEditable" :size="4">
+                  <a-upload
+                    :show-upload-list="false"
+                    :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem)"
+                  >
+                    <a-button type="primary" size="small" class="material-upload-btn">
+                      <template #icon>
+                        <UploadOutlined v-if="record.status !== 1" />
+                        <SwapOutlined v-else />
+                      </template>
+                      {{ record.status === 1 ? '替换' : '上传' }}
+                    </a-button>
+                  </a-upload>
+                  <a-dropdown v-if="checkPermission(['business:declaration:material:customize'])" :trigger="['click']">
+                    <a-button size="small" type="text">
+                      <MoreOutlined />
+                    </a-button>
+                    <template #overlay>
+                      <a-menu>
+                        <a-menu-item @click="openEditMaterialRow(record as MaterialItem)">
+                          <EditOutlined /> 编辑名称/说明
+                        </a-menu-item>
+                        <a-menu-item v-if="record.status === 1" @click="confirmClearMaterialFile(record as MaterialItem)">
+                          <DeleteOutlined /> <span class="text-red-500">清除附件</span>
+                        </a-menu-item>
+                        <a-menu-item v-if="record.templateId == null" @click="confirmDeleteMaterialRow(record as MaterialItem)">
+                          <CloseOutlined /> <span class="text-red-500">删除资料项</span>
+                        </a-menu-item>
+                      </a-menu>
+                    </template>
+                  </a-dropdown>
+                </a-space>
+                <span v-else class="text-gray-400">—</span>
+              </template>
+            </template>
+          </a-table>
+        </a-spin>
+      </a-card>
+
+      <!-- 业务发票 (仅在待发票提交/待发票审核/已完成阶段显示，status>=4) -->
+      <a-card v-if="formStatus && formStatus >= 4" title="业务发票" size="small" class="section-card" style="margin-top: 16px;">
         <template #extra>
           <a-button v-if="!isFormReadonly || isInvoiceUploadMode" type="primary" size="small" @click="showInvoiceModal" v-permission="['business:declaration:update']">
             <PlusOutlined /> 上传发票
@@ -658,129 +913,47 @@
             </template>
             <template v-if="column.key === 'action'">
               <a-popconfirm title="确定删除该发票记录吗？" @confirm="handleDeleteInvoice(record.id)">
-                <a-button v-if="!isFormReadonly || isInvoiceUploadMode" type="link" danger size="small">删除</a-button>
+                <a-button v-if="!isFormReadonly || isInvoiceUploadMode" type="link" danger size="small">
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </template>
           </template>
         </a-table>
       </a-card>
 
-      <!-- 提货单 (状态3及以上显示) -->
-      <a-card v-if="formStatus && formStatus >= 1" title="提货单" size="small" class="section-card">
-        <template #extra>
-          <a-button
-            v-if="isDeliveryOrderEditable"
-            type="primary"
-            size="small"
-            @click="showDeliveryOrderModal"
-            v-permission="['business:declaration:delivery:create']"
-          >
-            <template #icon><PlusOutlined /></template>
-            新增提货单
-          </a-button>
-        </template>
-        
-        <a-table 
-          v-if="deliveryOrderList.length > 0"
-          :dataSource="deliveryOrderList" 
-          :columns="deliveryOrderColumns" 
-          :pagination="false"
-          rowKey="id"
-          size="small"
-          :loading="loadingDeliveryOrders"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'deliveryDate'">
-              {{ record.deliveryDate ? dayjs(record.deliveryDate).format('YYYY-MM-DD') : '' }}
-            </template>
-            <template v-else-if="column.key === 'status'">
-              <a-tag :color="getDeliveryOrderStatusColor(record.status)">
-                {{ getDeliveryOrderStatusText(record.status) }}
-              </a-tag>
-            </template>
-            <template v-else-if="column.key === 'fileName'">
-              <a v-if="record.fileUrl" :href="record.fileUrl" target="_blank">{{ record.fileName || '查看附件' }}</a>
-              <span v-else style="color: #999;">无附件</span>
-            </template>
-            <template v-else-if="column.key === 'action'">
-              <a-space>
-                <a-button 
-                  v-if="record.fileUrl" 
-                  type="link" 
-                  size="small" 
-                  @click="handleDownloadDeliveryOrder(record)"
-                >
-                  下载
-                </a-button>
-                <a-button
-                  v-if="isDeliveryOrderEditable && record.status === 0"
-                  type="link"
-                  size="small"
-                  @click="handleEditDeliveryOrder(record)"
-                  v-permission="['business:declaration:delivery:update']"
-                >
-                  编辑
-                </a-button>
-                <a-popconfirm
-                  v-if="isDeliveryOrderEditable && record.status === 0"
-                  title="确定要删除这条提货单吗？"
-                  @confirm="handleDeleteDeliveryOrder(record)"
-                >
-                  <a-button
-                    type="link"
-                    size="small"
-                    danger
-                    v-permission="['business:declaration:delivery:delete']"
-                  >
-                    删除
-                  </a-button>
-                </a-popconfirm>
-              </a-space>
-            </template>
-          </template>
-        </a-table>
-        <a-empty v-if="deliveryOrderList.length === 0 && !loadingDeliveryOrders" description="暂无提货单，请点击上方按钮添加" />
-      </a-card>
-      
-      <!-- 新增/编辑提货单弹窗 -->
+      <!-- 新增/编辑资料项弹窗 -->
       <a-modal
-        v-model:open="deliveryOrderModalVisible"
-        :title="editingDeliveryOrder ? '编辑提货单' : '新增提货单'"
-        @ok="handleSaveDeliveryOrder"
-        :confirmLoading="savingDeliveryOrder"
+        v-model:open="materialRowModalVisible"
+        :title="materialRowEditingId ? '编辑资料项' : '新增自定义资料项'"
+        @ok="handleSaveMaterialRow"
+        @cancel="materialRowModalVisible = false"
+        :confirm-loading="materialRowSaving"
         width="520px"
+        destroyOnClose
       >
-        <a-form :model="deliveryOrderForm" layout="vertical">
-          <a-form-item label="提货日期" required>
-            <a-date-picker 
-              v-model:value="deliveryOrderForm.deliveryDate" 
-              style="width: 100%" 
-              placeholder="选择提货日期"
-            />
+        <a-form layout="vertical" :model="materialRowForm">
+          <a-form-item label="名称" required>
+            <a-input v-model:value="materialRowForm.name" placeholder="请输入资料名称" :maxlength="100" />
           </a-form-item>
-          <a-form-item label="备注说明">
-            <a-textarea 
-              v-model:value="deliveryOrderForm.remark" 
-              :rows="3" 
-              placeholder="请输入备注说明（可选）"
-            />
-          </a-form-item>
-          <a-form-item label="上传提货单文件">
-            <a-upload
-              :file-list="deliveryOrderForm.fileList"
-              :max-count="1"
-              :before-upload="beforeDeliveryOrderUpload"
-              @remove="handleRemoveDeliveryOrderFile"
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-            >
-              <a-button>
-                <template #icon><UploadOutlined /></template>
-                选择文件
-              </a-button>
-            </a-upload>
-            <div style="margin-top: 8px; color: #999; font-size: 12px;">
-              支持PDF、Word文档、图片格式，单个文件不超过10MB
-            </div>
+          <a-row :gutter="16">
+            <a-col :span="12">
+              <a-form-item label="是否必填">
+                <a-radio-group v-model:value="materialRowForm.required" button-style="solid">
+                  <a-radio :value="1">必填</a-radio>
+                  <a-radio :value="0">选填</a-radio>
+                </a-radio-group>
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="排序">
+                <a-input-number v-model:value="materialRowForm.sort" :min="0" :max="9999" style="width: 100%" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-form-item label="说明">
+            <a-textarea v-model:value="materialRowForm.remark" :rows="3" :maxlength="500" />
           </a-form-item>
         </a-form>
       </a-modal>
@@ -791,66 +964,45 @@
           <a-button type="primary" size="small" @click="handleSaveFinanceSupplement" :loading="submittingSupplement" v-permission="['business:declaration:finance:supplement']">保存内容</a-button>
         </template>
         <a-form layout="vertical" :model="financeSupplement">
+          <a-alert
+            type="info"
+            show-icon
+            message="货代发票与报关代理发票由申报资料提交环节录入，本区域仅展示，如需修改请到申报资料页。"
+            style="margin-bottom: 12px"
+          />
           <a-row :gutter="16">
-             <a-col :span="24" style="margin-bottom: 16px;">
-               <a-form-item label="币种" style="margin-bottom: 0;">
-                 <a-select v-model:value="financeSupplement.currency" :disabled="!isFinanceUploadMode" style="width: 200px">
-                   <a-select-option value="CNY">人民币 (CNY)</a-select-option>
-                   <a-select-option value="USD">美元 (USD)</a-select-option>
-                 </a-select>
-               </a-form-item>
-             </a-col>
-             
-             <!-- 货代发票 -->
+             <!-- 货代发票（来自申报资料，只读） -->
              <a-col :span="8">
-               <a-card title="货代发票" size="small">
+               <a-card title="货代发票（来自申报资料）" size="small">
                  <a-form-item label="发票号">
-                   <a-input v-model:value="financeSupplement.freightInvoiceNo" :disabled="!isFinanceUploadMode" />
+                   <a-input v-model:value="financeSupplement.freightInvoiceNo" disabled />
                  </a-form-item>
                  <a-form-item label="金额">
-                   <a-input-number v-model:value="financeSupplement.freightAmount" style="width: 100%" :disabled="!isFinanceUploadMode" />
+                   <a-input-number v-model:value="financeSupplement.freightAmount" style="width: 100%" disabled />
                  </a-form-item>
                  <a-form-item label="附件">
-                   <div v-if="!isFinanceUploadMode && financeSupplement.freightFileName">
+                   <div v-if="financeSupplement.freightFileName">
                      <a :href="financeSupplement.freightFileUrl" target="_blank">{{ financeSupplement.freightFileName }}</a>
                    </div>
-                   <a-upload
-                     v-else-if="isFinanceUploadMode"
-                     :max-count="1"
-                     :before-upload="(file) => beforeSupplementPhotoUpload(file, 'freight')"
-                     @remove="() => handleRemoveSupplementPhoto('freight')"
-                     :file-list="financeSupplement.freightFileList || (financeSupplement.freightFileName ? [{uid: '-1', name: financeSupplement.freightFileName, status: 'done', url: financeSupplement.freightFileUrl}] : [])"
-                   >
-                     <a-button><UploadOutlined /> {{ financeSupplement.freightFileName ? '替换附件' : '上传附件' }}</a-button>
-                   </a-upload>
-                   <span v-else style="color: #999">无附件</span>
+                   <span v-else style="color: #999">未上传</span>
                  </a-form-item>
                </a-card>
              </a-col>
 
-             <!-- 报关发票 -->
+             <!-- 报关发票（来自申报资料，只读） -->
              <a-col :span="8">
-               <a-card title="报关发票" size="small">
+               <a-card title="报关代理发票（来自申报资料）" size="small">
                  <a-form-item label="发票号">
-                   <a-input v-model:value="financeSupplement.customsInvoiceNo" :disabled="!isFinanceUploadMode" />
+                   <a-input v-model:value="financeSupplement.customsInvoiceNo" disabled />
                  </a-form-item>
                  <a-form-item label="金额">
-                   <a-input-number v-model:value="financeSupplement.customsAmount" style="width: 100%" :disabled="!isFinanceUploadMode" />
+                   <a-input-number v-model:value="financeSupplement.customsAmount" style="width: 100%" disabled />
                  </a-form-item>
                  <a-form-item label="附件">
-                   <div v-if="!isFinanceUploadMode && financeSupplement.customsFileName">
+                   <div v-if="financeSupplement.customsFileName">
                      <a :href="financeSupplement.customsFileUrl" target="_blank">{{ financeSupplement.customsFileName }}</a>
                    </div>
-                   <a-upload
-                     v-else-if="isFinanceUploadMode"
-                     :max-count="1"
-                     :before-upload="(file) => beforeSupplementPhotoUpload(file, 'customs')"
-                     @remove="() => handleRemoveSupplementPhoto('customs')"
-                     :file-list="financeSupplement.customsFileList || (financeSupplement.customsFileName ? [{uid: '-2', name: financeSupplement.customsFileName, status: 'done', url: financeSupplement.customsFileUrl}] : [])"
-                   >
-                     <a-button><UploadOutlined /> {{ financeSupplement.customsFileName ? '替换附件' : '上传附件' }}</a-button>
-                   </a-upload>
-                   <span v-else style="color: #999">无附件</span>
+                   <span v-else style="color: #999">未上传</span>
                  </a-form-item>
                </a-card>
              </a-col>
@@ -1206,11 +1358,33 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message, Empty } from 'ant-design-vue'
+import { message, Modal, Empty, Textarea } from 'ant-design-vue'
+import { checkPermission } from '@/directives/permission'
 import type { SelectValue } from 'ant-design-vue/lib/select';
-import { PlusOutlined, UploadOutlined, DownloadOutlined, HistoryOutlined, EnvironmentOutlined } from '@ant-design/icons-vue'
+import {
+  PlusOutlined,
+  UploadOutlined,
+  DownloadOutlined,
+  HistoryOutlined,
+  EnvironmentOutlined,
+  SwapOutlined,
+  MoreOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  CloseOutlined,
+  FormOutlined,
+  FileTextOutlined,
+  FileDoneOutlined,
+  CloudUploadOutlined,
+  RollbackOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  SaveOutlined,
+  SendOutlined,
+  CheckOutlined
+} from '@ant-design/icons-vue'
 import dayjs, { Dayjs } from 'dayjs'
 
 // Empty组件的simpleImage
@@ -1223,23 +1397,30 @@ import {
   saveDraft, 
   deleteDeclaration,
   submitDeclaration,
-  submitForAudit,
   auditDeclaration,
   getActiveTasks,
-  getPickupAttachments,
   getFinancialSupplement,
   createFinancialSupplement,
   updateFinancialSupplement,
-  saveDeliveryOrder,
-  getDeliveryOrders,
-  updateDeliveryOrder,
-  deleteDeliveryOrder,
   auditReturnToDraft,
   getReturnAuditHistory,
   getBusinessInvoices,
   uploadBusinessInvoice,
   deleteBusinessInvoice
 } from '@/api/business/declaration'
+import {
+  getMaterialItems,
+  addMaterialItem,
+  updateMaterialItem,
+  deleteMaterialItem,
+  uploadMaterialFile,
+  clearMaterialFile,
+  submitMaterial,
+  submitInvoice,
+  auditMaterial,
+  auditInvoice,
+  type MaterialItem
+} from '@/api/business/materialItem'
 import { getProductTypes } from '@/api/system/product'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
 import { getEnabledPaymentMethods } from '@/api/system/paymentMethod'
@@ -1259,10 +1440,11 @@ const router = useRouter()
 const isAudit = ref(route.query.mode === 'audit')
 const isFinanceUploadMode = ref(route.query.mode === 'financeUpload') // 财务补充模式
 const isPaymentMode = ref(route.query.mode === 'payment') // 水单提交模式
-const isPickupMode = ref(route.query.mode === 'pickup' || route.query.type === 'pickup') // 提货单模式
+const isMaterialMode = ref(route.query.mode === 'material') // 资料提交/查看模式
+const isMaterialAuditMode = ref(route.query.mode === 'materialAudit') // 资料审核模式
+const isInvoiceAuditMode = ref(route.query.mode === 'invoiceAudit') // 发票审核模式
 const isInvoiceUploadMode = ref(route.query.mode === 'invoiceUpload') // 发票上传模式
 const isReadonly = ref(route.query.readonly === 'true' || isAudit.value)
-const isDeliveryOrderEditable = computed(() => !isInvoiceUploadMode.value && isPickupMode.value)
 const formId = ref(route.query.id ? Number(route.query.id) : null)
 const formStatus = ref<number | null>(route.query.status ? Number(route.query.status) : null)
 const submitting = ref(false)
@@ -1295,8 +1477,8 @@ const activeTasks = ref<any[]>([])
 // 计量单位列表
 const measurementUnits = ref<MeasurementUnit[]>([])
 
-// 基本信息是否只读（审核模式、查看模式、水单提交模式、财务补充模式、提货单模式都只读）
-const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value || isFinanceUploadMode.value || isPickupMode.value || isInvoiceUploadMode.value)
+// 基本信息是否只读（审核模式、查看模式、水单提交模式、财务补充模式、资料模式、资料审核模式、发票上传模式都只读）
+const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value || isFinanceUploadMode.value || isMaterialMode.value || isMaterialAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value)
 
 // 当前审核阶段（从 URL taskKey 中获取）
 
@@ -1401,6 +1583,28 @@ const loadFinancialSupplement = async () => {
     } else {
       console.log('未找到财务补充记录，使用默认空数据')
     }
+
+    // 货代发票与报关代理发票统一从申报资料项实时读取（只读展示）
+    try {
+      const matRes: any = await getMaterialItems(formId.value)
+      const items: MaterialItem[] = (matRes?.data?.data || []) as MaterialItem[]
+      const freight = items.find((i) => i.code === 'FREIGHT_INVOICE')
+      const customs = items.find((i) => i.code === 'CUSTOMS_AGENT_INVOICE')
+      if (freight) {
+        financeSupplement.value.freightInvoiceNo = freight.invoiceNo || ''
+        financeSupplement.value.freightAmount = freight.amount ?? null
+        financeSupplement.value.freightFileUrl = freight.fileUrl || ''
+        financeSupplement.value.freightFileName = freight.fileName || ''
+      }
+      if (customs) {
+        financeSupplement.value.customsInvoiceNo = customs.invoiceNo || ''
+        financeSupplement.value.customsAmount = customs.amount ?? null
+        financeSupplement.value.customsFileUrl = customs.fileUrl || ''
+        financeSupplement.value.customsFileName = customs.fileName || ''
+      }
+    } catch (e) {
+      console.warn('资料项货代/报关发票加载失败，展示为空', e)
+    }
   } catch (error) {
     console.error('获取财务补充记录失败', error)
     message.error('加载财务补充记录失败')
@@ -1414,15 +1618,24 @@ const handleSaveFinanceSupplement = async () => {
   try {
     // 确保设置formId
     financeSupplement.value.formId = formId.value
-    
+
+    // 货代/报关发票已迁到申报资料维护，本页不再写入这 8 个字段
+    const {
+      freightAmount: _fa, freightInvoiceNo: _fn, freightFileUrl: _fu, freightFileName: _ffn,
+      customsAmount: _ca, customsInvoiceNo: _cn, customsFileUrl: _cu, customsFileName: _cfn,
+      freightFileList: _ffl, customsFileList: _cfl,
+      ...supplementPayload
+    } = financeSupplement.value
+    void _fa; void _fn; void _fu; void _ffn; void _ca; void _cn; void _cu; void _cfn; void _ffl; void _cfl;
+
     if (financeSupplement.value.id) {
       // 更新现有记录
-      await updateFinancialSupplement(financeSupplement.value.id, financeSupplement.value)
+      await updateFinancialSupplement(financeSupplement.value.id, supplementPayload)
       message.success('财务补充单证更新成功')
     } else {
       // 创建新记录
-      console.log('创建新的财务补充记录:', financeSupplement.value)
-      const res = await createFinancialSupplement(financeSupplement.value)
+      console.log('创建新的财务补充记录:', supplementPayload)
+      const res = await createFinancialSupplement(supplementPayload)
       if (res.data && res.data.code === 200 && res.data.data) {
         // 更新本地数据的ID
         financeSupplement.value.id = res.data.data.id
@@ -1492,26 +1705,6 @@ const handleRemoveSupplementPhoto = (type: 'freight' | 'customs' | 'details' | '
 }
 
 
-// 提交审核（定金/尾款/提货单）
-const handleSubmitAudit = async (type: 'deposit' | 'balance' | 'pickup') => {
-  if (!formId.value) return
-  submitting.value = true
-  try {
-    await submitForAudit(formId.value, type)
-    
-    let msg = '已提交审核'
-    if (type === 'deposit') msg = '定金信息已提交审核'
-    else if (type === 'balance') msg = '尾款信息已提交审核'
-    else if (type === 'pickup') msg = '提货单已提交审核'
-    
-    message.success(msg)
-    goBack()
-  } catch (error) {
-    message.error('提交失败')
-  } finally {
-    submitting.value = false
-  }
-}
 
 // 审核通过
 const handleApprove = async () => {
@@ -1657,7 +1850,7 @@ const handleGenerateFinanceDetails = async () => {
       detailsFileName: financeSupplement.value.detailsFileName,
       detailsFileUrl: financeSupplement.value.detailsFileUrl,
       taxRefundRate: financeSupplement.value.taxRefundRate,
-      currency: financeSupplement.value.currency,
+      currency: financeSupplement.value.currency || 'CNY',
       foreignExchangeBank: financeSupplement.value.foreignExchangeBank,
       bankFeeRate: financeSupplement.value.bankFeeRate
     }
@@ -1738,195 +1931,492 @@ const parsedCalculationDetail = computed(() => {
 // }
 
 
-// 提货单附件列表
-const pickupAttachments = ref<any[]>([])
+// ========================================
+// 申报资料相关逻辑（从 MaterialSubmitModal 迁移）
+// ========================================
 
-// ========== 提货单相关 ==========
-const deliveryOrderList = ref<any[]>([])
-const loadingDeliveryOrders = ref(false)
-const deliveryOrderModalVisible = ref(false)
-const editingDeliveryOrder = ref<any>(null)
-const savingDeliveryOrder = ref(false)
+interface MaterialSchemaField {
+  key: string
+  label: string
+  type: 'text' | 'number' | 'date' | 'select'
+  required?: boolean
+  options?: string[]
+}
 
-const deliveryOrderForm = reactive({
-  deliveryDate: undefined as Dayjs | undefined,
-  remark: '',
-  fileUrl: '',
-  fileName: '',
-  fileList: [] as any[]
+const MATERIAL_FIXED_KEYS = ['amount', 'currency', 'invoiceNo', 'invoiceDate']
+
+const materialItems = ref<MaterialItem[]>([])
+const materialLoading = ref(false)
+const materialExpandedKeys = ref<(number | string)[]>([])
+const materialRowModalVisible = ref(false)
+const materialRowSaving = ref(false)
+const materialRowEditingId = ref<number | string | null>(null)
+const materialRowForm = reactive<Partial<MaterialItem>>({
+  name: '',
+  required: 1,
+  sort: 0,
+  remark: ''
 })
 
-// 提货单列表表格列配置
-const deliveryOrderColumns = [
-  { title: '提货日期', key: 'deliveryDate', width: 120 },
-  { title: '备注说明', dataIndex: 'remark', key: 'remark' },
-  { title: '附件', key: 'fileName', width: 120 },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 },
-  { title: '操作', key: 'action', width: 180 }
+const materialColumns = [
+  { title: '资料项', key: 'name', dataIndex: 'name' },
+  { title: '附件', key: 'file', dataIndex: 'fileName', width: 260 },
+  { title: '创建人', key: 'createByName', dataIndex: 'createByName', width: 100 },
+  { title: '更新人', key: 'updateByName', dataIndex: 'updateByName', width: 100 },
+  { title: '操作', key: 'action', width: 220 }
 ]
 
-// 获取提货单状态颜色
-const getDeliveryOrderStatusColor = (status: number) => {
-  const colorMap: Record<number, string> = {
-    0: 'orange',    // 待审核
-    1: 'green',     // 已通过
-    2: 'red'        // 已驳回
+const materialRequiredCount = computed(() => materialItems.value.filter((i) => i.required === 1).length)
+const materialUploadedCount = computed(() =>
+  materialItems.value.filter((i) => i.required === 1 && i.status === 1).length
+)
+const materialProgressPercent = computed(() => {
+  if (materialRequiredCount.value === 0) return materialItems.value.length === 0 ? 0 : 100
+  return Math.round((materialUploadedCount.value / materialRequiredCount.value) * 100)
+})
+
+// 资料模式下只读：URL readonly=true 或 状态大于 2 (资料提交后)
+const isMaterialReadonly = computed(() => {
+  if (route.query.readonly === 'true') return true
+  if (formStatus.value != null && formStatus.value > 2) return true
+  return false
+})
+// 资料模块在仅当资料模式 + 状态=2 + 非只读时可编辑
+const isMaterialEditable = computed(() =>
+  isMaterialMode.value && formStatus.value === 2 && !isMaterialReadonly.value
+)
+
+const parseMaterialSchema = (schema?: string | null): MaterialSchemaField[] => {
+  if (!schema) return []
+  try {
+    const arr = JSON.parse(schema)
+    return Array.isArray(arr) ? (arr as MaterialSchemaField[]) : []
+  } catch {
+    return []
   }
-  return colorMap[status] || 'default'
 }
 
-// 获取提货单状态文本
-const getDeliveryOrderStatusText = (status: number) => {
-  const textMap: Record<number, string> = {
-    0: '待审核',
-    1: '已通过',
-    2: '已驳回'
+const getMaterialFieldValue = (record: MaterialItem, key: string): any => {
+  if (MATERIAL_FIXED_KEYS.includes(key)) return (record as any)[key]
+  if (!record.extraData) return undefined
+  try {
+    const obj = JSON.parse(record.extraData)
+    return obj[key]
+  } catch {
+    return undefined
   }
-  return textMap[status] || '未知'
 }
 
-// 加载提货单列表
-const loadDeliveryOrders = async () => {
+const setMaterialFieldValue = (record: MaterialItem, key: string, val: any) => {
+  if (MATERIAL_FIXED_KEYS.includes(key)) {
+    ;(record as any)[key] = val == null || val === '' ? null : val
+    return
+  }
+  let obj: any = {}
+  if (record.extraData) {
+    try {
+      obj = JSON.parse(record.extraData)
+    } catch {
+      obj = {}
+    }
+  }
+  if (val == null || val === '') delete obj[key]
+  else obj[key] = val
+  record.extraData = Object.keys(obj).length ? JSON.stringify(obj) : null
+}
+
+const loadMaterialItems = async () => {
   if (!formId.value) return
-  loadingDeliveryOrders.value = true
   try {
-    const res = await getDeliveryOrders(formId.value)
-    if (res.data && res.data.code === 200) {
-      // 增加数组安全性检查
-      deliveryOrderList.value = Array.isArray(res.data.data) ? res.data.data : []
+    materialLoading.value = true
+    const res = await getMaterialItems(formId.value)
+    if (res.data?.code === 200) {
+      materialItems.value = (res.data.data || []).slice().sort(
+        (a: MaterialItem, b: MaterialItem) => (a.sort ?? 0) - (b.sort ?? 0)
+      )
+      materialExpandedKeys.value = materialItems.value
+        .filter((i) => parseMaterialSchema(i.formSchema).length > 0)
+        .map((i) => i.id as any)
     }
-  } catch (error) {
-    console.warn('加载提货单列表失败:', error)
-    deliveryOrderList.value = []
+  } catch (e) {
+    message.error('加载资料项失败')
   } finally {
-    loadingDeliveryOrders.value = false
+    materialLoading.value = false
   }
 }
 
-// 显示新增/编辑提货单弹窗
-const showDeliveryOrderModal = (record?: any) => {
-  if (record) {
-    editingDeliveryOrder.value = record
-    deliveryOrderForm.deliveryDate = record.deliveryDate ? dayjs(record.deliveryDate) : undefined
-    deliveryOrderForm.remark = record.remark || ''
-    deliveryOrderForm.fileUrl = record.fileUrl || ''
-    deliveryOrderForm.fileName = record.fileName || ''
-    deliveryOrderForm.fileList = record.fileUrl ? [{
-      uid: '-1',
-      name: record.fileName || '附件',
-      status: 'done',
-      url: record.fileUrl
-    }] : []
-  } else {
-    editingDeliveryOrder.value = null
-    deliveryOrderForm.deliveryDate = dayjs()
-    deliveryOrderForm.remark = ''
-    deliveryOrderForm.fileUrl = ''
-    deliveryOrderForm.fileName = ''
-    deliveryOrderForm.fileList = []
-  }
-  deliveryOrderModalVisible.value = true
-}
-
-// 提货单文件上传前处理
-const beforeDeliveryOrderUpload = async (file: any) => {
-  const isLt10M = file.size / 1024 / 1024 < 10
-  if (!isLt10M) {
-    message.error('文件大小不能超过10MB!')
-    return false
-  }
-  
+const saveMaterialRowFields = async (record: MaterialItem) => {
+  if (!record.id || !isMaterialEditable.value) return
   try {
-    const res = await uploadFile(file, 'DeliveryOrder')
-    if (res.data && res.data.code === 200) {
-      const attachment = res.data.data
-      deliveryOrderForm.fileUrl = attachment.fileUrl || getFilePreviewUrl(attachment.id)
-      deliveryOrderForm.fileName = file.name
-      deliveryOrderForm.fileList = [{
-        uid: String(attachment.id),
-        name: file.name,
-        status: 'done',
-        url: deliveryOrderForm.fileUrl
-      }]
-      message.success('文件上传成功')
+    const res = await updateMaterialItem({
+      id: record.id,
+      name: record.name,
+      required: record.required,
+      sort: record.sort,
+      remark: record.remark,
+      amount: record.amount,
+      currency: record.currency,
+      invoiceNo: record.invoiceNo,
+      invoiceDate: record.invoiceDate,
+      extraData: record.extraData
+    })
+    if (res.data?.code === 200) {
+      message.success('已保存')
     } else {
-      message.error('文件上传失败')
+      message.error(res.data?.message || '保存失败')
     }
-  } catch (error) {
-    message.error('文件上传失败')
+  } catch (e) {
+    message.error('保存失败')
+  }
+}
+
+const beforeMaterialUpload = async (file: File, record: MaterialItem) => {
+  try {
+    const res = await uploadMaterialFile(record.id!, file)
+    if (res.data?.code === 200) {
+      message.success('上传成功')
+      await loadMaterialItems()
+    } else {
+      message.error(res.data?.message || '上传失败')
+    }
+  } catch (e) {
+    message.error('上传失败')
   }
   return false
 }
 
-// 移除提货单文件
-const handleRemoveDeliveryOrderFile = () => {
-  deliveryOrderForm.fileUrl = ''
-  deliveryOrderForm.fileName = ''
-  deliveryOrderForm.fileList = []
+const handleClearMaterialFile = async (record: MaterialItem) => {
+  try {
+    const res = await clearMaterialFile(record.id!)
+    if (res.data?.code === 200) {
+      message.success('已清除')
+      await loadMaterialItems()
+    }
+  } catch (e) {
+    message.error('操作失败')
+  }
 }
 
-// 保存提货单
-const handleSaveDeliveryOrder = async () => {
-  if (!formId.value) return
-  if (!deliveryOrderForm.deliveryDate) {
-    message.warning('请选择提货日期')
+const confirmClearMaterialFile = (record: MaterialItem) => {
+  Modal.confirm({
+    title: '确定清除此附件吗？',
+    content: '清除后需重新上传。',
+    okText: '确定清除',
+    okButtonProps: { danger: true },
+    onOk: () => handleClearMaterialFile(record)
+  })
+}
+
+const confirmDeleteMaterialRow = (record: MaterialItem) => {
+  Modal.confirm({
+    title: '确定删除此自定义资料项？',
+    content: '删除后不可恢复。',
+    okText: '确定删除',
+    okButtonProps: { danger: true },
+    onOk: () => handleDeleteMaterialRow(record)
+  })
+}
+
+const handleDeleteMaterialRow = async (record: MaterialItem) => {
+  try {
+    const res = await deleteMaterialItem(record.id!)
+    if (res.data?.code === 200) {
+      message.success('删除成功')
+      await loadMaterialItems()
+    } else {
+      message.error(res.data?.message || '删除失败')
+    }
+  } catch (e) {
+    message.error('删除失败')
+  }
+}
+
+const resetMaterialRowForm = () => {
+  materialRowForm.name = ''
+  materialRowForm.required = 1
+  materialRowForm.sort = 0
+  materialRowForm.remark = ''
+}
+
+const openAddMaterialRow = () => {
+  materialRowEditingId.value = null
+  resetMaterialRowForm()
+  materialRowModalVisible.value = true
+}
+
+const openEditMaterialRow = (record: MaterialItem) => {
+  materialRowEditingId.value = record.id ?? null
+  materialRowForm.name = record.name
+  materialRowForm.required = record.required
+  materialRowForm.sort = record.sort
+  materialRowForm.remark = record.remark
+  materialRowModalVisible.value = true
+}
+
+const handleSaveMaterialRow = async () => {
+  if (!materialRowForm.name?.trim()) {
+    message.warning('请输入资料名称')
     return
   }
-  
-  savingDeliveryOrder.value = true
   try {
-    const data = {
-      deliveryDate: deliveryOrderForm.deliveryDate.format('YYYY-MM-DD'),
-      remark: deliveryOrderForm.remark,
-      fileUrl: deliveryOrderForm.fileUrl,
-      fileName: deliveryOrderForm.fileName
-    }
-    
-    if (editingDeliveryOrder.value && editingDeliveryOrder.value.id) {
-      // 更新 - 确保 id 存在
-      await updateDeliveryOrder(editingDeliveryOrder.value.id, data)
-      message.success('提货单更新成功')
+    materialRowSaving.value = true
+    let res
+    if (materialRowEditingId.value) {
+      res = await updateMaterialItem({ ...materialRowForm, id: materialRowEditingId.value })
     } else {
-      // 新增
-      await saveDeliveryOrder(formId.value, data)
-      message.success('提货单添加成功')
+      res = await addMaterialItem({ ...materialRowForm, formId: formId.value! })
     }
-    
-    deliveryOrderModalVisible.value = false
-    await loadDeliveryOrders()
-  } catch (error) {
-    message.error('保存提货单失败')
+    if (res.data?.code === 200) {
+      message.success('保存成功')
+      materialRowModalVisible.value = false
+      await loadMaterialItems()
+    } else {
+      message.error(res.data?.message || '保存失败')
+    }
+  } catch (e) {
+    message.error('保存失败')
   } finally {
-    savingDeliveryOrder.value = false
+    materialRowSaving.value = false
   }
 }
 
-// 编辑提货单
-const handleEditDeliveryOrder = (record: any) => {
-  showDeliveryOrderModal(record)
+const formatMaterialDateTime = (s?: string) => {
+  if (!s) return ''
+  return new Date(s).toLocaleString('zh-CN')
 }
 
-// 下载提货单
-const handleDownloadDeliveryOrder = (record: any) => {
-  if (record.fileUrl) {
-    window.open(record.fileUrl, '_blank')
+const validateMaterialSchemaFields = (): string | null => {
+  for (const item of materialItems.value) {
+    const schema = parseMaterialSchema(item.formSchema)
+    if (!schema.length) continue
+    for (const f of schema) {
+      if (!f.required) continue
+      const v = getMaterialFieldValue(item, f.key)
+      if (v == null || v === '') {
+        return `资料「${item.name}」的「${f.label}」为必填项`
+      }
+    }
   }
+  return null
 }
 
-// 删除提货单
-const handleDeleteDeliveryOrder = async (record: any) => {
-  try {
-    await deleteDeliveryOrder(record.id)
-    message.success('提货单删除成功')
-    await loadDeliveryOrders()
-  } catch (error) {
-    message.error('删除提货单失败')
+const handleSubmitMaterial = async () => {
+  if (!formId.value) return
+  const missing = materialItems.value.filter((i) => i.required === 1 && i.status !== 1)
+  if (missing.length > 0) {
+    message.warning(`还有 ${missing.length} 项必填资料未上传：${missing.map((m) => m.name).join('、')}`)
+    return
   }
+  const schemaMissing = validateMaterialSchemaFields()
+  if (schemaMissing) {
+    message.warning(schemaMissing)
+    return
+  }
+  Modal.confirm({
+    title: '确认提交资料审核？',
+    content: '提交后将进入资料审核流程，无法修改。',
+    okText: '确认提交',
+    onOk: async () => {
+      try {
+        submitting.value = true
+        const res = await submitMaterial(formId.value!)
+        if (res.data?.code === 200) {
+          message.success('资料提交成功，等待审核')
+          goBack()
+        } else {
+          message.error(res.data?.message || '提交失败')
+        }
+      } catch (e) {
+        message.error('提交失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
+
+// 资料审核通过
+const handleMaterialAuditApprove = () => {
+  if (!formId.value) return
+  let remark = ''
+  Modal.confirm({
+    title: '确认通过资料审核？',
+    content: () => h('div', [
+      h('div', { style: 'margin-bottom:8px;color:#666;' }, '通过后流程将进入业务发票提交阶段。'),
+      h(Textarea, {
+        rows: 3,
+        maxlength: 500,
+        placeholder: '请输入审核意见（可选）',
+        'onUpdate:value': (v: string) => { remark = v }
+      })
+    ]),
+    okText: '确认通过',
+    onOk: async () => {
+      try {
+        submitting.value = true
+        const res = await auditMaterial({ formId: formId.value!, result: 1, remark })
+        if (res.data?.code === 200) {
+          message.success('资料审核已通过')
+          goBack()
+        } else {
+          message.error(res.data?.message || '操作失败')
+        }
+      } catch (e) {
+        message.error('操作失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
+
+// 资料审核驳回
+const handleMaterialAuditReject = () => {
+  if (!formId.value) return
+  let remark = ''
+  Modal.confirm({
+    title: '确认驳回资料审核？',
+    content: () => h('div', [
+      h('div', { style: 'margin-bottom:8px;color:#d46b08;' }, '驳回后申报人将重新提交资料。请填写驳回原因。'),
+      h(Textarea, {
+        rows: 3,
+        maxlength: 500,
+        placeholder: '请输入驳回原因（必填）',
+        'onUpdate:value': (v: string) => { remark = v }
+      })
+    ]),
+    okText: '确认驳回',
+    okButtonProps: { danger: true },
+    onOk: async () => {
+      if (!remark.trim()) {
+        message.warning('驳回请填写审核意见')
+        return Promise.reject()
+      }
+      try {
+        submitting.value = true
+        const res = await auditMaterial({ formId: formId.value!, result: 2, remark })
+        if (res.data?.code === 200) {
+          message.success('已驳回，申报人需重新提交资料')
+          goBack()
+        } else {
+          message.error(res.data?.message || '操作失败')
+        }
+      } catch (e) {
+        message.error('操作失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
 }
 
 // ========================================
 // 业务发票相关逻辑
 // ========================================
+
+// 发票审核通过
+const handleInvoiceAuditApprove = () => {
+  if (!formId.value) return
+  let remark = ''
+  Modal.confirm({
+    title: '确认通过发票审核？',
+    content: () => h('div', [
+      h('div', { style: 'margin-bottom:8px;color:#666;' }, '通过后流程将进入已完成阶段。'),
+      h(Textarea, {
+        rows: 3,
+        maxlength: 500,
+        placeholder: '请输入审核意见（可选）',
+        'onUpdate:value': (v: string) => { remark = v }
+      })
+    ]),
+    okText: '确认通过',
+    onOk: async () => {
+      try {
+        submitting.value = true
+        const res = await auditInvoice({ formId: formId.value!, result: 1, remark })
+        if (res.data?.code === 200) {
+          message.success('发票审核已通过')
+          goBack()
+        } else {
+          message.error(res.data?.message || '操作失败')
+        }
+      } catch (e) {
+        message.error('操作失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
+
+// 发票审核驳回
+const handleInvoiceAuditReject = () => {
+  if (!formId.value) return
+  let remark = ''
+  Modal.confirm({
+    title: '确认驳回发票审核？',
+    content: () => h('div', [
+      h('div', { style: 'margin-bottom:8px;color:#d46b08;' }, '驳回后申报人需重新上传业务发票。请填写驳回原因。'),
+      h(Textarea, {
+        rows: 3,
+        maxlength: 500,
+        placeholder: '请输入驳回原因（必填）',
+        'onUpdate:value': (v: string) => { remark = v }
+      })
+    ]),
+    okText: '确认驳回',
+    okButtonProps: { danger: true },
+    onOk: async () => {
+      if (!remark.trim()) {
+        message.warning('驳回请填写审核意见')
+        return Promise.reject()
+      }
+      try {
+        submitting.value = true
+        const res = await auditInvoice({ formId: formId.value!, result: 2, remark })
+        if (res.data?.code === 200) {
+          message.success('已驳回，申报人需重新提交发票')
+          goBack()
+        } else {
+          message.error(res.data?.message || '操作失败')
+        }
+      } catch (e) {
+        message.error('操作失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
+
+const handleSubmitInvoice = async () => {
+  if (!formId.value) return
+  if (!businessInvoiceList.value || businessInvoiceList.value.length === 0) {
+    message.warning('请至少上传一张业务发票后再提交')
+    return
+  }
+  Modal.confirm({
+    title: '确认提交发票审核？',
+    content: '提交后将进入发票审核流程，无法修改。',
+    okText: '确认提交',
+    onOk: async () => {
+      try {
+        submitting.value = true
+        const res = await submitInvoice(formId.value!)
+        if (res.data?.code === 200) {
+          message.success('发票提交成功，等待审核')
+          goBack()
+        } else {
+          message.error(res.data?.message || '提交失败')
+        }
+      } catch (e) {
+        message.error('提交失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
 
 const loadBusinessInvoices = async () => {
   if (!formId.value) return
@@ -3147,13 +3637,12 @@ const loadData = async () => {
         // 只读状态判断：
         // 1. 如果 URL 参数 readonly=true，保持只读
         // 2. 如果是审核模式 (isAudit)，保持只读
-        // 3. 如果是水单提交模式 (isPaymentMode) 或提货单模式 (isPickupMode)，不改变 isReadonly (保持false,让各自区域自行判断)
-        // 4. 如果是发票上传模式 (isInvoiceUploadMode)，不改变 isReadonly (保持false,让发票区域可操作)
-        // 5. 否则根据状态判断：状态 0/2 可编辑，其他只读
+        // 3. 如果是水单提交模式、资料模式或发票上传模式，由各自区域内部判断
+        // 4. 否则根据状态判断：状态 0/2 可编辑，其他只读
         if (route.query.readonly === 'true' || isAudit.value) {
           isReadonly.value = true
           console.log('查看模式或审核模式, 设置为只读')
-        } else if (!isPaymentMode.value && !isPickupMode.value && !isInvoiceUploadMode.value) {
+        } else if (!isPaymentMode.value && !isMaterialMode.value && !isInvoiceUploadMode.value) {
           const editableStatuses = [0, 2]
           if (!editableStatuses.includes(submittedStatus)) {
             isReadonly.value = true
@@ -3162,14 +3651,18 @@ const loadData = async () => {
             isReadonly.value = false
             console.log('申报单状态=' + submittedStatus + ', 可编辑模式')
           }
-        } else if (isPickupMode.value) {
-          // 提货单模式：申报单基本信息只读，但提货单区域可操作
-          isReadonly.value = true
-          console.log('提货单模式：申报单只读，提货单区域可操作')
+        } else if (isMaterialMode.value) {
+          // 资料模式：申报单基本信息只读，资料区域根据 readonly 和状态判断
+          // readonly 保留为 URL 传入值，资料模块通过 isMaterialEditable 控制可编辑性
+          console.log('资料模式：申报单基本信息只读，资料区域按状态判定')
         } else if (isInvoiceUploadMode.value) {
           // 发票上传模式：申报单基本信息只读，但发票区域可操作
           isReadonly.value = true
           console.log('发票上传模式：申报单只读，发票区域可操作')
+        } else if (isMaterialAuditMode.value || isInvoiceAuditMode.value) {
+          // 审核模式：整个表单只读
+          isReadonly.value = true
+          console.log('审核模式：申报单只读')
         }
         
         // 填充基本表单数据
@@ -3292,31 +3785,6 @@ const loadData = async () => {
           console.warn('⚠️ 水单数据不是数组格式:', remittancesRaw)
           remittanceList.value = []
         }
-        // 填充提货单附件(若需要)，如果是状态 >=2 开始加载
-        const fStatus = formStatus.value || 0
-        if (fStatus >= 2 && formId.value) {
-          try {
-            console.log('开始加载提货单附件，申报单ID:', formId.value)
-            const pickupRes = await getPickupAttachments(formId.value)
-            console.log('提货单附件API响应:', pickupRes)
-            if (pickupRes.data && pickupRes.data.code === 200) {
-              pickupAttachments.value = pickupRes.data.data.map((att: any) => ({
-                id: att.id,
-                fileName: att.fileName,
-                fileUrl: att.fileUrl || `/api/v1/files/download?id=${att.id}`,
-                fileType: 'PickupList',
-                createTime: att.createTime
-              }))
-              console.log('提货单附件加载成功，数量:', pickupAttachments.value.length)
-            } else {
-              console.warn('提货单附件加载失败:', pickupRes.data?.message || '未知错误')
-              pickupAttachments.value = [] // 确保数组为空而不是undefined
-            }
-          } catch (e) {
-            console.warn('加载提货单附件失败:', e)
-            pickupAttachments.value = [] // 确保数组为空而不是undefined
-          }
-        }
 
         // 加载财务补充记录
         if (formId.value && (submittedStatus > 1 || isFinanceUploadMode.value)) {
@@ -3325,10 +3793,10 @@ const loadData = async () => {
         
         // 加载业务发票
         loadBusinessInvoices()
-        
-        // 加载提货单列表（状态>=2 可创建和查看提货单，或者在审核模式下也需要加载）
-        if (formId.value && (submittedStatus >= 2 || isAudit.value)) {
-          loadDeliveryOrders()
+
+        // 加载申报资料（状态 >=2 资料模块即可浏览/操作）
+        if (formId.value && submittedStatus >= 2) {
+          loadMaterialItems()
         }
                 
         // 如果是退回待审状态（status=9），加载最新的退回申请原因
@@ -3768,5 +4236,127 @@ onMounted(() => {
   font-size: 11px;
   color: #999;
   margin-top: 2px;
+}
+
+/* ========== 申报资料模块样式 ========== */
+.progress-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #f0f7ff 0%, #fafcff 100%);
+  border: 1px solid #dbe9ff;
+  border-radius: 8px;
+}
+.progress-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.progress-desc {
+  font-size: 13px;
+  color: #6b7280;
+}
+.progress-right :deep(.ant-progress-text) {
+  font-weight: 600;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.material-table :deep(.ant-table-thead > tr > th) {
+  background: #fafbfc;
+  font-weight: 600;
+  color: #374151;
+}
+.material-table :deep(.ant-table-tbody > tr > td) {
+  vertical-align: middle;
+}
+
+.name-cell .name-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.name-cell .name-text {
+  font-weight: 500;
+  color: #111827;
+}
+.name-cell .name-remark {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+.file-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.file-cell .file-icon {
+  font-size: 18px;
+}
+.file-cell.file-uploaded .file-icon {
+  color: #52c41a;
+}
+.file-cell.file-empty {
+  color: #9ca3af;
+}
+.file-cell.file-empty .file-icon {
+  color: #d1d5db;
+}
+.file-cell .file-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.file-cell .file-name {
+  color: #1677ff;
+  font-weight: 500;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-cell .file-time {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.schema-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  padding: 10px 16px;
+  background: #fafbfc;
+  border-left: 3px solid #91caff;
+}
+.schema-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 240px;
+}
+.schema-label {
+  font-size: 13px;
+  color: #4b5563;
+  white-space: nowrap;
+}
+.required-star {
+  color: #ff4d4f;
+  margin-right: 2px;
+}
+.schema-input {
+  min-width: 160px;
+  flex: 1;
 }
 </style>

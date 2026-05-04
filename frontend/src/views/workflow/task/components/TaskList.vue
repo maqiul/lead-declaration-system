@@ -11,10 +11,16 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" @click="handleSearch" v-permission="['workflow:task:view']">搜索</a-button>
-            <a-button @click="handleReset" v-permission="['workflow:task:view']">重置</a-button>
+            <a-button type="primary" @click="handleSearch" v-permission="['workflow:task:view']">
+              <template #icon><SearchOutlined /></template>
+              搜索
+            </a-button>
+            <a-button @click="handleReset" v-permission="['workflow:task:view']">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
             <a-button @click="$emit('refresh')" v-permission="['workflow:task:view']">
-              <template #icon><reload-outlined /></template>
+              <template #icon><ReloadOutlined /></template>
               刷新
             </a-button>
           </a-space>
@@ -40,28 +46,36 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record as Task)" v-permission="['workflow:task:view']">查看</a-button>
+              <a-button type="link" size="small" @click="handleView(record as Task)" v-permission="['workflow:task:view']">
+                <template #icon><EyeOutlined /></template>
+                查看
+              </a-button>
 
               <template v-if="type === 'candidate'">
                 <a-button type="link" size="small" @click="$emit('claim', record as Task)" v-permission="['workflow:task:claim']">
+                  <template #icon><UserAddOutlined /></template>
                   签收
                 </a-button>
               </template>
 
               <template v-else-if="type === 'assigned'">
                 <a-button type="link" size="small" @click="$emit('complete', record as Task)" v-permission="['workflow:task:complete']">
+                  <template #icon><CheckCircleOutlined /></template>
                   处理
                 </a-button>
                 <a-button type="link" size="small" @click="$emit('reject', record as Task)" v-permission="['workflow:task:reject']" danger>
+                  <template #icon><CloseCircleOutlined /></template>
                   驳回
                 </a-button>
                 <a-button type="link" size="small" @click="handleTransfer(record as Task)" v-permission="['workflow:task:transfer']">
+                  <template #icon><SwapOutlined /></template>
                   转办
                 </a-button>
               </template>
 
               <template v-else>
                 <a-button type="link" size="small" @click="handleViewProcess(record as Task)" v-permission="['workflow:instance:view']">
+                  <template #icon><NodeIndexOutlined /></template>
                   查看流程
                 </a-button>
               </template>
@@ -102,7 +116,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { message } from 'ant-design-vue'
-import { ReloadOutlined } from '@ant-design/icons-vue'
+import { ReloadOutlined, SearchOutlined, EyeOutlined, UserAddOutlined, CheckCircleOutlined, CloseCircleOutlined, SwapOutlined, NodeIndexOutlined } from '@ant-design/icons-vue'
 import { transferTask } from '@/api/workflow'
 
 // 类型定义

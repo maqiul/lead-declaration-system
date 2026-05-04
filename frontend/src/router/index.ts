@@ -134,6 +134,12 @@ export const asyncRoutes: RouteRecordRaw[] = [
         name: 'CityInfo',
         component: () => import('@/views/system/city-info/index.vue'),
         meta: { title: '城市管理', icon: 'EnvironmentOutlined', permission: 'system:city-info:list' }
+      },
+      {
+        path: 'material-template',
+        name: 'MaterialTemplate',
+        component: () => import('@/views/system/material-template/index.vue'),
+        meta: { title: '资料项模板', icon: 'FileTextOutlined', permission: 'system:material:template:view' }
       }
     ]
   },

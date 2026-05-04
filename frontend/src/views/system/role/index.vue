@@ -70,9 +70,18 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as Role)" v-permission="['role:update']" class="font-medium text-blue-600">编辑</a-button>
-              <a-button type="link" size="small" @click="handlePermission(record as Role)" v-permission="['role:menu']" class="font-medium text-blue-600">权限配置</a-button>
-              <a-button type="link" size="small" @click="handleAssignUsers(record as Role)" v-permission="['role:assign']" class="font-medium text-green-600">分配用户</a-button>
+              <a-button type="link" size="small" @click="handleEdit(record as Role)" v-permission="['role:update']" class="font-medium text-blue-600">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
+              <a-button type="link" size="small" @click="handlePermission(record as Role)" v-permission="['role:menu']" class="font-medium text-blue-600">
+                <template #icon><SafetyCertificateOutlined /></template>
+                权限配置
+              </a-button>
+              <a-button type="link" size="small" @click="handleAssignUsers(record as Role)" v-permission="['role:assign']" class="font-medium text-green-600">
+                <template #icon><UsergroupAddOutlined /></template>
+                分配用户
+              </a-button>
               <a-button
                 v-if="(record as Role).roleCode === 'admin' || (record as Role).roleCode === 'SUPER_ADMIN'"
                 type="link"
@@ -80,13 +89,17 @@
                 @click="handleAssignAllPermissions(record as Role)"
                 class="font-medium text-blue-600"
               >
+                <template #icon><AppstoreOutlined /></template>
                 分配全部权限
               </a-button>
               <a-popconfirm
                 title="确定要删除这个角色吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['role:delete']" class="font-medium">删除</a-button>
+                <a-button type="link" size="small" danger v-permission="['role:delete']" class="font-medium">
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -217,7 +230,10 @@
               <search-outlined />
             </template>
           </a-input>
-          <a-button type="primary" @click="loadUsers">搜索</a-button>
+          <a-button type="primary" @click="loadUsers">
+            <template #icon><SearchOutlined /></template>
+            搜索
+          </a-button>
         </div>
 
         <!-- 用户列表 -->
@@ -271,7 +287,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined, EditOutlined, SafetyCertificateOutlined, UsergroupAddOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
 import type { TableProps, TreeProps } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { 

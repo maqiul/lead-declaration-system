@@ -35,9 +35,14 @@
         <a-descriptions-item label="审核时间">{{ remittance.auditTime || '-' }}</a-descriptions-item>
         <a-descriptions-item label="审核备注" :span="2">{{ remittance.auditRemark || '-' }}</a-descriptions-item>
         <a-descriptions-item label="备注" :span="2">{{ remittance.remarks || '-' }}</a-descriptions-item>
-        <a-descriptions-item label="水单照片" :span="2">
-          <a-image v-if="remittance.photoUrl" :src="remittance.photoUrl" style="max-width: 400px" />
-          <span v-else>无照片</span>
+        <a-descriptions-item label="水单文件" :span="2">
+          <template v-if="remittance.photoUrl">
+            <a-image v-if="isImage(remittance.photoUrl)" :src="remittance.photoUrl" style="max-width: 400px" />
+            <a-button v-else type="link" @click="openFile(remittance.photoUrl)">
+              <FilePdfOutlined /> 查看文件
+            </a-button>
+          </template>
+          <span v-else>无文件</span>
         </a-descriptions-item>
       </a-descriptions>
     </a-spin>
@@ -46,7 +51,17 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { FilePdfOutlined } from '@ant-design/icons-vue'
 import { getRemittanceDetail } from '@/api/business/remittance'
+
+// 文件类型判断
+const isImage = (url: string) => /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url || '')
+const openFile = (url: string) => { if (url) window.open(url, '_blank') }
+const getFileExt = (url: string) => {
+  if (!url) return ''
+  const parts = url.split('?')[0].split('.')
+  return (parts[parts.length - 1] || '').toUpperCase()
+}
 
 interface Props {
   visible: boolean

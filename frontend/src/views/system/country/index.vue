@@ -63,15 +63,24 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as CountryInfo)" v-permission="['system:country:update']" class="text-blue-600 font-medium">编辑</a-button>
+              <a-button type="link" size="small" @click="handleEdit(record as CountryInfo)" v-permission="['system:country:update']" class="text-blue-600 font-medium">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
               <a-button type="link" size="small" :danger="record.status === 1" @click="handleToggleStatus(record as CountryInfo)" v-permission="['system:country:update']" class="font-medium">
+                <template #icon>
+                  <component :is="record.status === 1 ? 'StopOutlined' : 'CheckCircleOutlined'" />
+                </template>
                 {{ record.status === 1 ? '禁用' : '启用' }}
               </a-button>
               <a-popconfirm
                 title="确定要删除国家数据吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['system:country:delete']" class="font-medium">删除</a-button>
+                <a-button type="link" size="small" danger v-permission="['system:country:delete']" class="font-medium">
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -128,7 +137,11 @@ import { message } from 'ant-design-vue'
 import { 
   PlusOutlined, 
   ReloadOutlined, 
-  SearchOutlined 
+  SearchOutlined,
+  EditOutlined,
+  StopOutlined,
+  CheckCircleOutlined,
+  DeleteOutlined
 } from '@ant-design/icons-vue'
 import { 
   getCountryList, 

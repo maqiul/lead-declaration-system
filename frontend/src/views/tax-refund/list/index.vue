@@ -22,8 +22,14 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" @click="loadData" v-permission="['business:tax-refund:list']">搜索</a-button>
-            <a-button @click="resetSearch" v-permission="['business:tax-refund:list']">重置</a-button>
+            <a-button type="primary" @click="loadData" v-permission="['business:tax-refund:list']">
+              <template #icon><SearchOutlined /></template>
+              搜索
+            </a-button>
+            <a-button @click="resetSearch" v-permission="['business:tax-refund:list']">
+              <template #icon><ReloadOutlined /></template>
+              重置
+            </a-button>
           </a-space>
         </a-form-item>
       </a-form>
@@ -32,7 +38,7 @@
     <!-- 操作栏卡片 -->
     <a-card class="operation-card">
       <a-space>
-        <a-button type="primary" @click="handleCreate" v-permission="['business:tax-refund:add']">
+        <a-button type="primary" @click="handleCreate" v-permission="['business:tax-refund:create']">
           <template #icon><PlusOutlined /></template>
           新建申请
         </a-button>
@@ -75,9 +81,18 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record)" v-permission="['business:tax-refund:detail']">查看</a-button>
-              <a-button v-if="record.status === 0" type="link" size="small" @click="handleEdit(record)" v-permission="['business:tax-refund:edit']">编辑</a-button>
-              <a-button v-if="record.status === 0" type="link" size="small" @click="handleSubmit(record)" v-permission="['business:tax-refund:submit']">提交</a-button>
+              <a-button type="link" size="small" @click="handleView(record)" v-permission="['business:tax-refund:detail']">
+                <template #icon><EyeOutlined /></template>
+                查看
+              </a-button>
+              <a-button v-if="record.status === 0" type="link" size="small" @click="handleEdit(record)" v-permission="['business:tax-refund:update']">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
+              <a-button v-if="record.status === 0" type="link" size="small" @click="handleSubmit(record)" v-permission="['business:tax-refund:submit']">
+                <template #icon><SendOutlined /></template>
+                提交
+              </a-button>
               <a-button 
                 v-if="[2, 6].includes(record.status)" 
                 type="link" 
@@ -85,6 +100,7 @@
                 @click="handleAudit(record)"
                 v-permission="['business:tax-refund:approve']"
               >
+                <template #icon><AuditOutlined /></template>
                 审核
               </a-button>
               <a-popconfirm
@@ -92,7 +108,10 @@
                 title="确定要删除这个申请吗？"
                 @confirm="handleDelete(record)"
               >
-                <a-button type="link" size="small" danger v-permission="['business:tax-refund:delete']">删除</a-button>
+                <a-button type="link" size="small" danger v-permission="['business:tax-refund:delete']">
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -106,7 +125,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, EditOutlined, SendOutlined, AuditOutlined } from '@ant-design/icons-vue'
 import type { TableProps } from 'ant-design-vue'
 import { getTaxRefundList, deleteTaxRefund, batchDeleteTaxRefund, submitTaxRefund } from '@/api/tax-refund'
 
@@ -327,114 +346,9 @@ onActivated(() => {
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
-
+/* 页面特有样式已由全局 index.less 覆盖 */
 .tax-refund-list {
   padding: 24px;
-  background: white;
-  min-height: 100%;
-  font-family: 'Source Sans 3', sans-serif;
-}
-
-h1, h2, h3, h4, h5, h6, .ant-table-thead > tr > th {
-  font-family: 'Lexend', sans-serif !important;
-}
-
-:deep(.ant-card) {
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); /* shadow-sm */
-  border: 1px solid #E2E8F0;
-  transition: all 250ms ease;
-  background: white;
-}
-
-:deep(.ant-card:hover) {
-  box-shadow: 0 10px 15px rgba(0,0,0,0.1); /* shadow-md */
-  transform: translateY(-2px);
-}
-
-.search-card, .operation-card {
-  margin-bottom: 24px;
-}
-
-/* 按钮高级化 */
-:deep(.ant-btn-primary) {
-  background: #2563EB !important;
-  color: white !important;
-  border-radius: 8px !important;
-  font-weight: 600 !important;
-  transition: all 200ms ease !important;
-  border: none !important;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
-  height: 38px !important;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-:deep(.ant-btn-primary:hover) {
-  background: #1E40AF !important;
-  transform: translateY(-1px);
-  box-shadow: 0 10px 15px rgba(0,0,0,0.1) !important;
-}
-
-:deep(.ant-btn:not(.ant-btn-primary):not(.ant-btn-link)) {
-  background-color: transparent !important;
-  color: #2563EB !important;
-  border: 1px solid #2563EB !important;
-  border-radius: 8px !important;
-  font-weight: 600 !important;
-  transition: all 200ms ease !important;
-  height: 38px !important;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-:deep(.ant-btn:not(.ant-btn-primary):not(.ant-btn-link):hover) {
-  background-color: #FAFBFC !important;
-  transform: translateY(-1px);
-}
-
-/* 操作列链接按钮 */
-:deep(.ant-btn-link) {
-  height: auto;
-  padding: 4px 8px;
-  font-weight: 600;
-  color: #2563EB;
-  transition: all 200ms ease;
-  border-radius: 6px;
-}
-
-:deep(.ant-btn-link:not([disabled]):hover) {
-  background-color: #EFF6FF;
-}
-
-:deep(.ant-btn-link.ant-btn-dangerous) {
-  color: #ef4444;
-}
-
-:deep(.ant-btn-link.ant-btn-dangerous:not([disabled]):hover) {
-  background-color: #fef2f2;
-}
-
-/* 表格视觉优化 */
-:deep(.ant-table) {
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-:deep(.ant-table-thead > tr > th) {
-  background-color: #FAFBFC !important;
-  font-weight: 600;
-  color: #1E40AF;
-  font-size: 14px;
-  border-bottom: 2px solid #E2E8F0;
-}
-
-:deep(.ant-table-row:hover > td) {
-  background-color: #F8FAFC !important;
 }
 
 .application-link {
@@ -457,17 +371,5 @@ h1, h2, h3, h4, h5, h6, .ant-table-thead > tr > th {
 .date-text {
   color: #475569;
   font-size: 13px;
-}
-
-/* Form inputs & Selects */
-:deep(.ant-input), :deep(.ant-select-selector), :deep(.ant-input-affix-wrapper) {
-  border-radius: 8px !important;
-  border: 1px solid #E2E8F0;
-  transition: all 200ms ease;
-}
-
-:deep(.ant-input:focus), :deep(.ant-select-focused .ant-select-selector) {
-  border-color: #2563EB !important;
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.2) !important;
 }
 </style>

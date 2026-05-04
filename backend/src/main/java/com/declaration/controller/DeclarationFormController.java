@@ -31,6 +31,7 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.engine.runtime.Execution;
 import org.flowable.task.api.Task;
 // import org.springframework.jdbc.core.JdbcTemplate; // Removed unused
 import org.springframework.web.bind.annotation.*;
@@ -331,8 +332,8 @@ public class DeclarationFormController {
                 }
             } else {
                 // 智能匹配：优先处理审核类任务（按优先级排序）
-                // 优先级: deptAudit > depositAudit > balanceAudit > pickupListAudit > 其他
-                String[] priorityOrder = { "deptAudit", "depositAudit", "balanceAudit", "pickupListAudit" };
+                // 优先级: deptAudit > materialAudit > invoiceAudit > depositAudit > balanceAudit > pickupListAudit > 其他
+                String[] priorityOrder = { "deptAudit", "materialAudit", "invoiceAudit", "depositAudit", "balanceAudit", "pickupListAudit" };
                 for (String key : priorityOrder) {
                     for (Task t : activeTasks) {
                         if (key.equals(t.getTaskDefinitionKey())) {
@@ -389,6 +390,10 @@ public class DeclarationFormController {
                     String taskNameMap;
                     if ("deptAudit".equals(taskKey)) {
                         taskNameMap = "初审";
+                    } else if ("materialAudit".equals(taskKey)) {
+                        taskNameMap = "资料审核";
+                    } else if ("invoiceAudit".equals(taskKey)) {
+                        taskNameMap = "发票审核";
                     } else if ("depositAudit".equals(taskKey)) {
                         taskNameMap = "定金审核";
                     } else if ("balanceAudit".equals(taskKey)) {
@@ -638,47 +643,147 @@ public class DeclarationFormController {
     public Result<List<Map<String, Object>>> getActiveTasks(
             @Parameter(description = "申报单ID") @PathVariable Long id) {
 
-        List<Task> activeTasks = flowableTaskService.createTaskQuery()
-                .processInstanceBusinessKey(String.valueOf(id))
-                .list();
-
-        if (activeTasks == null || activeTasks.isEmpty()) {
-            // 检查流程是否已结束
-            HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
+        try {
+            List<Task> activeTasks = flowableTaskService.createTaskQuery()
                     .processInstanceBusinessKey(String.valueOf(id))
-                    .singleResult();
+                    .list();
 
-            if (hpi != null && hpi.getEndTime() != null) {
-                // 流程已结束
-                List<Map<String, Object>> result = new ArrayList<>();
-                Map<String, Object> endInfo = new HashMap<>();
-                endInfo.put("status", "completed");
-                endInfo.put("endTime", hpi.getEndTime());
-                endInfo.put("endActivityId", hpi.getEndActivityId());
-                result.add(endInfo);
-                return Result.success(result);
+            if (activeTasks == null || activeTasks.isEmpty()) {
+                // 检查流程是否已结束
+                HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
+                        .processInstanceBusinessKey(String.valueOf(id))
+                        .singleResult();
+
+                if (hpi != null && hpi.getEndTime() != null) {
+                    // 流程已结束
+                    List<Map<String, Object>> result = new ArrayList<>();
+                    Map<String, Object> endInfo = new HashMap<>();
+                    endInfo.put("status", "completed");
+                    endInfo.put("endTime", hpi.getEndTime());
+                    endInfo.put("endActivityId", hpi.getEndActivityId());
+                    result.add(endInfo);
+                    return Result.success(result);
+                }
+
+                return Result.success(new ArrayList<>());
             }
 
+            List<Map<String, Object>> taskList = new ArrayList<>();
+            for (Task task : activeTasks) {
+                Map<String, Object> taskInfo = new HashMap<>();
+                taskInfo.put("taskId", task.getId());
+                taskInfo.put("taskKey", task.getTaskDefinitionKey());
+                taskInfo.put("taskName", task.getName());
+                taskInfo.put("assignee", task.getAssignee());
+                taskInfo.put("createTime", task.getCreateTime());
+
+                // 根据 taskKey 添加任务分类
+                String category = getTaskCategory(task.getTaskDefinitionKey());
+                taskInfo.put("category", category);
+
+                taskList.add(taskInfo);
+            }
+
+            return Result.success(taskList);
+        } catch (Exception e) {
+            // Flowable 查询异常（如流程实例缺失、引擎未初始化等）不应阻断详情页，
+            // 记录告警后返回空列表，前端以 activeTasks=[] 降级展示
+            log.warn("获取申报单活跃任务失败 id={}, reason={}", id, e.getMessage(), e);
             return Result.success(new ArrayList<>());
         }
+    }
 
-        List<Map<String, Object>> taskList = new ArrayList<>();
-        for (Task task : activeTasks) {
-            Map<String, Object> taskInfo = new HashMap<>();
-            taskInfo.put("taskId", task.getId());
-            taskInfo.put("taskKey", task.getTaskDefinitionKey());
-            taskInfo.put("taskName", task.getName());
-            taskInfo.put("assignee", task.getAssignee());
-            taskInfo.put("createTime", task.getCreateTime());
+    /**
+     * 恢复流程 - 将老申报单迁移到新版 BPMN 流程，并根据当前业务状态跳到对应节点
+     *
+     * 背景：旧 BPMN 在 status=2 阶段后即结束，造成老申报单 Flowable 流程已结束但业务流程未走完。
+     * 本接口会启动新版 declarationProcess，绑定相同 businessKey，并直接移到业务对应的 userTask 等待用户操作。
+     * 通过传入流程变量 resumeMode=true，DeclarationServiceTask 会跳过生成文件等自动动作。
+     */
+    @PostMapping("/{id}/resume-flow")
+    @Operation(summary = "恢复老流程（迁移到新版流程对应节点）")
+    @RequiresPermissions("business:declaration:resume:flow")
+    public Result<Map<String, Object>> resumeFlow(
+            @Parameter(description = "申报单ID") @PathVariable Long id) {
 
-            // 根据 taskKey 添加任务分类
-            String category = getTaskCategory(task.getTaskDefinitionKey());
-            taskInfo.put("category", category);
-
-            taskList.add(taskInfo);
+        DeclarationForm form = declarationFormService.getById(id);
+        if (form == null) {
+            return Result.fail("申报单不存在");
+        }
+        Integer status = form.getStatus();
+        if (status == null) {
+            return Result.fail("申报单状态异常，无法恢复");
         }
 
-        return Result.success(taskList);
+        // 根据当前业务状态确定目标节点
+        String targetActivityId;
+        switch (status) {
+            case 2: targetActivityId = "materialSubmit"; break;
+            case 3: targetActivityId = "materialAudit"; break;
+            case 4: targetActivityId = "invoiceSubmit"; break;
+            case 5: targetActivityId = "invoiceAudit"; break;
+            default:
+                return Result.fail("当前状态(" + status + ")不支持恢复流程，仅允许 status 在 2~5 之间");
+        }
+
+        // 检查是否已有活跃流程
+        long activeCount = runtimeService.createProcessInstanceQuery()
+                .processInstanceBusinessKey(String.valueOf(id))
+                .count();
+        if (activeCount > 0) {
+            return Result.fail("申报单已存在活跃流程实例，无需恢复");
+        }
+
+        ProcessInstance pi = null;
+        try {
+            // 启动新的 declarationProcess，标记恢复模式让 serviceTask 跳过自动动作
+            Map<String, Object> vars = new HashMap<>();
+            vars.put("starterId", form.getCreateBy() != null ? String.valueOf(form.getCreateBy()) : "system");
+            vars.put("resumeMode", true);
+            pi = runtimeService.startProcessInstanceByKey(
+                    "declarationProcess", String.valueOf(id), vars);
+
+            // 启动后 execution 会在第一个等待节点 deptAudit，拿到当前 activityId
+            String currentActivity = runtimeService.createExecutionQuery()
+                    .processInstanceId(pi.getId())
+                    .onlyChildExecutions()
+                    .list().stream()
+                    .map(Execution::getActivityId)
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse("deptAudit");
+
+            // 跳转到业务对应节点
+            if (!currentActivity.equals(targetActivityId)) {
+                runtimeService.createChangeActivityStateBuilder()
+                        .processInstanceId(pi.getId())
+                        .moveActivityIdTo(currentActivity, targetActivityId)
+                        .changeState();
+            }
+
+            // 清掉恢复标记，避免后续流程 serviceTask 也被跳过
+            runtimeService.removeVariable(pi.getId(), "resumeMode");
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("processInstanceId", pi.getId());
+            data.put("fromActivityId", currentActivity);
+            data.put("targetActivityId", targetActivityId);
+            data.put("status", status);
+            log.info("申报单 {} 流程已恢复，从 {} 跳至 {}", id, currentActivity, targetActivityId);
+            return Result.success(data);
+        } catch (Exception e) {
+            log.error("恢复申报单 {} 流程失败", id, e);
+            // 回滚：如果流程已启动但后续操作失败，删除心升实例避免脏数据
+            if (pi != null) {
+                try {
+                    runtimeService.deleteProcessInstance(pi.getId(), "resume-flow 失败回滚");
+                    log.warn("已回滚脟流程实例: {}", pi.getId());
+                } catch (Exception ex) {
+                    log.error("回滚流程实例 {} 失败", pi.getId(), ex);
+                }
+            }
+            return Result.fail("恢复流程失败: " + e.getMessage());
+        }
     }
 
     /**
@@ -802,7 +907,8 @@ public class DeclarationFormController {
             @Parameter(description = "分页参数") PageParam pageParam,
             @Parameter(description = "申报单号") @RequestParam(required = false) String formNo,
             @Parameter(description = "状态") @RequestParam(required = false) Integer status,
-            @Parameter(description = "排除的状态") @RequestParam(required = false) Integer excludeStatus) {
+            @Parameter(description = "排除的状态") @RequestParam(required = false) Integer excludeStatus,
+            @Parameter(description = "最小状态（>=，用于水单关联候选等场景）") @RequestParam(required = false) Integer minStatus) {
 
         Page<DeclarationForm> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
 
@@ -819,6 +925,9 @@ public class DeclarationFormController {
             }
             if (excludeStatus != null) {
                 queryWrapper.ne(DeclarationForm::getStatus, excludeStatus);
+            }
+            if (minStatus != null) {
+                queryWrapper.ge(DeclarationForm::getStatus, minStatus);
             }
 
             // 组织级数据权限隔离：有审核权限可查看所有数据
@@ -1699,7 +1808,7 @@ public class DeclarationFormController {
      */
     @PostMapping("/{id}/audit-return")
     @Operation(summary = "审核退回草稿申请")
-    @RequiresPermissions("business:declaration:audit:return")
+    @RequiresPermissions("business:declaration:return:audit")
     public Result<Void> auditReturnToDraft(
             @Parameter(description = "申报单ID") @PathVariable Long id,
             @RequestBody Map<String, Object> params) {
@@ -1819,7 +1928,7 @@ public class DeclarationFormController {
      */
     @DeleteMapping("/business-invoices/{invoiceId}")
     @Operation(summary = "删除业务发票")
-    @RequiresPermissions("business:declaration:edit")
+    @RequiresPermissions("business:declaration:update")
     public Result<Void> deleteBusinessInvoice(@PathVariable Long invoiceId) {
         invoiceService.removeById(invoiceId);
         return Result.success();

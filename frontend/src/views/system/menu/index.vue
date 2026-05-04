@@ -78,13 +78,22 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as Menu)" v-permission="['menu:update']" class="font-medium text-blue-600">编辑</a-button>
-              <a-button type="link" size="small" @click="handleAdd(record.id)" v-permission="['menu:add']" class="font-medium text-blue-600">新增下级</a-button>
+              <a-button type="link" size="small" @click="handleEdit(record as Menu)" v-permission="['menu:update']" class="font-medium text-blue-600">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
+              <a-button type="link" size="small" @click="handleAdd(record.id)" v-permission="['menu:create']" class="font-medium text-blue-600">
+                <template #icon><PlusOutlined /></template>
+                新增下级
+              </a-button>
               <a-popconfirm
                 title="确定要删除该菜单及其所有子菜单吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['menu:delete']" class="font-medium">删除</a-button>
+                <a-button type="link" size="small" danger v-permission="['menu:delete']" class="font-medium">
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -209,7 +218,9 @@ import { message } from 'ant-design-vue'
 import { 
   PlusOutlined, 
   ReloadOutlined, 
-  SearchOutlined
+  SearchOutlined,
+  EditOutlined,
+  DeleteOutlined
 } from '@ant-design/icons-vue'
 import { getMenuTree, addMenu, updateMenu, deleteMenu } from '@/api/system'
 import type { Rule } from 'ant-design-vue/es/form'

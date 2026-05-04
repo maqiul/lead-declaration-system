@@ -85,7 +85,7 @@ public class FinanceInvoiceController {
      */
     @PostMapping("/{id}/file")
     @Operation(summary = "上传发票文件")
-    @RequiresPermissions("finance:invoice:edit")
+    @RequiresPermissions("finance:invoice:update")
     public Result<Void> uploadFile(
             @PathVariable Long id,
             @RequestParam("file") MultipartFile file) throws IOException {

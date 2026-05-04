@@ -24,9 +24,14 @@
               {{ remittance.remittanceAmount?.toFixed(2) }} {{ remittance.currency || 'USD' }}
             </span>
           </a-descriptions-item>
-          <a-descriptions-item label="水单照片">
-            <a-image v-if="remittance.photoUrl" :src="remittance.photoUrl" style="width: 100px; height: 60px" />
-            <span v-else>无照片</span>
+          <a-descriptions-item label="水单文件">
+            <template v-if="remittance.photoUrl">
+              <a-image v-if="isImage(remittance.photoUrl)" :src="remittance.photoUrl" style="width: 100px; height: 60px" />
+              <a-button v-else type="link" size="small" @click="openFile(remittance.photoUrl)">
+                <FilePdfOutlined /> 查看文件
+              </a-button>
+            </template>
+            <span v-else>无文件</span>
           </a-descriptions-item>
         </a-descriptions>
       </a-card>
@@ -115,9 +120,14 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
+import { FilePdfOutlined } from '@ant-design/icons-vue'
 import { auditRemittance } from '@/api/business/remittance'
 import { getEnabledBankAccounts } from '@/api/business/declaration'
 import { getRemittanceDetail } from '@/api/business/remittance'
+
+// 文件类型判断
+const isImage = (url: string) => /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url || '')
+const openFile = (url: string) => { if (url) window.open(url, '_blank') }
 
 interface Props {
   visible: boolean

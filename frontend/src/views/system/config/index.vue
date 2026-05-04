@@ -67,7 +67,10 @@
               <a-input v-model:value="basicForm['system.copyright']" placeholder="请输入版权信息" />
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit" :loading="basicSaving" v-permission="['system:config:update']" class="ui-btn-primary">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="basicSaving" v-permission="['system:config:update']" class="ui-btn-primary">
+                <template #icon><SaveOutlined /></template>
+                保存
+              </a-button>
             </a-form-item>
           </a-form>
         </a-card>
@@ -104,7 +107,7 @@
               <a-switch v-model:checked="uiForm['ui.sidebar.collapsed']" checked-children="是" un-checked-children="否" />
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit" :loading="uiSaving" v-permission="['system:config:update']" class="ui-btn-primary">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="uiSaving" v-permission="['system:config:update']" class="ui-btn-primary"><template #icon><SaveOutlined /></template>保存</a-button>
             </a-form-item>
           </a-form>
         </a-card>
@@ -135,7 +138,7 @@
               <a-switch v-model:checked="businessForm['business.notification.email-enabled']" checked-children="是" un-checked-children="否" />
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit" :loading="businessSaving" v-permission="['system:config:update']" class="ui-btn-primary">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="businessSaving" v-permission="['system:config:update']" class="ui-btn-primary"><template #icon><SaveOutlined /></template>保存</a-button>
             </a-form-item>
           </a-form>
         </a-card>
@@ -168,7 +171,7 @@
               </div>
             </a-form-item>
             <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-              <a-button type="primary" html-type="submit" :loading="fileUploadSaving" v-permission="['system:config:update']" class="ui-btn-primary">保存</a-button>
+              <a-button type="primary" html-type="submit" :loading="fileUploadSaving" v-permission="['system:config:update']" class="ui-btn-primary"><template #icon><SaveOutlined /></template>保存</a-button>
             </a-form-item>
           </a-form>
         </a-card>
@@ -198,12 +201,18 @@
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
-                  <a-button type="link" size="small" @click="editConfig(record)" v-permission="['system:config:update']" class="text-blue-600 font-medium">编辑</a-button>
+                  <a-button type="link" size="small" @click="editConfig(record)" v-permission="['system:config:update']" class="text-blue-600 font-medium">
+                    <template #icon><EditOutlined /></template>
+                    编辑
+                  </a-button>
                   <a-popconfirm
                     title="确定要删除这个配置吗？"
                     @confirm="deleteConfig((record as any).id)"
                   >
-                    <a-button type="link" size="small" danger v-permission="['system:config:delete']" class="font-medium">删除</a-button>
+                    <a-button type="link" size="small" danger v-permission="['system:config:delete']" class="font-medium">
+                      <template #icon><DeleteOutlined /></template>
+                      删除
+                    </a-button>
                   </a-popconfirm>
                 </a-space>
               </template>
@@ -328,7 +337,11 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { 
   PlusOutlined, 
-  ReloadOutlined
+  ReloadOutlined,
+  SearchOutlined,
+  SaveOutlined,
+  EditOutlined,
+  DeleteOutlined
 } from '@ant-design/icons-vue'
 import { 
   getSystemBasicInfo, 

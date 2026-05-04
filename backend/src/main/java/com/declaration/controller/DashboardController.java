@@ -102,9 +102,9 @@ public class DashboardController {
         // --- 待办任务分布 - 根据权限过滤 ---
         Map<String, Object> pieChart = new HashMap<>();
 
-        // 待审核 - 根据权限过滤
+        // 待审核 - 根据权限过滤（待初审 1 + 待资料审核 3 + 退回待审 9）
         LambdaQueryWrapper<DeclarationForm> pendingWrapper = new LambdaQueryWrapper<>();
-        pendingWrapper.in(DeclarationForm::getStatus, Arrays.asList(1, 6));
+        pendingWrapper.in(DeclarationForm::getStatus, Arrays.asList(1, 3, 9));
         applyDeclarationDataPermission(pendingWrapper);
         long pendingAudit = declarationFormService.count(pendingWrapper);
         
@@ -113,9 +113,9 @@ public class DashboardController {
         applyTaxRefundDataPermission(taxPendingWrapper);
         pendingAudit += taxRefundApplicationService.count(taxPendingWrapper);
 
-        // 处理中 - 根据权限过滤
+        // 处理中 - 根据权限过滤（待资料提交 2）
         LambdaQueryWrapper<DeclarationForm> processingWrapper = new LambdaQueryWrapper<>();
-        processingWrapper.in(DeclarationForm::getStatus, Arrays.asList(2, 3, 4, 5, 7));
+        processingWrapper.in(DeclarationForm::getStatus, Arrays.asList(2));
         applyDeclarationDataPermission(processingWrapper);
         long processing = declarationFormService.count(processingWrapper);
         
@@ -124,9 +124,9 @@ public class DashboardController {
         applyTaxRefundDataPermission(taxProcessingWrapper);
         processing += taxRefundApplicationService.count(taxProcessingWrapper);
 
-        // 已完成 - 根据权限过滤
+        // 已完成 - 根据权限过滤（资料审核通过 4）
         LambdaQueryWrapper<DeclarationForm> completedWrapper = new LambdaQueryWrapper<>();
-        completedWrapper.eq(DeclarationForm::getStatus, 8);
+        completedWrapper.eq(DeclarationForm::getStatus, 4);
         applyDeclarationDataPermission(completedWrapper);
         long completed = declarationFormService.count(completedWrapper);
         

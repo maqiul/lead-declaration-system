@@ -32,7 +32,10 @@
           </a-select>
         </a-col>
         <a-col :span="6">
-          <a-button type="primary" @click="loadHistory" v-permission="['business:declaration:view']">查询</a-button>
+          <a-button type="primary" @click="loadHistory" v-permission="['business:declaration:view']">
+            <template #icon><SearchOutlined /></template>
+            查询
+          </a-button>
         </a-col>
       </a-row>
     </a-card>
@@ -58,9 +61,18 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="viewDetail(record.id)" v-permission="['business:declaration:view']">查看详情</a-button>
-              <a-button type="link" size="small" @click="editForm(record.id)" v-permission="['business:declaration:update']">编辑</a-button>
-              <a-button type="link" size="small" @click="exportForm(record.id)" v-permission="['business:declaration:export']">导出</a-button>
+              <a-button type="link" size="small" @click="viewDetail(record.id)" v-permission="['business:declaration:view']">
+                <template #icon><EyeOutlined /></template>
+                查看详情
+              </a-button>
+              <a-button type="link" size="small" @click="editForm(record.id)" v-permission="['business:declaration:update']">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
+              <a-button type="link" size="small" @click="exportForm(record.id)" v-permission="['business:declaration:export']">
+                <template #icon><DownloadOutlined /></template>
+                导出
+              </a-button>
             </a-space>
           </template>
         </template>
@@ -120,6 +132,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
+import { SearchOutlined, EyeOutlined, EditOutlined, DownloadOutlined } from '@ant-design/icons-vue'
 import { 
   getDeclarationList, 
   getDeclarationDetail, 

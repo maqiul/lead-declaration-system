@@ -11,79 +11,51 @@
     <a-spin :spinning="loading">
       <!-- 财务补充表单内容 -->
       <a-form :model="formData" layout="vertical" :disabled="saveLoading">
-        <!-- 币种基本信息 -->
-        <a-row :gutter="16" class="mb-4">
-          <a-col :span="24">
-            <a-card size="small" title="基本信息">
-              <a-form-item label="币种">
-                <a-select 
-                  v-model:value="formData.currency" 
-                  placeholder="请选择币种" 
-                  :readonly="!!formData.id" 
-                  disabled
-                >
-                  <a-select-option value="CNY">人民币 (CNY)</a-select-option>
-                  <a-select-option value="USD">美元 (USD)</a-select-option>
-                  <a-select-option value="EUR">欧元 (EUR)</a-select-option>
-                </a-select>
-              </a-form-item>
-            </a-card>
-          </a-col>
-        </a-row>
-
         <!-- 第一部分：发票上传 -->
         <a-divider orientation="left">发票上传</a-divider>
+        <a-alert
+          type="info"
+          show-icon
+          message="货代发票与报关代理发票由申报资料提交环节录入，本页面仅展示。如需修改请到申报资料页。"
+          style="margin-bottom: 12px;"
+        />
         <a-row :gutter="16" class="mb-4">
-          <!-- 货代发票 -->
+          <!-- 货代发票（只读） -->
           <a-col :span="8">
-            <a-card size="small" title="货代发票">
+            <a-card size="small" title="货代发票（来自申报资料）">
               <a-form-item label="货代金额">
-                <a-input-number v-model:value="formData.freightAmount" style="width: 100%" :precision="2" placeholder="请输入金额" />
+                <a-input-number v-model:value="formData.freightAmount" style="width: 100%" :precision="2" placeholder="未录入" disabled />
               </a-form-item>
               <a-form-item label="发票号">
-                <a-input v-model:value="formData.freightInvoiceNo" placeholder="请输入发票号" />
+                <a-input v-model:value="formData.freightInvoiceNo" placeholder="未录入" disabled />
               </a-form-item>
               <a-form-item label="附件">
-                <div v-if="formData.freightFileUrl" class="mb-2">
+                <div v-if="formData.freightFileUrl">
                   <a :href="formData.freightFileUrl" target="_blank">
-                    <DownloadOutlined /> {{ formData.freightFileName }}
+                    <DownloadOutlined /> {{ formData.freightFileName || '查看附件' }}
                   </a>
                 </div>
-                <a-upload
-                  :show-upload-list="false"
-                  :customRequest="e => handleUpload(e, 'freight')"
-                >
-                  <a-button :loading="uploading.freight">
-                    {{ formData.freightFileUrl ? '重新上传' : '上传发票' }}
-                  </a-button>
-                </a-upload>
+                <span v-else style="color: #999">未上传</span>
               </a-form-item>
             </a-card>
           </a-col>
 
-          <!-- 报关代理发票 -->
+          <!-- 报关代理发票（只读） -->
           <a-col :span="8">
-            <a-card size="small" title="报关代理发票">
+            <a-card size="small" title="报关代理发票（来自申报资料）">
               <a-form-item label="报关代理金额">
-                <a-input-number v-model:value="formData.customsAmount" style="width: 100%" :precision="2" placeholder="请输入金额" />
+                <a-input-number v-model:value="formData.customsAmount" style="width: 100%" :precision="2" placeholder="未录入" disabled />
               </a-form-item>
               <a-form-item label="发票号">
-                <a-input v-model:value="formData.customsInvoiceNo" placeholder="请输入发票号" />
+                <a-input v-model:value="formData.customsInvoiceNo" placeholder="未录入" disabled />
               </a-form-item>
               <a-form-item label="附件">
-                <div v-if="formData.customsFileUrl" class="mb-2">
+                <div v-if="formData.customsFileUrl">
                   <a :href="formData.customsFileUrl" target="_blank">
-                    <DownloadOutlined /> {{ formData.customsFileName }}
+                    <DownloadOutlined /> {{ formData.customsFileName || '查看附件' }}
                   </a>
                 </div>
-                <a-upload
-                  :show-upload-list="false"
-                  :customRequest="e => handleUpload(e, 'customs')"
-                >
-                  <a-button :loading="uploading.customs">
-                    {{ formData.customsFileUrl ? '重新上传' : '上传发票' }}
-                  </a-button>
-                </a-upload>
+                <span v-else style="color: #999">未上传</span>
               </a-form-item>
             </a-card>
           </a-col>
@@ -249,6 +221,11 @@ import { ref, reactive, watch, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { DownloadOutlined } from '@ant-design/icons-vue'
 import { getFinancialSupplement, createFinancialSupplement, updateFinancialSupplement, exportFinanceCalculation, uploadFile, getDeclarationDetail, getCalculationDetail } from '@/api/business/declaration'
+import { getMaterialItems } from '@/api/business/materialItem'
+
+// 货代/报关代理发票的资料项 code
+const MATERIAL_CODE_FREIGHT = 'FREIGHT_INVOICE'
+const MATERIAL_CODE_CUSTOMS = 'CUSTOMS_AGENT_INVOICE'
 
 interface Props {
   visible: boolean
@@ -313,8 +290,6 @@ watch(formIdNum, (newVal) => {
 
 const calculationDetail = ref<any>(null)
 const uploading = ref({
-  freight: false as boolean,
-  customs: false as boolean,
   customsReceipt: false as boolean
 })
 
@@ -440,6 +415,43 @@ const init = async () => {
         }
       }
     }
+
+    // 3. 从申报资料项读取货代/报关代理发票（只读展示，覆盖 financial_supplement 中的历史值）
+    if (formIdNum.value) {
+      try {
+        const materialRes = await getMaterialItems(formIdNum.value)
+        const materialData: any = (materialRes && materialRes.data) ? materialRes.data : null
+        const items: any[] = materialData && materialData.code === 200
+          ? (materialData.data || [])
+          : (Array.isArray(materialData) ? materialData : [])
+        const freight = items.find(i => i && i.code === MATERIAL_CODE_FREIGHT)
+        const customs = items.find(i => i && i.code === MATERIAL_CODE_CUSTOMS)
+        if (freight) {
+          formData.freightAmount = freight.amount != null ? Number(freight.amount) : undefined
+          formData.freightInvoiceNo = freight.invoiceNo || ''
+          formData.freightFileUrl = freight.fileUrl || ''
+          formData.freightFileName = freight.fileName || ''
+        } else {
+          formData.freightAmount = undefined
+          formData.freightInvoiceNo = ''
+          formData.freightFileUrl = ''
+          formData.freightFileName = ''
+        }
+        if (customs) {
+          formData.customsAmount = customs.amount != null ? Number(customs.amount) : undefined
+          formData.customsInvoiceNo = customs.invoiceNo || ''
+          formData.customsFileUrl = customs.fileUrl || ''
+          formData.customsFileName = customs.fileName || ''
+        } else {
+          formData.customsAmount = undefined
+          formData.customsInvoiceNo = ''
+          formData.customsFileUrl = ''
+          formData.customsFileName = ''
+        }
+      } catch (error) {
+        console.warn('加载资料项发票失败，按空值展示:', error)
+      }
+    }
     console.log('初始化完成，最终formData:', formData)
   } catch (error) {
     console.error('初始化财务补充表单失败:', error)
@@ -449,7 +461,7 @@ const init = async () => {
   }
 }
 
-const handleUpload = async (info: any, fileType: 'freight' | 'customs' | 'customsReceipt') => {
+const handleUpload = async (info: any, fileType: 'customsReceipt') => {
   try {
     uploading.value[fileType] = true
     const response = await uploadFile(info.file)
@@ -457,19 +469,12 @@ const handleUpload = async (info: any, fileType: 'freight' | 'customs' | 'custom
       const fileData = response.data.data
       const fileName = info.file.name
       const fileUrl = fileData.fileUrl
-      
-      // 直接更新对应字段
-      if (fileType === 'freight') {
-        formData.freightFileName = fileName
-        formData.freightFileUrl = fileUrl
-      } else if (fileType === 'customs') {
-        formData.customsFileName = fileName
-        formData.customsFileUrl = fileUrl
-      } else if (fileType === 'customsReceipt') {
+
+      if (fileType === 'customsReceipt') {
         formData.customsReceiptFileName = fileName
         formData.customsReceiptFileUrl = fileUrl
       }
-      
+
       message.success(`${fileName} 上传成功`)
     } else {
       message.error('上传失败: ' + (response.data?.msg || '未知错误'))
@@ -533,14 +538,7 @@ const handleSave = async () => {
       id: formData.id,
       formId: formData.formId,
       formNo: formData.formNo,
-      freightAmount: formData.freightAmount,
-      freightInvoiceNo: formData.freightInvoiceNo,
-      freightFileUrl: formData.freightFileUrl,
-      freightFileName: formData.freightFileName,
-      customsAmount: formData.customsAmount,
-      customsInvoiceNo: formData.customsInvoiceNo,
-      customsFileUrl: formData.customsFileUrl,
-      customsFileName: formData.customsFileName,
+      // 货代/报关代理发票由申报资料提交环节录入，该页不再写入 financial_supplement
       customsReceiptFileUrl: formData.customsReceiptFileUrl,
       customsReceiptFileName: formData.customsReceiptFileName,
       detailsFileUrl: formData.detailsFileUrl,

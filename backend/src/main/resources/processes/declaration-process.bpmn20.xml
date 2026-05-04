@@ -7,142 +7,268 @@
              xmlns:xsd="http://www.w3.org/2001/XMLSchema"
              xmlns:flowable="http://flowable.org/bpmn"
              targetNamespace="http://www.flowable.org/processdef">
-             
-  <process id="declarationProcess" name="申报审批简化流程" isExecutable="true">
-    
+
+  <process id="declarationProcess" name="申报审批流程（资料提交审核）" isExecutable="true">
+
     <!-- 开始事件 -->
     <startEvent id="startEvent" name="开始" flowable:initiator="starterId" />
-    
+
     <!-- 1. 生成预录入表单 (自动) -->
-    <serviceTask id="genPreEntryTask" name="生成预录入表单" 
+    <serviceTask id="genPreEntryTask" name="生成预录入表单"
                  flowable:delegateExpression="${declarationServiceTask}" />
-    
-    <!-- 2. 审核申报 -->
-    <userTask id="deptAudit" name="审核申报" flowable:candidateGroups="DEPT_ADMIN">
+
+    <!-- 2. 初审 -->
+    <userTask id="deptAudit" name="初审" flowable:candidateGroups="DEPT_ADMIN">
       <extensionElements>
         <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
         <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
       </extensionElements>
     </userTask>
-    
-    <!-- 审核结果网关 -->
-    <exclusiveGateway id="gw1" name="审核结果" />
-    
-    <!-- 驳回修改 -->
+
+    <!-- 初审结果网关 -->
+    <exclusiveGateway id="gw1" name="初审结果" />
+
+    <!-- 驳回修改 (初审驳回) -->
     <userTask id="rejectHandler" name="驳回修改" flowable:assignee="${starterId}">
       <extensionElements>
         <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
       </extensionElements>
     </userTask>
-    
-    <!-- 3. 生成海关报关单 (自动) -->
-    <serviceTask id="genCustomsDoc" name="生成海关报关单" 
-                 flowable:delegateExpression="${declarationServiceTask}" />
-    
+
+    <!-- 3. 生成海关报关单 (自动) - 初审通过后立即生成 -->
+    <serviceTask id="genCustomsDoc" name="生成海关报关单"
+                 flowable:delegateExpression="${declarationServiceTask}">
+      <extensionElements>
+        <flowable:executionListener event="end" delegateExpression="${declarationTaskListener}" />
+      </extensionElements>
+    </serviceTask>
+
+    <!-- 4. 资料提交 (填报人) -->
+    <userTask id="materialSubmit" name="资料提交" flowable:assignee="${starterId}">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
+        <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
+      </extensionElements>
+    </userTask>
+
+    <!-- 5. 资料审核 -->
+    <userTask id="materialAudit" name="资料审核" flowable:candidateGroups="MATERIAL_AUDITOR">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
+        <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
+      </extensionElements>
+    </userTask>
+
+    <!-- 资料审核结果网关 -->
+    <exclusiveGateway id="gw2" name="资料审核结果" />
+
+    <!-- 6. 业务发票提交 (填报人) -->
+    <userTask id="invoiceSubmit" name="业务发票提交" flowable:assignee="${starterId}">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
+        <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
+      </extensionElements>
+    </userTask>
+
+    <!-- 7. 业务发票审核 -->
+    <userTask id="invoiceAudit" name="业务发票审核" flowable:candidateGroups="INVOICE_AUDITOR">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
+        <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
+      </extensionElements>
+    </userTask>
+
+    <!-- 发票审核结果网关 -->
+    <exclusiveGateway id="gw3" name="发票审核结果" />
+
     <!-- 结束事件 -->
     <endEvent id="endEvent" name="完成">
       <extensionElements>
         <flowable:executionListener event="end" delegateExpression="${declarationTaskListener}" />
       </extensionElements>
     </endEvent>
-    
+
     <!-- ================= 流程连线 ================= -->
-    
-    <!-- 开始 → 生成预录入表单 -->
+
+    <!-- 开始 → 生成预录入 -->
     <sequenceFlow id="f1" sourceRef="startEvent" targetRef="genPreEntryTask" />
-    
-    <!-- 生成预录入表单 → 审核申报 -->
+
+    <!-- 生成预录入 → 初审 -->
     <sequenceFlow id="f2" sourceRef="genPreEntryTask" targetRef="deptAudit" />
-    
-    <!-- 审核申报 → 审核结果网关 -->
+
+    <!-- 初审 → 初审结果网关 -->
     <sequenceFlow id="f3" sourceRef="deptAudit" targetRef="gw1" />
-    
-    <!-- 审核通过 → 生成海关报关单 -->
+
+    <!-- 初审通过 → 生成海关报关单 -->
     <sequenceFlow id="f4_pass" name="通过" sourceRef="gw1" targetRef="genCustomsDoc">
       <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
     </sequenceFlow>
-    
-    <!-- 审核驳回 → 驳回修改 -->
+
+    <!-- 初审驳回 → 驳回修改 -->
     <sequenceFlow id="f4_reject" name="驳回" sourceRef="gw1" targetRef="rejectHandler">
       <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
     </sequenceFlow>
-    
-    <!-- 驳回修改 → 回到审核申报 -->
+
+    <!-- 驳回修改 → 回到初审 -->
     <sequenceFlow id="f5" sourceRef="rejectHandler" targetRef="deptAudit" />
-    
-    <!-- 生成海关报关单 → 完成 -->
-    <sequenceFlow id="f6" sourceRef="genCustomsDoc" targetRef="endEvent" />
-    
+
+    <!-- 生成海关报关单 → 资料提交 -->
+    <sequenceFlow id="f6" sourceRef="genCustomsDoc" targetRef="materialSubmit" />
+
+    <!-- 资料提交 → 资料审核 -->
+    <sequenceFlow id="f7" sourceRef="materialSubmit" targetRef="materialAudit" />
+
+    <!-- 资料审核 → 资料审核结果网关 -->
+    <sequenceFlow id="f8" sourceRef="materialAudit" targetRef="gw2" />
+
+    <!-- 资料审核通过 → 业务发票提交 -->
+    <sequenceFlow id="f9_pass" name="通过" sourceRef="gw2" targetRef="invoiceSubmit">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    </sequenceFlow>
+
+    <!-- 资料审核驳回 → 回到资料提交 -->
+    <sequenceFlow id="f9_reject" name="驳回" sourceRef="gw2" targetRef="materialSubmit">
+      <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+
+    <!-- 业务发票提交 → 业务发票审核 -->
+    <sequenceFlow id="f10" sourceRef="invoiceSubmit" targetRef="invoiceAudit" />
+
+    <!-- 业务发票审核 → 发票审核结果网关 -->
+    <sequenceFlow id="f11" sourceRef="invoiceAudit" targetRef="gw3" />
+
+    <!-- 发票审核通过 → 完成 -->
+    <sequenceFlow id="f12_pass" name="通过" sourceRef="gw3" targetRef="endEvent">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    </sequenceFlow>
+
+    <!-- 发票审核驳回 → 回到业务发票提交 -->
+    <sequenceFlow id="f12_reject" name="驳回" sourceRef="gw3" targetRef="invoiceSubmit">
+      <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+
   </process>
 
-  <!-- BPMN 图形定义 -->
+  <!-- BPMN 图形定义（简化布局） -->
   <bpmndi:BPMNDiagram id="BPMNDiagram_declarationProcess">
     <bpmndi:BPMNPlane id="BPMNPlane_declarationProcess" bpmnElement="declarationProcess">
-      <!-- 形状定义 -->
       <bpmndi:BPMNShape id="BPMNShape_startEvent" bpmnElement="startEvent">
-        <omgdc:Bounds x="50" y="200" width="30" height="30" />
+        <omgdc:Bounds x="50" y="220" width="30" height="30" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="BPMNShape_genPreEntryTask" bpmnElement="genPreEntryTask">
-        <omgdc:Bounds x="120" y="180" width="120" height="80" />
+        <omgdc:Bounds x="110" y="200" width="110" height="70" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="BPMNShape_deptAudit" bpmnElement="deptAudit">
-        <omgdc:Bounds x="280" y="180" width="120" height="80" />
+        <omgdc:Bounds x="250" y="200" width="110" height="70" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="BPMNShape_gw1" bpmnElement="gw1" isMarkerVisible="true">
-        <omgdc:Bounds x="440" y="200" width="40" height="40" />
+        <omgdc:Bounds x="390" y="215" width="40" height="40" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="BPMNShape_rejectHandler" bpmnElement="rejectHandler">
-        <omgdc:Bounds x="300" y="80" width="120" height="80" />
+        <omgdc:Bounds x="250" y="90" width="110" height="70" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="BPMNShape_genCustomsDoc" bpmnElement="genCustomsDoc">
-        <omgdc:Bounds x="520" y="180" width="120" height="80" />
+        <omgdc:Bounds x="460" y="200" width="110" height="70" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_materialSubmit" bpmnElement="materialSubmit">
+        <omgdc:Bounds x="600" y="200" width="110" height="70" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_materialAudit" bpmnElement="materialAudit">
+        <omgdc:Bounds x="740" y="200" width="110" height="70" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_gw2" bpmnElement="gw2" isMarkerVisible="true">
+        <omgdc:Bounds x="880" y="215" width="40" height="40" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_invoiceSubmit" bpmnElement="invoiceSubmit">
+        <omgdc:Bounds x="940" y="200" width="110" height="70" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_invoiceAudit" bpmnElement="invoiceAudit">
+        <omgdc:Bounds x="1080" y="200" width="110" height="70" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_gw3" bpmnElement="gw3" isMarkerVisible="true">
+        <omgdc:Bounds x="1220" y="215" width="40" height="40" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="BPMNShape_endEvent" bpmnElement="endEvent">
-        <omgdc:Bounds x="680" y="206" width="28" height="28" />
+        <omgdc:Bounds x="1290" y="220" width="30" height="30" />
       </bpmndi:BPMNShape>
 
-      <!-- 连线定义 -->
       <bpmndi:BPMNEdge id="BPMNEdge_f1" bpmnElement="f1">
-        <omgdi:waypoint x="80" y="215" />
-        <omgdi:waypoint x="120" y="215" />
+        <omgdi:waypoint x="80" y="235" />
+        <omgdi:waypoint x="110" y="235" />
       </bpmndi:BPMNEdge>
-
       <bpmndi:BPMNEdge id="BPMNEdge_f2" bpmnElement="f2">
-        <omgdi:waypoint x="240" y="215" />
-        <omgdi:waypoint x="280" y="215" />
+        <omgdi:waypoint x="220" y="235" />
+        <omgdi:waypoint x="250" y="235" />
       </bpmndi:BPMNEdge>
-
       <bpmndi:BPMNEdge id="BPMNEdge_f3" bpmnElement="f3">
-        <omgdi:waypoint x="400" y="215" />
-        <omgdi:waypoint x="440" y="215" />
+        <omgdi:waypoint x="360" y="235" />
+        <omgdi:waypoint x="390" y="235" />
       </bpmndi:BPMNEdge>
-
       <bpmndi:BPMNEdge id="BPMNEdge_f4_pass" bpmnElement="f4_pass">
-        <omgdi:waypoint x="480" y="215" />
-        <omgdi:waypoint x="520" y="215" />
+        <omgdi:waypoint x="430" y="235" />
+        <omgdi:waypoint x="460" y="235" />
       </bpmndi:BPMNEdge>
-
       <bpmndi:BPMNEdge id="BPMNEdge_f4_reject" bpmnElement="f4_reject">
-        <omgdi:waypoint x="460" y="200" />
-        <omgdi:waypoint x="460" y="120" />
-        <omgdi:waypoint x="420" y="120" />
+        <omgdi:waypoint x="410" y="215" />
+        <omgdi:waypoint x="410" y="125" />
+        <omgdi:waypoint x="360" y="125" />
       </bpmndi:BPMNEdge>
-
       <bpmndi:BPMNEdge id="BPMNEdge_f5" bpmnElement="f5">
-        <omgdi:waypoint x="300" y="120" />
-        <omgdi:waypoint x="280" y="120" />
-        <omgdi:waypoint x="280" y="180" />
+        <omgdi:waypoint x="250" y="125" />
+        <omgdi:waypoint x="230" y="125" />
+        <omgdi:waypoint x="230" y="200" />
       </bpmndi:BPMNEdge>
-
       <bpmndi:BPMNEdge id="BPMNEdge_f6" bpmnElement="f6">
-        <omgdi:waypoint x="640" y="215" />
-        <omgdi:waypoint x="680" y="215" />
+        <omgdi:waypoint x="570" y="235" />
+        <omgdi:waypoint x="600" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f7" bpmnElement="f7">
+        <omgdi:waypoint x="710" y="235" />
+        <omgdi:waypoint x="740" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f8" bpmnElement="f8">
+        <omgdi:waypoint x="850" y="235" />
+        <omgdi:waypoint x="880" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f9_pass" bpmnElement="f9_pass">
+        <omgdi:waypoint x="920" y="235" />
+        <omgdi:waypoint x="940" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f9_reject" bpmnElement="f9_reject">
+        <omgdi:waypoint x="900" y="215" />
+        <omgdi:waypoint x="900" y="160" />
+        <omgdi:waypoint x="655" y="160" />
+        <omgdi:waypoint x="655" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f10" bpmnElement="f10">
+        <omgdi:waypoint x="1050" y="235" />
+        <omgdi:waypoint x="1080" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f11" bpmnElement="f11">
+        <omgdi:waypoint x="1190" y="235" />
+        <omgdi:waypoint x="1220" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f12_pass" bpmnElement="f12_pass">
+        <omgdi:waypoint x="1260" y="235" />
+        <omgdi:waypoint x="1290" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_f12_reject" bpmnElement="f12_reject">
+        <omgdi:waypoint x="1240" y="215" />
+        <omgdi:waypoint x="1240" y="160" />
+        <omgdi:waypoint x="995" y="160" />
+        <omgdi:waypoint x="995" y="200" />
       </bpmndi:BPMNEdge>
 
     </bpmndi:BPMNPlane>

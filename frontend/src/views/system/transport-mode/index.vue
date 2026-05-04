@@ -60,12 +60,18 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="openEditModal(record as TransportMode)" v-permission="['system:transport:update']" class="text-blue-600 font-medium">编辑</a-button>
+              <a-button type="link" size="small" @click="openEditModal(record as TransportMode)" v-permission="['system:transport:update']" class="text-blue-600 font-medium">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
               <a-popconfirm
                 title="确定要切换状态吗？"
                 @confirm="toggleStatus(record as TransportMode)"
               >
                 <a-button type="link" size="small" :danger="record.status === 1" class="font-medium">
+                  <template #icon>
+                    <component :is="record.status === 1 ? 'StopOutlined' : 'CheckCircleOutlined'" />
+                  </template>
                   {{ record.status === 1 ? '禁用' : '启用' }}
                 </a-button>
               </a-popconfirm>
@@ -73,7 +79,10 @@
                 title="确定要删除吗？"
                 @confirm="handleDelete(record.id!)"
               >
-                <a-button type="link" size="small" danger v-permission="['system:transport:delete']" class="font-medium">删除</a-button>
+                <a-button type="link" size="small" danger v-permission="['system:transport:delete']" class="font-medium">
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -141,7 +150,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined, SearchOutlined, EditOutlined, StopOutlined, CheckCircleOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
 import type { RuleObject } from 'ant-design-vue/es/form/interface'
 import {

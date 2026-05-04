@@ -64,13 +64,22 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as User)" v-permission="['user:update']" class="font-medium text-blue-600">编辑</a-button>
-              <a-button type="link" size="small" @click="handleResetPwd(record as User)" v-permission="['user:resetPwd']" class="font-medium text-blue-600">重置密码</a-button>
+              <a-button type="link" size="small" @click="handleEdit(record as User)" v-permission="['user:update']" class="font-medium text-blue-600">
+                <template #icon><EditOutlined /></template>
+                编辑
+              </a-button>
+              <a-button type="link" size="small" @click="handleResetPwd(record as User)" v-permission="['user:resetPwd']" class="font-medium text-blue-600">
+                <template #icon><KeyOutlined /></template>
+                重置密码
+              </a-button>
               <a-popconfirm
                 title="确定要删除这个用户吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['user:delete']" class="font-medium">删除</a-button>
+                <a-button type="link" size="small" danger v-permission="['user:delete']" class="font-medium">
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -152,7 +161,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined, EditOutlined, KeyOutlined } from '@ant-design/icons-vue'
 import type { TableProps } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { getUserList, getUser, addUser, updateUser, deleteUser, resetUserPwd, getOrgTree, getRoleList } from '@/api/system'

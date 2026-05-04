@@ -40,8 +40,14 @@
 
           <template v-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="handleView(record as Remittance)">查看</a-button>
-              <a-button type="primary" size="small" @click="handleAudit(record as Remittance)">审核</a-button>
+              <a-button type="link" size="small" @click="handleView(record as Remittance)">
+                <template #icon><EyeOutlined /></template>
+                查看
+              </a-button>
+              <a-button type="primary" size="small" @click="handleAudit(record as Remittance)">
+                <template #icon><AuditOutlined /></template>
+                审核
+              </a-button>
             </a-space>
           </template>
         </template>
@@ -93,13 +99,18 @@
               </a-form-item>
             </a-col>
             <a-col :span="8">
-              <a-form-item label="水单照片">
-                <a-image
-                  v-if="currentRemittance.photoUrl"
-                  :src="currentRemittance.photoUrl"
-                  style="width: 100px; height: 60px"
-                />
-                <span v-else>无照片</span>
+              <a-form-item label="水单文件">
+                <template v-if="currentRemittance.photoUrl">
+                  <a-image
+                    v-if="isImage(currentRemittance.photoUrl)"
+                    :src="currentRemittance.photoUrl"
+                    style="width: 100px; height: 60px"
+                  />
+                  <a-button v-else type="link" size="small" @click="openFile(currentRemittance.photoUrl)">
+                    <FilePdfOutlined /> 查看文件
+                  </a-button>
+                </template>
+                <span v-else>无文件</span>
               </a-form-item>
             </a-col>
           </a-row>
@@ -209,9 +220,14 @@
         <a-descriptions-item label="手续费">{{ currentRemittance.bankFee }}</a-descriptions-item>
         <a-descriptions-item label="入账金额">{{ currentRemittance.creditedAmount }}</a-descriptions-item>
         <a-descriptions-item label="审核备注">{{ currentRemittance.auditRemark || '-' }}</a-descriptions-item>
-        <a-descriptions-item label="水单照片" :span="3">
-          <a-image v-if="currentRemittance.photoUrl" :src="currentRemittance.photoUrl" style="max-width: 300px" />
-          <span v-else>无照片</span>
+        <a-descriptions-item label="水单文件" :span="3">
+          <template v-if="currentRemittance.photoUrl">
+            <a-image v-if="isImage(currentRemittance.photoUrl)" :src="currentRemittance.photoUrl" style="max-width: 300px" />
+            <a-button v-else type="link" @click="openFile(currentRemittance.photoUrl)">
+              <FilePdfOutlined /> 查看文件
+            </a-button>
+          </template>
+          <span v-else>无文件</span>
         </a-descriptions-item>
       </a-descriptions>
     </a-modal>
@@ -221,10 +237,19 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, ReloadOutlined, EyeOutlined, AuditOutlined, FilePdfOutlined } from '@ant-design/icons-vue'
 import { getRemittanceList, auditRemittance } from '@/api/business/remittance'
 import { getEnabledBankAccounts } from '@/api/business/declaration'
 import type { Remittance, RemittanceQueryParams } from '@/api/business/remittance'
+
+// 文件类型判断
+const isImage = (url: string) => /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url || '')
+const openFile = (url: string) => { if (url) window.open(url, '_blank') }
+const getFileExt = (url: string) => {
+  if (!url) return ''
+  const parts = url.split('?')[0].split('.')
+  return (parts[parts.length - 1] || '').toUpperCase()
+}
 
 // 数据定义
 const remittanceList = ref<Remittance[]>([])
