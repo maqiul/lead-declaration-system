@@ -756,7 +756,7 @@
             :dataSource="materialItems"
             :columns="materialColumns"
             :pagination="false"
-            rowKey="id"
+            :rowKey="materialRowKey"
             size="middle"
             class="material-table"
             :expandedRowKeys="materialExpandedKeys"
@@ -1415,6 +1415,7 @@ import {
   deleteMaterialItem,
   uploadMaterialFile,
   clearMaterialFile,
+  ensureMaterialItem,
   submitMaterial,
   submitInvoice,
   auditMaterial,
@@ -1958,6 +1959,8 @@ const materialRowForm = reactive<Partial<MaterialItem>>({
   remark: ''
 })
 
+const materialRowKey = (record: MaterialItem) => (record.id ?? `tpl-${record.templateId}`) as any
+
 const materialColumns = [
   { title: '资料项', key: 'name', dataIndex: 'name' },
   { title: '附件', key: 'file', dataIndex: 'fileName', width: 260 },
@@ -2036,7 +2039,7 @@ const loadMaterialItems = async () => {
       )
       materialExpandedKeys.value = materialItems.value
         .filter((i) => parseMaterialSchema(i.formSchema).length > 0)
-        .map((i) => i.id as any)
+        .map((i) => (i.id ?? `tpl-${i.templateId}`) as any)
     }
   } catch (e) {
     message.error('加载资料项失败')
@@ -2046,10 +2049,13 @@ const loadMaterialItems = async () => {
 }
 
 const saveMaterialRowFields = async (record: MaterialItem) => {
-  if (!record.id || !isMaterialEditable.value) return
+  if (!isMaterialEditable.value) return
   try {
+    // 虚拟项（id 为空）先升格为真实记录
+    const id = await resolveMaterialItemId(record)
+    if (!id) return
     const res = await updateMaterialItem({
-      id: record.id,
+      id,
       name: record.name,
       required: record.required,
       sort: record.sort,
@@ -2061,7 +2067,9 @@ const saveMaterialRowFields = async (record: MaterialItem) => {
       extraData: record.extraData
     })
     if (res.data?.code === 200) {
+      record.id = id
       message.success('已保存')
+      await loadMaterialItems()
     } else {
       message.error(res.data?.message || '保存失败')
     }
@@ -2072,8 +2080,15 @@ const saveMaterialRowFields = async (record: MaterialItem) => {
 
 const beforeMaterialUpload = async (file: File, record: MaterialItem) => {
   try {
-    const res = await uploadMaterialFile(record.id!, file)
+    const id = await resolveMaterialItemId(record)
+    if (!id) return false
+    // 同时传 formId + templateId：后端在 id 找不到实例时会自动按模板 ensure 一条再上传
+    const res = await uploadMaterialFile(id, file, {
+      formId: formId.value,
+      templateId: record.templateId ?? null
+    })
     if (res.data?.code === 200) {
+      if (res.data.data?.id) record.id = res.data.data.id
       message.success('上传成功')
       await loadMaterialItems()
     } else {
@@ -2083,6 +2098,35 @@ const beforeMaterialUpload = async (file: File, record: MaterialItem) => {
     message.error('上传失败')
   }
   return false
+}
+
+/**
+ * 将虚拟项（id=null, templateId 非空）升格为真实记录。返回真实 id。
+ * 对手动新增的项（已有 id）直接返回原 id。
+ */
+const resolveMaterialItemId = async (record: MaterialItem): Promise<number | string | null> => {
+  if (record.id) return record.id
+  if (!record.templateId || !formId.value) {
+    message.error('无法定位资料项模板')
+    return null
+  }
+  try {
+    const res = await ensureMaterialItem(formId.value, record.templateId)
+    // 调试：记录 ensure 返回，方便定位“资料项不存在”类问题
+    // eslint-disable-next-line no-console
+    console.log('[material ensure] response =', res?.data, 'templateId =', record.templateId)
+    if (res.data?.code === 200 && res.data.data?.id) {
+      record.id = res.data.data.id
+      return record.id as number
+    }
+    message.error(res.data?.message || '创建资料项失败')
+    return null
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[material ensure] error', e)
+    message.error('创建资料项失败')
+    return null
+  }
 }
 
 const handleClearMaterialFile = async (record: MaterialItem) => {
@@ -2144,8 +2188,15 @@ const openAddMaterialRow = () => {
   materialRowModalVisible.value = true
 }
 
-const openEditMaterialRow = (record: MaterialItem) => {
-  materialRowEditingId.value = record.id ?? null
+const openEditMaterialRow = async (record: MaterialItem) => {
+  // 虚拟项先升格为真实记录，才能在单据内覆盖模板的名称/说明
+  let editingId: number | string | null = record.id ?? null
+  if (!editingId) {
+    const id = await resolveMaterialItemId(record)
+    if (!id) return
+    editingId = id
+  }
+  materialRowEditingId.value = editingId
   materialRowForm.name = record.name
   materialRowForm.required = record.required
   materialRowForm.sort = record.sort

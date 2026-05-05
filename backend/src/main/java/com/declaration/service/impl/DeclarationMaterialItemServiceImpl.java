@@ -84,8 +84,12 @@ public class DeclarationMaterialItemServiceImpl
             log.warn("批量查用户失败，昵称回填跳过: {}", e.getMessage());
         }
         for (DeclarationMaterialItem it : list) {
-            if (it.getCreateBy() != null) it.setCreateByName(nameMap.get(it.getCreateBy()));
-            if (it.getUpdateBy() != null) it.setUpdateByName(nameMap.get(it.getUpdateBy()));
+            if (it.getCreateBy() != null) {
+                it.setCreateByName(nameMap.get(it.getCreateBy()));
+            }
+            if (it.getUpdateBy() != null) {
+                it.setUpdateByName(nameMap.get(it.getUpdateBy()));
+            }
         }
     }
 
@@ -125,6 +129,98 @@ public class DeclarationMaterialItemServiceImpl
                 log.warn("回填 form_schema 失败，itemId={}", it.getId(), e);
             }
         }
+    }
+
+    /**
+     * 合并视图：模板虚拟项（id=null） + 已有实例。
+     * - 已存在实例的模板行直接用实例（带 id，有 createBy/updateBy）
+     * - 仅在模板中出现、用户从未操作的资料项，构造虚拟项（id=null, templateId=xxx）
+     * - 单据内手动新增的实例（templateId=null）追加在后
+     */
+    @Override
+    public List<DeclarationMaterialItem> viewByFormId(Long formId) {
+        List<DeclarationMaterialItem> result = new ArrayList<>();
+        if (formId == null) return result;
+
+        List<DeclarationMaterialItem> items = listByFormId(formId);
+        Map<String, DeclarationMaterialItem> itemByCode = new HashMap<>();
+        List<DeclarationMaterialItem> manualItems = new ArrayList<>();
+        for (DeclarationMaterialItem it : items) {
+            if (it.getTemplateId() != null && it.getCode() != null) {
+                itemByCode.put(it.getCode(), it);
+            } else {
+                manualItems.add(it);
+            }
+        }
+
+        List<DeclarationMaterialTemplate> templates = templateService.listEnabled();
+        if (templates != null) {
+            for (DeclarationMaterialTemplate tpl : templates) {
+                DeclarationMaterialItem existed = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
+                if (existed != null) {
+                    result.add(existed);
+                    continue;
+                }
+                DeclarationMaterialItem virtual = new DeclarationMaterialItem();
+                virtual.setId(null); // 虚拟标识
+                virtual.setFormId(formId);
+                virtual.setTemplateId(tpl.getId());
+                virtual.setCode(tpl.getCode());
+                virtual.setName(tpl.getName());
+                virtual.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());
+                virtual.setSort(tpl.getSort() == null ? 0 : tpl.getSort());
+                virtual.setRemark(tpl.getRemark());
+                virtual.setFormSchema(tpl.getFormSchema());
+                virtual.setStatus(0);
+                // 虚拟项未落库，无 createBy/updateBy，前端按 id==null 判定显示为“—”
+                result.add(virtual);
+            }
+        }
+        result.addAll(manualItems);
+        return result;
+    }
+
+    /**
+     * 幂等确保模板对应的实例已落库。
+     * 已存在则直接返回；不存在则按模板克隆一条，创建人/更新人交由 MetaObjectHandler 填充为当前登录用户。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public DeclarationMaterialItem ensureItemFromTemplate(Long formId, Long templateId) {
+        if (formId == null || templateId == null) {
+            throw new RuntimeException("formId / templateId 不能为空");
+        }
+        DeclarationMaterialTemplate tpl = templateService.getById(templateId);
+        if (tpl == null) {
+            throw new RuntimeException("模板不存在: " + templateId);
+        }
+        LambdaQueryWrapper<DeclarationMaterialItem> q = new LambdaQueryWrapper<>();
+        q.eq(DeclarationMaterialItem::getFormId, formId)
+         .eq(DeclarationMaterialItem::getTemplateId, templateId)
+         .last("limit 1");
+        DeclarationMaterialItem existed = this.getOne(q);
+        if (existed == null && StringUtils.hasText(tpl.getCode())) {
+            LambdaQueryWrapper<DeclarationMaterialItem> q2 = new LambdaQueryWrapper<>();
+            q2.eq(DeclarationMaterialItem::getFormId, formId)
+              .eq(DeclarationMaterialItem::getCode, tpl.getCode())
+              .last("limit 1");
+            existed = this.getOne(q2);
+        }
+        if (existed != null) {
+            return existed;
+        }
+        DeclarationMaterialItem item = new DeclarationMaterialItem();
+        item.setFormId(formId);
+        item.setTemplateId(tpl.getId());
+        item.setCode(tpl.getCode());
+        item.setName(tpl.getName());
+        item.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());
+        item.setSort(tpl.getSort() == null ? 0 : tpl.getSort());
+        item.setRemark(tpl.getRemark());
+        item.setFormSchema(tpl.getFormSchema());
+        item.setStatus(0);
+        this.save(item);
+        return item;
     }
 
     @Override
@@ -172,16 +268,43 @@ public class DeclarationMaterialItemServiceImpl
         if (formId == null) {
             throw new RuntimeException("申报单ID不能为空");
         }
-        // 校验所有必填项是否都已上传，同时校验 form_schema 定义的必填结构化字段
+        // 懒创建模式下，必填校验必须基于"模板 + 手动项"而非仅仅已落库的实例
         List<DeclarationMaterialItem> items = listByFormId(formId);
+        Map<String, DeclarationMaterialItem> itemByCode = new HashMap<>();
+        List<DeclarationMaterialItem> manualItems = new ArrayList<>();
         for (DeclarationMaterialItem it : items) {
+            if (it.getTemplateId() != null && it.getCode() != null) {
+                itemByCode.put(it.getCode(), it);
+            } else {
+                manualItems.add(it);
+            }
+        }
+        List<DeclarationMaterialTemplate> templates = templateService.listEnabled();
+        if (templates != null) {
+            for (DeclarationMaterialTemplate tpl : templates) {
+                boolean required = tpl.getRequired() != null && tpl.getRequired() == 1;
+                DeclarationMaterialItem it = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
+                boolean uploaded = it != null && it.getStatus() != null && it.getStatus() == 1
+                        && it.getFileUrl() != null && !it.getFileUrl().isEmpty();
+                if (required && !uploaded) {
+                    throw new RuntimeException("资料「" + tpl.getName() + "」为必填项，请先上传附件");
+                }
+                if (it != null) {
+                    String missing = validateSchemaFields(it);
+                    if (missing != null) {
+                        throw new RuntimeException("资料「" + tpl.getName() + "」的「" + missing + "」为必填项");
+                    }
+                }
+            }
+        }
+        // 单据内手动新增的项直接校验
+        for (DeclarationMaterialItem it : manualItems) {
             boolean required = it.getRequired() != null && it.getRequired() == 1;
             boolean uploaded = it.getStatus() != null && it.getStatus() == 1
                     && it.getFileUrl() != null && !it.getFileUrl().isEmpty();
             if (required && !uploaded) {
                 throw new RuntimeException("资料「" + it.getName() + "」为必填项，请先上传附件");
             }
-            // 校验结构化字段
             String missing = validateSchemaFields(it);
             if (missing != null) {
                 throw new RuntimeException("资料「" + it.getName() + "」的「" + missing + "」为必填项");

@@ -146,14 +146,8 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
                     break;
                 case "materialSubmit":           // 资料提交
                     newStatus = 2;
-                    // create 时自动同步模板到本申报单
-                    if ("create".equals(eventName) && form.getId() != null) {
-                        try {
-                            materialItemService.syncFromTemplate(form.getId());
-                        } catch (Exception e) {
-                            log.warn("同步资料项模板失败 formId={}", form.getId(), e);
-                        }
-                    }
+                    // 懒创建：进入资料提交节点时不再预先同步模板，由前端 viewByFormId 合并模板虚拟项展示；
+                    // 用户真正上传/编辑时调 /items/ensure 升格为真实记录
                     break;
                 case "materialAudit":            // 资料审核
                     newStatus = 3;

@@ -139,8 +139,6 @@ import {
   ReloadOutlined, 
   SearchOutlined,
   EditOutlined,
-  StopOutlined,
-  CheckCircleOutlined,
   DeleteOutlined
 } from '@ant-design/icons-vue'
 import { 

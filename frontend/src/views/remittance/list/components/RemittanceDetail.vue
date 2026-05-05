@@ -57,11 +57,6 @@ import { getRemittanceDetail } from '@/api/business/remittance'
 // 文件类型判断
 const isImage = (url: string) => /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url || '')
 const openFile = (url: string) => { if (url) window.open(url, '_blank') }
-const getFileExt = (url: string) => {
-  if (!url) return ''
-  const parts = url.split('?')[0].split('.')
-  return (parts[parts.length - 1] || '').toUpperCase()
-}
 
 interface Props {
   visible: boolean

@@ -31,16 +31,24 @@ public class DeclarationMaterialItemController {
     private final DeclarationMaterialItemService itemService;
     private final DeclarationAttachmentService attachmentService;
 
-    /** 获取某申报单的资料项；若为空会自动触发同步模板 */
+    /** 获取某申报单的资料项视图（懒创建：未操作过的资料项以虚拟项 id=null 返回，不落库） */
     @GetMapping
-    @Operation(summary = "获取申报单的资料项列表")
+    @Operation(summary = "获取申报单的资料项列表（懒创建视图）")
     public Result<List<DeclarationMaterialItem>> listByFormId(@RequestParam Long formId) {
-        List<DeclarationMaterialItem> items = itemService.listByFormId(formId);
-        if (items == null || items.isEmpty()) {
-            itemService.syncFromTemplate(formId);
-            items = itemService.listByFormId(formId);
+        return Result.success(itemService.viewByFormId(formId));
+    }
+
+    /** 幂等确保模板对应的资料项已落库，返回带 id 的实例
+     *  用于前端在"上传附件/编辑字段"时从虚拟项升格为真实记录 */
+    @PostMapping("/ensure")
+    @Operation(summary = "确保模板资料项已落库")
+    public Result<DeclarationMaterialItem> ensureFromTemplate(@RequestParam Long formId,
+                                                              @RequestParam Long templateId) {
+        try {
+            return Result.success(itemService.ensureItemFromTemplate(formId, templateId));
+        } catch (Exception e) {
+            return Result.fail(e.getMessage());
         }
-        return Result.success(items);
     }
 
     /** 单据内手动新增一项（不入全局模板） */
@@ -57,6 +65,9 @@ public class DeclarationMaterialItemController {
         if (entity.getSort() == null) entity.setSort(0);
         entity.setStatus(0);
         entity.setTemplateId(null); // 手动新增无模板来源
+        // 让 MetaObjectHandler 自动填充当前用户为 createBy/updateBy
+        entity.setCreateBy(null);
+        entity.setUpdateBy(null);
         itemService.save(entity);
         return Result.success(entity);
     }
@@ -85,6 +96,12 @@ public class DeclarationMaterialItemController {
         if (entity.getFormSchema() != null) {
             old.setFormSchema(entity.getFormSchema());
         }
+        // 显式刷新更新人与更新时间
+        // （从 DB 查出的 old.updateBy/updateTime 非 null，MP strictUpdateFill 不会覆盖旧值，必须手动设置）
+        if (StpUtil.isLogin()) {
+            old.setUpdateBy(StpUtil.getLoginIdAsLong());
+        }
+        old.setUpdateTime(LocalDateTime.now());
         return Result.success(itemService.updateById(old));
     }
 
@@ -100,12 +117,28 @@ public class DeclarationMaterialItemController {
         return Result.success(itemService.removeById(id));
     }
 
-    /** 上传附件到指定资料项 */
+    /** 上传附件到指定资料项
+     *  兼容懒创建：如果 id 查不到但带了 formId+templateId，则先按模板 ensure 一条实例再上传
+     */
     @PostMapping("/{id}/upload")
     @Operation(summary = "上传资料项附件")
     public Result<DeclarationMaterialItem> upload(@PathVariable Long id,
-                                                  @RequestParam("file") MultipartFile file) {
-        DeclarationMaterialItem item = itemService.getById(id);
+                                                  @RequestParam("file") MultipartFile file,
+                                                  @RequestParam(value = "formId", required = false) Long formId,
+                                                  @RequestParam(value = "templateId", required = false) Long templateId) {
+        DeclarationMaterialItem item = id == null || id <= 0 ? null : itemService.getById(id);
+        if (item == null) {
+            log.warn("上传时未找到资料项实例 id={} formId={} templateId={}", id, formId, templateId);
+            if (formId != null && templateId != null) {
+                try {
+                    item = itemService.ensureItemFromTemplate(formId, templateId);
+                    log.info("upload fallback: ensure material item itemId={} formId={} templateId={}",
+                            item == null ? null : item.getId(), formId, templateId);
+                } catch (Exception e) {
+                    log.error("上传时按模板 ensure 失败 formId={} templateId={}", formId, templateId, e);
+                }
+            }
+        }
         if (item == null) return Result.fail("资料项不存在");
         try {
             DeclarationAttachment att = attachmentService.uploadFile(file, "MaterialItem");
@@ -113,9 +146,13 @@ public class DeclarationMaterialItemController {
             item.setFileUrl(att.getFileUrl());
             item.setStatus(1);
             if (StpUtil.isLogin()) {
-                item.setUploadBy(StpUtil.getLoginIdAsLong());
+                Long uid = StpUtil.getLoginIdAsLong();
+                item.setUploadBy(uid);
+                // 显式刷新更新人，避免旧值被 strictUpdateFill 跳过
+                item.setUpdateBy(uid);
             }
             item.setUploadTime(LocalDateTime.now());
+            item.setUpdateTime(LocalDateTime.now());
             itemService.updateById(item);
             return Result.success(item);
         } catch (Exception e) {
@@ -135,6 +172,10 @@ public class DeclarationMaterialItemController {
         item.setStatus(0);
         item.setUploadBy(null);
         item.setUploadTime(null);
+        if (StpUtil.isLogin()) {
+            item.setUpdateBy(StpUtil.getLoginIdAsLong());
+        }
+        item.setUpdateTime(LocalDateTime.now());
         return Result.success(itemService.updateById(item));
     }
 

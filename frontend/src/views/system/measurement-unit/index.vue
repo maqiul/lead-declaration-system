@@ -234,7 +234,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { message } from 'ant-design-vue';
-import { SearchOutlined, PlusOutlined, ReloadOutlined, EditOutlined, StopOutlined, CheckCircleOutlined, DeleteOutlined } from '@ant-design/icons-vue';
+import { SearchOutlined, PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 import { getMeasurementUnitList, addMeasurementUnit, updateMeasurementUnit, deleteMeasurementUnit, toggleMeasurementUnitStatus } from '@/api/system/measurement-unit';
 import type { MeasurementUnit } from '@/api/system/measurement-unit';
 

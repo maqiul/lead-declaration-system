@@ -245,7 +245,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, ReloadOutlined, QuestionCircleOutlined, EditOutlined, StopOutlined, CheckCircleOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined, QuestionCircleOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { RuleObject } from 'ant-design-vue/es/form/interface'
 import {
   getMaterialTemplateList,

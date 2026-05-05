@@ -54,6 +54,18 @@ export function addMaterialItem(data: Partial<MaterialItem>) {
 }
 
 /**
+ * 幂等确保模板对应的资料项已落库，返回带 id 的实例。
+ * 用于将懒创建视图中的"虚拟项"（id=null）升格为真实记录后再操作
+ */
+export function ensureMaterialItem(formId: number | string, templateId: number | string) {
+  return request({
+    url: '/v1/material/items/ensure',
+    method: 'post',
+    params: { formId, templateId }
+  })
+}
+
+/**
  * 修改资料项（名称/必填/排序/说明）
  */
 export function updateMaterialItem(data: Partial<MaterialItem>) {
@@ -76,14 +88,23 @@ export function deleteMaterialItem(id: number | string) {
 
 /**
  * 上传附件
+ * 额外可传 formId + templateId，后端在 id 找不到记录时会按模板兄弟 ensure 一条再上传（资料项懒创建兄底）
  */
-export function uploadMaterialFile(id: number | string, file: File) {
+export function uploadMaterialFile(
+  id: number | string,
+  file: File,
+  extras?: { formId?: number | string | null; templateId?: number | string | null }
+) {
   const formData = new FormData()
   formData.append('file', file)
+  const params: Record<string, any> = {}
+  if (extras?.formId) params.formId = extras.formId
+  if (extras?.templateId) params.templateId = extras.templateId
   return request({
-    url: `/v1/material/items/${id}/upload`,
+    url: `/v1/material/items/${id ?? 0}/upload`,
     method: 'post',
     data: formData,
+    params,
     headers: { 'Content-Type': 'multipart/form-data' }
   })
 }
