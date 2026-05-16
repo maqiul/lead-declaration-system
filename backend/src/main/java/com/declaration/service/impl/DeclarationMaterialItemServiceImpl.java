@@ -2,10 +2,14 @@ package com.declaration.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.declaration.dao.BusinessAuditRecordDao;
 import com.declaration.dao.DeclarationMaterialItemDao;
+import com.declaration.entity.BusinessAuditRecord;
+import com.declaration.entity.DeclarationForm;
 import com.declaration.entity.DeclarationMaterialItem;
 import com.declaration.entity.DeclarationMaterialTemplate;
 import com.declaration.entity.User;
+import com.declaration.service.DeclarationFormService;
 import com.declaration.service.DeclarationMaterialItemService;
 import com.declaration.service.DeclarationMaterialTemplateService;
 import com.declaration.service.InvoiceService;
@@ -20,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -41,7 +46,82 @@ public class DeclarationMaterialItemServiceImpl
     private final TaskService flowableTaskService;
     private final UserService userService;
     private final InvoiceService invoiceService;
+    private final BusinessAuditRecordDao auditRecordDao;
+    private final DeclarationFormService declarationFormService;
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** 审核记录 business_type 常量（提交与审核共用一个类型，同一条记录的两个阶段）*/
+    public static final String BT_MATERIAL_AUDIT  = "DECLARATION_MATERIAL_AUDIT";
+    public static final String BT_INVOICE_AUDIT   = "DECLARATION_INVOICE_AUDIT";
+
+    /**
+     * 提交时插入一条待审核记录（auditStatus=0）
+     */
+    private void insertPendingAuditRecord(Long formId, String businessType, Long applicantId, String applyReason) {
+        try {
+            DeclarationForm form = declarationFormService.getById(formId);
+            BusinessAuditRecord r = new BusinessAuditRecord();
+            r.setBusinessId(formId);
+            r.setBusinessType(businessType);
+            r.setApplicantId(applicantId);
+            r.setApplyReason(applyReason != null ? applyReason : labelOfType(businessType));
+            r.setApplyTime(LocalDateTime.now());
+            r.setAuditStatus(0);
+            r.setPreStatus(form == null ? null : form.getStatus());
+            auditRecordDao.insert(r);
+        } catch (Exception e) {
+            log.error("插入待审核记录失败 formId={} businessType={} : {}", formId, businessType, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 审核时更新同单同类型的最新一条 auditStatus=0 记录为审核结果；查不到则兜底插入一条完整记录
+     */
+    private void finishAuditRecord(Long formId, String businessType, boolean approved, String remark, Long auditorId) {
+        try {
+            BusinessAuditRecord pending = auditRecordDao.selectOne(
+                new LambdaQueryWrapper<BusinessAuditRecord>()
+                    .eq(BusinessAuditRecord::getBusinessId, formId)
+                    .eq(BusinessAuditRecord::getBusinessType, businessType)
+                    .eq(BusinessAuditRecord::getAuditStatus, 0)
+                    .orderByDesc(BusinessAuditRecord::getApplyTime)
+                    .last("LIMIT 1")
+            );
+            LocalDateTime now = LocalDateTime.now();
+            if (pending != null) {
+                pending.setAuditorId(auditorId);
+                pending.setAuditStatus(approved ? 1 : 2);
+                pending.setAuditRemark(remark);
+                pending.setAuditTime(now);
+                auditRecordDao.updateById(pending);
+            } else {
+                // 兜底：没查到提交记录（旧数据/特殊路径），直接插入一条完整审核记录
+                DeclarationForm form = declarationFormService.getById(formId);
+                BusinessAuditRecord r = new BusinessAuditRecord();
+                r.setBusinessId(formId);
+                r.setBusinessType(businessType);
+                r.setApplicantId(form == null ? null : form.getCreateBy());
+                r.setApplyReason(labelOfType(businessType));
+                r.setApplyTime(now);
+                r.setAuditorId(auditorId);
+                r.setAuditStatus(approved ? 1 : 2);
+                r.setAuditRemark(remark);
+                r.setAuditTime(now);
+                r.setPreStatus(form == null ? null : form.getStatus());
+                auditRecordDao.insert(r);
+            }
+        } catch (Exception e) {
+            log.error("更新审核记录失败 formId={} businessType={} : {}", formId, businessType, e.getMessage(), e);
+        }
+    }
+
+    private String labelOfType(String businessType) {
+        switch (businessType) {
+            case BT_MATERIAL_AUDIT:  return "资料审核";
+            case BT_INVOICE_AUDIT:   return "业务发票审核";
+            default: return businessType;
+        }
+    }
 
     @Override
     public List<DeclarationMaterialItem> listByFormId(Long formId) {
@@ -318,6 +398,8 @@ public class DeclarationMaterialItemServiceImpl
         Map<String, Object> variables = new HashMap<>();
         variables.put("approved", true);
         flowableTaskService.complete(task.getId(), variables);
+        // 插入待审核记录（同一条，审核时 update）
+        insertPendingAuditRecord(formId, BT_MATERIAL_AUDIT, currentUserId, "资料提交待审核");
         log.info("申报单 {} 资料提交完成，操作人={}", formId, currentUserId);
     }
 
@@ -337,6 +419,8 @@ public class DeclarationMaterialItemServiceImpl
             variables.put("auditRemark", remark);
         }
         flowableTaskService.complete(task.getId(), variables);
+        // 更新同单的待审核记录为审核结果
+        finishAuditRecord(formId, BT_MATERIAL_AUDIT, approved, remark, auditorId);
         log.info("申报单 {} 资料审核完成 approved={} 审核人={}", formId, approved, auditorId);
     }
 
@@ -361,6 +445,8 @@ public class DeclarationMaterialItemServiceImpl
         Map<String, Object> variables = new HashMap<>();
         variables.put("approved", true);
         flowableTaskService.complete(task.getId(), variables);
+        // 插入待审核记录（同一条，审核时 update）
+        insertPendingAuditRecord(formId, BT_INVOICE_AUDIT, currentUserId, "业务发票提交待审核");
         log.info("申报单 {} 发票提交完成，操作人={}", formId, currentUserId);
     }
 
@@ -380,6 +466,8 @@ public class DeclarationMaterialItemServiceImpl
             variables.put("auditRemark", remark);
         }
         flowableTaskService.complete(task.getId(), variables);
+        // 更新同单的待审核记录为审核结果
+        finishAuditRecord(formId, BT_INVOICE_AUDIT, approved, remark, auditorId);
         log.info("申报单 {} 发票审核完成 approved={} 审核人={}", formId, approved, auditorId);
     }
 

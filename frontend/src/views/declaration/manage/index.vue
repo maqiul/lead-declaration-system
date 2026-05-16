@@ -153,24 +153,6 @@
                 </a-button>
                 <template #overlay>
                   <a-menu>
-                    <!-- 上传发票 -->
-                    <a-menu-item
-                      v-if="checkPermission(['business:declaration:update'])"
-                      key="invoice"
-                      @click="handleUploadInvoice(record as any)"
-                    >
-                      <FileTextOutlined /> 上传发票
-                    </a-menu-item>
-
-                    <!-- 查看资料 (status>=3) -->
-                    <a-menu-item
-                      v-if="record.status >= 3"
-                      key="viewMaterial"
-                      @click="handleViewMaterial(record as any)"
-                    >
-                      <FileTextOutlined /> 查看资料
-                    </a-menu-item>
-
                     <!-- 财务补充 (仅财务角色，需发票审核通过) -->
                     <a-menu-item
                       v-if="record.status >= 2 && checkPermission(['business:declaration:finance:supplement'])"
@@ -641,55 +623,13 @@
             </a-tag>
           </template>
           <template v-else-if="column.key === 'businessType'">
-            <a-tag color="orange">{{ getBusinessTypeText(record.businessType) }}</a-tag>
+            <a-tag :color="getBusinessTypeColor(record.businessType)">{{ getBusinessTypeText(record.businessType) }}</a-tag>
           </template>
           <template v-else-if="column.key === 'preStatus'">
             <a-tag>{{ getStatusText(record.preStatus) }}</a-tag>
           </template>
         </template>
       </a-table>
-    </a-modal>
-
-    <!-- 发票上传弹窗 -->
-    <a-modal
-      v-model:open="invoiceModalVisible"
-      title="上传业务发票"
-      @ok="handleInvoiceSubmit"
-      width="600px"
-    >
-      <a-form :model="invoiceForm" layout="vertical">
-        <a-form-item label="发票名称">
-          <a-input v-model:value="invoiceForm.invoiceName" />
-        </a-form-item>
-        <a-form-item label="发票号码" required>
-          <a-input v-model:value="invoiceForm.invoiceNo" />
-        </a-form-item>
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="金额 (不含税)">
-              <a-input-number v-model:value="invoiceForm.amount" style="width: 100%" :precision="2" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="税额">
-              <a-input-number v-model:value="invoiceForm.taxAmount" style="width: 100%" :precision="2" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-form-item label="发票文件" required>
-          <a-upload
-            :before-upload="beforeInvoiceUpload"
-            :file-list="invoiceFileList"
-            :max-count="1"
-            accept=".pdf,.jpg,.png"
-          >
-            <a-button>
-              <template #icon><UploadOutlined /></template>
-              选择文件
-            </a-button>
-          </a-upload>
-        </a-form-item>
-      </a-form>
     </a-modal>
   </div>
 </template>
@@ -715,8 +655,7 @@ import {
   resumeDeclarationFlow,
   applyReturnToDraft,
   auditReturnToDraft,
-  getReturnAuditHistory,
-  uploadBusinessInvoice
+  getReturnAuditHistory
 } from '@/api/business/declaration'
 import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile } from '@/api/business/contract'
 import { createRemittance, relateToForm, submitRemittanceAudit } from '@/api/business/remittance'
@@ -877,19 +816,6 @@ watch(() => returnAuditForm.approved, (newVal) => {
 const returnHistoryVisible = ref(false)
 const returnHistoryLoading = ref(false)
 const returnHistoryList = ref<any[]>([])
-
-// 发票上传相关
-const invoiceModalVisible = ref(false)
-const invoiceFileList = ref<any[]>([])
-const tempInvoiceFile = ref<any>(null)
-const currentInvoiceFormId = ref<number>(0)
-const invoiceForm = reactive({
-  invoiceType: 1,
-  invoiceName: '',
-  invoiceNo: '',
-  amount: undefined as number | undefined,
-  taxAmount: undefined as number | undefined
-})
 
 // 加载数据
 const loadData = async () => {
@@ -1116,11 +1042,6 @@ const handleMaterialSubmit = (record: DeclarationRecord) => {
   router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=material`)
 }
 
-// 查看已提交的资料——跳转到主表单 mode=material且 readonly
-const handleViewMaterial = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=material&readonly=true`)
-}
-
 // 资料审核（跳转到详情页审核）
 const handleMaterialAudit = (record: DeclarationRecord) => {
   router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=materialAudit`)
@@ -1184,47 +1105,6 @@ const handleCreateAndRelateRemittance = (record: DeclarationRecord) => {
   remittanceFormData.remarks = ''
   remittanceFormData.photoUrl = ''
   remittanceFormData.fileList = []
-}
-
-// 上传发票 - 跳转到申报详情页
-const handleUploadInvoice = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&mode=invoiceUpload`)
-}
-
-// 发票文件上传前校验
-const beforeInvoiceUpload = (file: File) => {
-  const isAllowed = file.type === 'application/pdf' || 
-                    file.type === 'image/jpeg' || 
-                    file.type === 'image/png'
-  if (!isAllowed) {
-    message.error('只支持PDF、JPG、PNG格式')
-    return false
-  }
-  tempInvoiceFile.value = file
-  invoiceFileList.value = [{ uid: '-1', name: file.name, status: 'done' }]
-  return false // 阻止自动上传
-}
-
-// 提交发票上传
-const handleInvoiceSubmit = async () => {
-  if (!tempInvoiceFile.value) return message.warning('请选择发票文件')
-  if (!invoiceForm.invoiceNo) return message.warning('请填写发票号码')
-
-  const formData = new FormData()
-  formData.append('file', tempInvoiceFile.value)
-  formData.append('invoiceType', '1') // 业务发票默认进项
-  formData.append('invoiceName', invoiceForm.invoiceName)
-  formData.append('invoiceNo', invoiceForm.invoiceNo)
-  if (invoiceForm.amount) formData.append('amount', String(invoiceForm.amount))
-  if (invoiceForm.taxAmount) formData.append('taxAmount', String(invoiceForm.taxAmount))
-
-  try {
-    await uploadBusinessInvoice(currentInvoiceFormId.value, formData)
-    message.success('发票上传成功')
-    invoiceModalVisible.value = false
-  } catch (error) {
-    message.error('发票上传失败')
-  }
 }
 
 // 提交创建水单
@@ -1870,12 +1750,25 @@ const getBusinessTypeText = (type: string) => {
   const map: Record<string, string> = {
     'DECLARATION_RETURN': '退回草稿',
     'DECLARATION_AUDIT': '申报审核',
-    'REMittance_AUDIT': '水单审核',
-    'DELIVERY_ORDER_AUDIT': '提货单审核',
     'DECLARATION_SUBMIT': '申报提交',
+    'DECLARATION_MATERIAL_AUDIT': '资料审核',
+    'DECLARATION_INVOICE_AUDIT': '业务发票审核',
     'REMITTANCE_AUDIT': '水单审核',
+    'DELIVERY_ORDER_AUDIT': '提货单审核',
   }
   return map[type] || type
+}
+
+// 业务类型对应的 Tag 颜色
+const getBusinessTypeColor = (type: string) => {
+  const map: Record<string, string> = {
+    'DECLARATION_RETURN': 'orange',
+    'DECLARATION_AUDIT': 'blue',
+    'DECLARATION_SUBMIT': 'cyan',
+    'DECLARATION_MATERIAL_AUDIT': 'purple',
+    'DECLARATION_INVOICE_AUDIT': 'magenta',
+  }
+  return map[type] || 'default'
 }
 
 const handleReturnApply = (record: DeclarationRecord) => {

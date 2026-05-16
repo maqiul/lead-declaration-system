@@ -29,14 +29,13 @@ public class RedisCacheConfig {
         // 使用 FastJson2 提供的泛型序列化器，缓存查回来时能够正确反序列化成 Java 对象
         GenericFastJsonRedisSerializer fastJsonRedisSerializer = new GenericFastJsonRedisSerializer();
         
-        // 配置键为 String，值为 FastJson2 序列化的 JSON 格式
+        // 配置键为 String,值为 FastJson2 序列化的 JSON 格式
         RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
                 // 默认缓存 24 个小时
                 .entryTtl(Duration.ofHours(24))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(fastJsonRedisSerializer))
-                // 禁止缓存 null 值
-                .disableCachingNullValues();
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(fastJsonRedisSerializer));
+                // 允许缓存 null 值 (新增数据前的存在性校验查询通常返回 null，禁止缓存 null 会导致抛错)
 
         return RedisCacheManager.builder(redisConnectionFactory)
                 .cacheDefaults(config)

@@ -13,8 +13,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -33,6 +32,7 @@ import java.util.List;
 public class ProductTypeConfigServiceImpl extends ServiceImpl<ProductTypeConfigDao, ProductTypeConfig> implements ProductTypeConfigService {
 
     private final ObjectMapper objectMapper;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     @Override
     public IPage<ProductTypeConfig> getPage(Integer pageNum, Integer pageSize, String keyword) {
@@ -60,28 +60,80 @@ public class ProductTypeConfigServiceImpl extends ServiceImpl<ProductTypeConfigD
     }
 
     @Override
-    @Cacheable(value = "sys:dict:product-types")
     public List<ProductTypeConfig> getEnabledList() {
-        LambdaQueryWrapper<ProductTypeConfig> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ProductTypeConfig::getStatus, 1);
-        wrapper.orderByAsc(ProductTypeConfig::getSort);
-        
-        List<ProductTypeConfig> list = list(wrapper);
-        list.forEach(this::parseElements);
-        return list;
+        try {
+            // 尝试从缓存获取
+            List<ProductTypeConfig> cachedList = getCachedEnabledList();
+            if (cachedList != null) {
+                return cachedList;
+            }
+            
+            // 缓存未命中，从数据库查询
+            LambdaQueryWrapper<ProductTypeConfig> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(ProductTypeConfig::getStatus, 1);
+            wrapper.orderByAsc(ProductTypeConfig::getSort);
+            
+            List<ProductTypeConfig> list = list(wrapper);
+            list.forEach(this::parseElements);
+            
+            // 尝试缓存结果（失败不影响业务）
+            try {
+                cacheEnabledList(list);
+            } catch (Exception e) {
+                log.warn("缓存HS商品类型列表失败，但不影响业务: {}", e.getMessage());
+            }
+            
+            return list;
+        } catch (Exception e) {
+            log.error("获取HS商品类型列表失败", e);
+            // 如果Redis完全不可用，直接查询数据库
+            LambdaQueryWrapper<ProductTypeConfig> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(ProductTypeConfig::getStatus, 1);
+            wrapper.orderByAsc(ProductTypeConfig::getSort);
+            
+            List<ProductTypeConfig> list = list(wrapper);
+            list.forEach(this::parseElements);
+            return list;
+        }
     }
 
     @Override
-    @Cacheable(value = "sys:dict:product-types:hscode", key = "#hsCode")
     public ProductTypeConfig getByHsCode(String hsCode) {
-        LambdaQueryWrapper<ProductTypeConfig> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ProductTypeConfig::getHsCode, hsCode);
-        
-        ProductTypeConfig config = getOne(wrapper);
-        if (config != null) {
-            parseElements(config);
+        try {
+            // 尝试从缓存获取
+            ProductTypeConfig cachedConfig = getCachedByHsCode(hsCode);
+            if (cachedConfig != null) {
+                return cachedConfig;
+            }
+            
+            // 缓存未命中，从数据库查询
+            LambdaQueryWrapper<ProductTypeConfig> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(ProductTypeConfig::getHsCode, hsCode);
+            
+            ProductTypeConfig config = getOne(wrapper);
+            if (config != null) {
+                parseElements(config);
+                
+                // 尝试缓存结果（失败不影响业务）
+                try {
+                    cacheByHsCode(hsCode, config);
+                } catch (Exception e) {
+                    log.warn("缓存HS商品类型详情失败，但不影响业务: {}", e.getMessage());
+                }
+            }
+            return config;
+        } catch (Exception e) {
+            log.error("根据HS编码获取商品类型失败: hsCode={}", hsCode, e);
+            // 如果Redis完全不可用，直接查询数据库
+            LambdaQueryWrapper<ProductTypeConfig> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(ProductTypeConfig::getHsCode, hsCode);
+            
+            ProductTypeConfig config = getOne(wrapper);
+            if (config != null) {
+                parseElements(config);
+            }
+            return config;
         }
-        return config;
     }
 
     /**
@@ -102,20 +154,118 @@ public class ProductTypeConfigServiceImpl extends ServiceImpl<ProductTypeConfigD
     }
 
     @Override
-    @CacheEvict(value = "sys:dict:product-types", allEntries = true)
     public boolean save(ProductTypeConfig entity) {
-        return super.save(entity);
+        boolean result = super.save(entity);
+        if (result) {
+            // 清除缓存（失败不影响业务）
+            try {
+                clearProductTypesCache();
+            } catch (Exception e) {
+                log.warn("清除HS商品类型缓存失败，但不影响业务: {}", e.getMessage());
+            }
+        }
+        return result;
     }
 
     @Override
-    @CacheEvict(value = "sys:dict:product-types", allEntries = true)
     public boolean updateById(ProductTypeConfig entity) {
-        return super.updateById(entity);
+        boolean result = super.updateById(entity);
+        if (result) {
+            // 清除缓存（失败不影响业务）
+            try {
+                clearProductTypesCache();
+            } catch (Exception e) {
+                log.warn("清除HS商品类型缓存失败，但不影响业务: {}", e.getMessage());
+            }
+        }
+        return result;
     }
 
     @Override
-    @CacheEvict(value = "sys:dict:product-types", allEntries = true)
     public boolean removeById(Serializable id) {
-        return super.removeById(id);
+        boolean result = super.removeById(id);
+        if (result) {
+            // 清除缓存（失败不影响业务）
+            try {
+                clearProductTypesCache();
+            } catch (Exception e) {
+                log.warn("清除HS商品类型缓存失败，但不影响业务: {}", e.getMessage());
+            }
+        }
+        return result;
+    }
+    
+    /**
+     * 从缓存获取启用的商品类型列表
+     */
+    @SuppressWarnings("unchecked")
+    private List<ProductTypeConfig> getCachedEnabledList() {
+        try {
+            String cacheKey = "sys:dict:product-types";
+            Object cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached instanceof List) {
+                return (List<ProductTypeConfig>) cached;
+            }
+        } catch (Exception e) {
+            log.debug("从缓存获取HS商品类型列表失败: {}", e.getMessage());
+        }
+        return null;
+    }
+    
+    /**
+     * 缓存启用的商品类型列表
+     */
+    private void cacheEnabledList(List<ProductTypeConfig> list) {
+        try {
+            String cacheKey = "sys:dict:product-types";
+            redisTemplate.opsForValue().set(cacheKey, list, java.time.Duration.ofHours(24));
+        } catch (Exception e) {
+            log.warn("缓存HS商品类型列表失败: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * 从缓存根据HS编码获取商品类型
+     */
+    private ProductTypeConfig getCachedByHsCode(String hsCode) {
+        try {
+            String cacheKey = "sys:dict:product-types:hscode:" + hsCode;
+            Object cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached instanceof ProductTypeConfig) {
+                return (ProductTypeConfig) cached;
+            }
+        } catch (Exception e) {
+            log.debug("从缓存获取HS商品类型详情失败: {}", e.getMessage());
+        }
+        return null;
+    }
+    
+    /**
+     * 缓存HS编码对应的商品类型
+     */
+    private void cacheByHsCode(String hsCode, ProductTypeConfig config) {
+        try {
+            String cacheKey = "sys:dict:product-types:hscode:" + hsCode;
+            redisTemplate.opsForValue().set(cacheKey, config, java.time.Duration.ofHours(24));
+        } catch (Exception e) {
+            log.warn("缓存HS商品类型详情失败: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * 清除商品类型相关缓存
+     */
+    private void clearProductTypesCache() {
+        try {
+            // 清除列表缓存
+            String listCacheKey = "sys:dict:product-types";
+            redisTemplate.delete(listCacheKey);
+            
+            // 注意：由于Redis不支持通配符删除的高效方式，这里不删除所有hscode缓存
+            // 让它们自然过期（24小时）
+            log.debug("已清除HS商品类型列表缓存");
+        } catch (Exception e) {
+            log.warn("清除HS商品类型缓存失败: {}", e.getMessage());
+        }
     }
 }
