@@ -773,8 +773,29 @@
                     <span v-if="field.required" class="required-star">*</span>
                     {{ field.label }}
                   </label>
+                  <div
+                    v-if="field.type === 'number' && field.key === 'amount' && isInvoiceMaterial(record as MaterialItem)"
+                    class="schema-input-wrap"
+                  >
+                    <a-input-number
+                      :value="getMaterialFieldValue(record as MaterialItem, field.key)"
+                      @update:value="(v: any) => setMaterialFieldValue(record as MaterialItem, field.key, v)"
+                      @blur="saveMaterialRowFields(record as MaterialItem)"
+                      :disabled="!isMaterialEditable"
+                      size="small"
+                      class="schema-input"
+                      :precision="4"
+                    />
+                    <div
+                      v-if="materialPdfMessages[materialRowKey(record as MaterialItem)]"
+                      class="pdf-amount-hint"
+                      :class="'pdf-amount-hint-' + materialPdfMessages[materialRowKey(record as MaterialItem)].type"
+                    >
+                      {{ materialPdfMessages[materialRowKey(record as MaterialItem)].text }}
+                    </div>
+                  </div>
                   <a-input-number
-                    v-if="field.type === 'number'"
+                    v-else-if="field.type === 'number'"
                     :value="getMaterialFieldValue(record as MaterialItem, field.key)"
                     @update:value="(v: any) => setMaterialFieldValue(record as MaterialItem, field.key, v)"
                     @blur="saveMaterialRowFields(record as MaterialItem)"
@@ -1420,6 +1441,7 @@ import {
   submitInvoice,
   auditMaterial,
   auditInvoice,
+  parseInvoicePdf,
   type MaterialItem
 } from '@/api/business/materialItem'
 import { getProductTypes } from '@/api/system/product'
@@ -1961,6 +1983,101 @@ const materialRowForm = reactive<Partial<MaterialItem>>({
 
 const materialRowKey = (record: MaterialItem) => (record.id ?? `tpl-${record.templateId}`) as any
 
+// ---------- 发票 PDF 金额解析状态 ----------
+// 资料项 key -> 从 PDF 中解析出的金额（用于与手填金额对比）
+const materialParsedAmounts = reactive<Record<string, number | null>>({})
+// 资料项 key -> 解析提示信息（用于展示失败原因 / 跳过解析的原因）
+const materialPdfMessages = reactive<Record<string, { type: 'success' | 'warn' | 'info'; text: string }>>({})
+// 已解析过的文件指纹缓存，避免同一文件重复上传解析
+const parsedFileSignatures = new Map<string, { amount: number | null; message: { type: 'success' | 'warn' | 'info'; text: string } | null }>()
+
+/** 资料项是否为发票类（货代 / 报关代理） */
+const isInvoiceMaterial = (item: MaterialItem): boolean =>
+  item.code === 'FREIGHT_INVOICE' || item.code === 'CUSTOMS_AGENT_INVOICE'
+
+/** 生成文件指纹，用于去重解析 */
+const buildFileSignature = (file: File): string => `${file.name}|${file.size}|${file.lastModified}`
+
+/**
+ * 尝试解析发票 PDF 的金额，并将结果缓存到 materialParsedAmounts / materialPdfMessages。
+ * 非 PDF / 非发票类资料项，直接跳过。
+ * 若用户尚未填写金额，则自动将 PDF 识别金额回填并持久化到服务端。
+ */
+const tryParseInvoicePdf = async (file: File, record: MaterialItem) => {
+  const key = materialRowKey(record)
+  // 非发票类资料项，不解析
+  if (!isInvoiceMaterial(record)) return
+  // 非 PDF：提示 + 跳过
+  if (file.type !== 'application/pdf') {
+    materialPdfMessages[key] = { type: 'info', text: '图片类发票暂不支持自动识别金额，请手动核对' }
+    delete materialParsedAmounts[key]
+    return
+  }
+  const signature = buildFileSignature(file)
+  let parsedAmt: number | null = null
+  let parsedMsg: { type: 'success' | 'warn' | 'info'; text: string } | null = null
+
+  const cached = parsedFileSignatures.get(signature)
+  if (cached) {
+    parsedAmt = cached.amount
+    parsedMsg = cached.message
+  } else {
+    try {
+      const res: any = await parseInvoicePdf(file)
+      const data = res?.data?.data
+      if (data?.success && data.amount != null) {
+        parsedAmt = Number(data.amount)
+        parsedMsg = { type: 'success', text: `PDF 识别金额：¥${parsedAmt.toFixed(2)}` }
+      } else {
+        const errText = data?.errorMsg || 'PDF 金额识别失败，请确保手动填写金额正确'
+        parsedMsg = { type: 'warn', text: errText }
+      }
+    } catch (e) {
+      parsedMsg = { type: 'warn', text: 'PDF 解析请求失败，请手动核对金额' }
+    }
+    parsedFileSignatures.set(signature, { amount: parsedAmt, message: parsedMsg })
+  }
+
+  // 写入响应式状态
+  if (parsedAmt != null) {
+    materialParsedAmounts[key] = parsedAmt
+    delete materialPdfMessages[key]
+  } else {
+    delete materialParsedAmounts[key]
+  }
+  if (parsedMsg) materialPdfMessages[key] = parsedMsg
+
+  // ---------- 自动回填 / 实时对比 ----------
+  if (parsedAmt == null || parsedAmt <= 0) return
+  // 重新获取最新资料项列表中的记录（loadMaterialItems 后会替换数组）
+  const currentRecord = materialItems.value.find((i) => materialRowKey(i) === key)
+  if (!currentRecord) return
+  const currentAmt = Number(currentRecord.amount ?? 0)
+
+  if (currentAmt <= 0) {
+    // 用户尚未填写金额（null / 0 / 0.0000 都归到未填写）→ 自动回填并持久化
+    currentRecord.amount = parsedAmt
+    try {
+      await saveMaterialRowFields(currentRecord)
+      message.success(`已自动填入 PDF 识别金额 ¥${parsedAmt.toFixed(2)}`)
+    } catch (e) {
+      // 保存失败时仅保留解析提示，不阻断上传主流程
+    }
+  } else if (Math.abs(currentAmt - parsedAmt) > 0.009) {
+    // 用户已填且与 PDF 不一致 → 橙色对比提示（提交时还会再确认）
+    materialPdfMessages[key] = {
+      type: 'warn',
+      text: `PDF 识别 ¥${parsedAmt.toFixed(2)}，与填写 ¥${currentAmt.toFixed(2)} 不一致`
+    }
+  } else {
+    // 一致 → 绿色提示
+    materialPdfMessages[key] = {
+      type: 'success',
+      text: `PDF 识别 ¥${parsedAmt.toFixed(2)}，与填写一致`
+    }
+  }
+}
+
 const materialColumns = [
   { title: '资料项', key: 'name', dataIndex: 'name' },
   { title: '附件', key: 'file', dataIndex: 'fileName', width: 260 },
@@ -2091,6 +2208,10 @@ const beforeMaterialUpload = async (file: File, record: MaterialItem) => {
       if (res.data.data?.id) record.id = res.data.data.id
       message.success('上传成功')
       await loadMaterialItems()
+      // 发票类资料项：触发 PDF 金额解析（非阻塞，后台异步执行）
+      if (isInvoiceMaterial(record)) {
+        tryParseInvoicePdf(file, record).catch(() => { /* 静默处理，已在 tryParseInvoicePdf 内部展示提示 */ })
+      }
     } else {
       message.error(res.data?.message || '上传失败')
     }
@@ -2263,26 +2384,65 @@ const handleSubmitMaterial = async () => {
     message.warning(schemaMissing)
     return
   }
+
+  // 检查发票类资料项的金额差异（PDF 识别金额 vs 手填金额）
+  const diffs: Array<{ name: string; inputAmount: number; pdfAmount: number }> = []
+  for (const item of materialItems.value) {
+    if (!isInvoiceMaterial(item)) continue
+    const key = materialRowKey(item)
+    const pdfAmt = materialParsedAmounts[key]
+    if (pdfAmt == null) continue
+    const inputAmt = Number(item.amount ?? 0)
+    if (inputAmt <= 0) continue
+    if (Math.abs(inputAmt - pdfAmt) > 0.009) {
+      diffs.push({ name: item.name, inputAmount: inputAmt, pdfAmount: pdfAmt })
+    }
+  }
+
+  const doSubmit = async () => {
+    try {
+      submitting.value = true
+      const res = await submitMaterial(formId.value!)
+      if (res.data?.code === 200) {
+        message.success('资料提交成功，等待审核')
+        goBack()
+      } else {
+        message.error(res.data?.message || '提交失败')
+      }
+    } catch (e) {
+      message.error('提交失败')
+    } finally {
+      submitting.value = false
+    }
+  }
+
+  const confirmText = '提交后将进入资料审核流程，无法修改。'
+  if (diffs.length > 0) {
+    const diffList = diffs
+      .map((d) => `· 资料「${d.name}」：填写 ¥${d.inputAmount.toFixed(2)}，PDF 识别 ¥${d.pdfAmount.toFixed(2)}`)
+      .join('\n')
+    Modal.confirm({
+      title: '发票金额不一致，是否继续提交？',
+      content: () =>
+        h('div', { style: 'white-space: pre-wrap; line-height: 1.7; margin-top: 8px;' }, [
+          h('div', { style: 'color: #d46b08; font-weight: 500; margin-bottom: 4px;' },
+            '以下发票的填写金额与 PDF 识别金额存在差异：'),
+          h('div', { style: 'padding: 8px; background: #fff7e6; border-radius: 4px;' }, diffList),
+          h('div', { style: 'color: #888; font-size: 12px; margin-top: 8px;' },
+            `点击“确认提交”将按当前填写金额提交。\n${confirmText}`)
+        ]),
+      okText: '确认提交',
+      cancelText: '返回修改',
+      onOk: doSubmit
+    })
+    return
+  }
+
   Modal.confirm({
     title: '确认提交资料审核？',
-    content: '提交后将进入资料审核流程，无法修改。',
+    content: confirmText,
     okText: '确认提交',
-    onOk: async () => {
-      try {
-        submitting.value = true
-        const res = await submitMaterial(formId.value!)
-        if (res.data?.code === 200) {
-          message.success('资料提交成功，等待审核')
-          goBack()
-        } else {
-          message.error(res.data?.message || '提交失败')
-        }
-      } catch (e) {
-        message.error('提交失败')
-      } finally {
-        submitting.value = false
-      }
-    }
+    onOk: doSubmit
   })
 }
 
@@ -4409,5 +4569,38 @@ onMounted(() => {
 .schema-input {
   min-width: 160px;
   flex: 1;
+}
+/* 发票 PDF 解析提示包裹（纵向布局：输入框 + 提示） */
+.schema-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 180px;
+}
+.schema-input-wrap .schema-input {
+  width: 100%;
+}
+.pdf-amount-hint {
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border-left: 3px solid #d9d9d9;
+}
+.pdf-amount-hint-success {
+  color: #389e0d;
+  background: #f6ffed;
+  border-left-color: #52c41a;
+}
+.pdf-amount-hint-warn {
+  color: #d46b08;
+  background: #fff7e6;
+  border-left-color: #fa8c16;
+}
+.pdf-amount-hint-info {
+  color: #0958d9;
+  background: #e6f4ff;
+  border-left-color: #1677ff;
 }
 </style>

@@ -92,7 +92,8 @@ public class DeclarationServiceTask implements JavaDelegate {
             
             // Generate using alltemple_template.xlsx
             // 注意：generateAndSaveAllTempleExportDocuments 内部已经处理了保存逻辑
-            excelExportService.generateAndSaveAllTempleExportDocuments(form);
+            // 审批自动生成的全套单据默认不合并同款商品，保持申报单原始明细
+            excelExportService.generateAndSaveAllTempleExportDocuments(form, false);
             
             log.info("申报单 {} 海关单生成完成", form.getFormNo());
         } catch (Exception e) {

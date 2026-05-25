@@ -473,7 +473,10 @@ public class DeclarationFormController {
     @PostMapping("/{id}/regenerate-all-documents")
     @Operation(summary = "重新生成全套单据")
     @RequiresPermissions("business:declaration:audit")
-    public Result<String> regenerateAllDocuments(@Parameter(description = "申报单ID") @PathVariable Long id) {
+    public Result<String> regenerateAllDocuments(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @Parameter(description = "是否合并同款商品（按中文名称+英文名称+HS编码+单价分组聚合）")
+            @RequestParam(name = "mergeProducts", defaultValue = "false") Boolean mergeProducts) {
         try {
             DeclarationForm form = declarationFormService.getFullDeclarationForm(id);
             if (form == null) {
@@ -482,8 +485,8 @@ public class DeclarationFormController {
 
             // 生成全套单证（包含 standard 和 alltemple 两种模板）
             // excelExportService.generateAndSaveExportDocuments(form);
-            excelExportService.generateAndSaveAllTempleExportDocuments(form);
-            log.info("申报单 {} 全套单证重新生成成功", form.getFormNo());
+            excelExportService.generateAndSaveAllTempleExportDocuments(form, Boolean.TRUE.equals(mergeProducts));
+            log.info("申报单 {} 全套单证重新生成成功，合并同款商品={}", form.getFormNo(), mergeProducts);
 
             return Result.success("全套单证重新生成成功");
         } catch (Exception e) {

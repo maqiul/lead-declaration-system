@@ -27,8 +27,11 @@ public interface ExcelExportService {
 
     /**
      * 为申报单生成全套单证(基于alltemple_template.xlsx)并保存
+     *
+     * @param form           完整的申报单信息
+     * @param mergeProducts  是否合并同款商品（按 中文名称+英文名称+HS编码+单价 分组聚合）
      */
-    DeclarationAttachment generateAndSaveAllTempleExportDocuments(DeclarationForm form) throws java.io.IOException;
+    DeclarationAttachment generateAndSaveAllTempleExportDocuments(DeclarationForm form, boolean mergeProducts) throws java.io.IOException;
 
     /**
      * 获取发票模板路径（供 Controller 层调用）

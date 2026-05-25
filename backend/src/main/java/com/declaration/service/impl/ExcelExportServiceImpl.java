@@ -747,7 +747,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     }
 
     @Override
-    public DeclarationAttachment generateAndSaveAllTempleExportDocuments(DeclarationForm form) throws IOException {
+    public DeclarationAttachment generateAndSaveAllTempleExportDocuments(DeclarationForm form, boolean mergeProducts) throws IOException {
         String templatePath = getAllTempleTemplatePath();
         if (templatePath == null) {
             throw new RuntimeException("模板文件不存在: alltemple_template.xlsx");
@@ -770,7 +770,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
         Map<String, Object> fillData = prepareAllTempleFillData(form);
         Map<String, Object> otherData = prepareFillData(form);
-        List<CustomsItemDTO> productListData = createAllTempleProductListData(form);
+        List<CustomsItemDTO> productListData = createAllTempleProductListData(form, mergeProducts);
         List<ExportDataRequest.ProductInfo> productList = createProductListData(form);
 
         List<List<Object>> elementListData = createSingleRowProductListData(form);
@@ -1188,7 +1188,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         return data;
     }
 
-    private List<CustomsItemDTO> createAllTempleProductListData(DeclarationForm form) {
+    private List<CustomsItemDTO> createAllTempleProductListData(DeclarationForm form, boolean mergeProducts) {
         List<CustomsItemDTO> list = new ArrayList<>();
         if (form.getProducts() != null) {
             // 建立产品ID到箱子ID列表的映射（一个产品可能对应多个箱子）
@@ -1217,69 +1217,113 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                 return cartonA.compareTo(cartonB);
             });
 
-            int no = 1;
+            // 目的国（所有产品一样，提前计算）
+            CountryInfo destCountryInfo = countryInfoService
+                    .getCountryInfoByEnglishName(form.getDestinationCountry());
+            String destinationCountry = destCountryInfo != null
+                    ? destCountryInfo.getChineseName() + " (" + destCountryInfo.getCountryCode() + ")"
+                    : form.getDestinationCountry();
+
+            // 分组：按 中文名称+英文名称+HS编码+单价+规格型号 分组（仅当 mergeProducts=true 时才合并）
+            LinkedHashMap<String, ProductGroup> groupMap = new LinkedHashMap<>();
             for (com.declaration.entity.DeclarationProduct p : sortedProducts) {
-                String unit ="个";
-                String unitCode = p.getUnitCode();
+                List<Long> cartonIds = productToCartonsMap.get(p.getId());
+                // 跳过无箱子关联的产品（保持原逻辑）
+                if (cartonIds == null || cartonIds.isEmpty()) continue;
+                com.declaration.entity.DeclarationCarton firstCarton = cartonMap.get(cartonIds.get(0));
+                if (firstCarton == null) continue;
+
+                String specStr = buildElementSpecString(p);
+                String groupKey = mergeProducts
+                        ? (Objects.toString(p.getHsCode(), "") + "|" +
+                           Objects.toString(p.getProductChineseName(), "") + "|" +
+                           Objects.toString(p.getProductEnglishName(), "") + "|" +
+                           (p.getUnitPrice() != null ? p.getUnitPrice().toPlainString() : "") + "|" +
+                           specStr)
+                        : ("__single_" + p.getId());
+
+                ProductGroup group = groupMap.computeIfAbsent(groupKey, k -> new ProductGroup());
+                if (group.representative == null) {
+                    group.representative = p;
+                    group.specAndModel = specStr;
+                }
+                group.products.add(p);
+                group.totalQuantity += (p.getQuantity() != null ? p.getQuantity() : 0);
+                group.totalAmount = addBd(group.totalAmount, p.getAmount());
+                group.totalGrossWeight = addBd(group.totalGrossWeight, p.getGrossWeight());
+                group.totalNetWeight = addBd(group.totalNetWeight, p.getNetWeight());
+                group.totalVolume = addBd(group.totalVolume, p.getVolume());
+                group.allCartonIds.addAll(cartonIds);
+            }
+
+            // 生成合并后的 CustomsItemDTO 列表
+            int no = 1;
+            for (ProductGroup group : groupMap.values()) {
+                com.declaration.entity.DeclarationProduct rep = group.representative;
+                String unit = "个";
+                String unitCode = rep.getUnitCode();
                 MeasurementUnit measurementUnit = measurementUnitService.getByUnitCode(unitCode);
-                if(measurementUnit!=null){
+                if (measurementUnit != null) {
                     unit = measurementUnit.getUnitName();
                 }
+
                 CustomsItemDTO customsItemDTO = new CustomsItemDTO();
                 customsItemDTO.setNo(no++);
-                customsItemDTO.setHsCode(p.getHsCode());
-                // customsItemDTO.set.put("productName", p.getProductEnglishName());
-                customsItemDTO.setNameCh(p.getProductChineseName());
-                customsItemDTO.setQuantityStr(p.getQuantity() + " " + unit);
-                customsItemDTO.setUnitPrice(p.getUnitPrice());
-                customsItemDTO.setTotalPrice(p.getAmount());
+                customsItemDTO.setHsCode(rep.getHsCode());
+                customsItemDTO.setNameCh(rep.getProductChineseName());
+                customsItemDTO.setQuantityStr(group.totalQuantity + " " + unit);
+                customsItemDTO.setUnitPrice(rep.getUnitPrice());
+                customsItemDTO.setTotalPrice(group.totalAmount);
                 customsItemDTO.setCurrency(form.getCurrency());
                 customsItemDTO.setOriginCountry("中国(CHN)");
-
-                CountryInfo destCountryInfo = countryInfoService
-                        .getCountryInfoByEnglishName(form.getDestinationCountry());
-                String destinationCountry = destCountryInfo != null
-                        ? destCountryInfo.getChineseName() + " (" + destCountryInfo.getCountryCode() + ")"
-                        : form.getDestinationCountry();
                 customsItemDTO.setDestinationCountry(destinationCountry);
                 customsItemDTO.setSourceRegion("宁波其他（33029）");
                 customsItemDTO.setExemptionType("照章征税（1）");
-
-                // 统计数量 (对应模板中的 {.statQuantity})
-                customsItemDTO.setStatQuantity(p.getQuantity() + " ("+unit+")");
-                // list.add(row1);
-                // 箱号处理（取第一个箱子）
-                List<Long> cartonIds = productToCartonsMap.get(p.getId());
-                if (cartonIds != null && !cartonIds.isEmpty()) {
-                    Long cartonId = cartonIds.get(0);
-                    com.declaration.entity.DeclarationCarton carton = cartonMap.get(cartonId);
-                    if (carton != null) {
-                        // list.add(row1);
-
-                        // --- Row 2: 统计数量 & 规格型号行 (与统计数量在同一行水平对齐) ---
-                        // Map<String, Object> row2 = new HashMap<>();
-                        // row1.put("statQuantity", p.getQuantity() + " (个)");
-
-                        // 规格型号解析：拼接所有申报要素
-                        StringBuilder specAndModel = new StringBuilder();
-                        if (p.getElementValues() != null) {
-                            for (com.declaration.entity.DeclarationElementValue ev : p.getElementValues()) {
-                                String eName = ev.getElementName() != null ? ev.getElementName() : "";
-                                String eValue = ev.getElementValue() != null ? ev.getElementValue() : "";
-                                specAndModel.append(eName).append(":").append(eValue).append(";");
-                            }
-                        }
-                        customsItemDTO.setSpecAndModel(specAndModel.toString());
-                        list.add(customsItemDTO);
-
-                        // // --- Row 3: 空行，维持三行步进步长 ---
-                        // Map<String, Object> row3 = new HashMap<>();
-                        // list.add(row3);
-                    }
-                }
+                customsItemDTO.setStatQuantity(group.totalQuantity + " (" + unit + ")");
+                customsItemDTO.setSpecAndModel(group.specAndModel != null ? group.specAndModel : "");
+                list.add(customsItemDTO);
             }
         }
         return list;
+    }
+
+    /**
+     * 拼接单个产品的申报要素为规格型号字符串（保持与原拼接顺序一致）
+     */
+    private String buildElementSpecString(com.declaration.entity.DeclarationProduct p) {
+        StringBuilder sb = new StringBuilder();
+        if (p.getElementValues() != null) {
+            for (com.declaration.entity.DeclarationElementValue ev : p.getElementValues()) {
+                String eName = ev.getElementName() != null ? ev.getElementName() : "";
+                String eValue = ev.getElementValue() != null ? ev.getElementValue() : "";
+                sb.append(eName).append(":").append(eValue).append(";");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * BigDecimal 安全求和（任一为 null 时视为 0）
+     */
+    private BigDecimal addBd(BigDecimal a, BigDecimal b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a.add(b);
+    }
+
+    /**
+     * 用于合并同款商品的临时分组结构
+     */
+    private static class ProductGroup {
+        com.declaration.entity.DeclarationProduct representative;
+        List<com.declaration.entity.DeclarationProduct> products = new ArrayList<>();
+        int totalQuantity = 0;
+        BigDecimal totalAmount;
+        BigDecimal totalGrossWeight;
+        BigDecimal totalNetWeight;
+        BigDecimal totalVolume;
+        List<Long> allCartonIds = new ArrayList<>();
+        String specAndModel;
     }
 
     /**

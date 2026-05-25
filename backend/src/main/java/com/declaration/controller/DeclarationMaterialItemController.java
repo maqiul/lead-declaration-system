@@ -7,6 +7,7 @@ import com.declaration.entity.DeclarationAttachment;
 import com.declaration.entity.DeclarationMaterialItem;
 import com.declaration.service.DeclarationAttachmentService;
 import com.declaration.service.DeclarationMaterialItemService;
+import com.declaration.service.PdfInvoiceAmountParser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class DeclarationMaterialItemController {
 
     private final DeclarationMaterialItemService itemService;
     private final DeclarationAttachmentService attachmentService;
+    private final PdfInvoiceAmountParser pdfInvoiceAmountParser;
 
     /** 获取某申报单的资料项视图（懒创建：未操作过的资料项以虚拟项 id=null 返回，不落库） */
     @GetMapping
@@ -248,6 +250,33 @@ public class DeclarationMaterialItemController {
         } catch (Exception e) {
             log.warn("发票审核失败 formId={} : {}", formId, e.getMessage());
             return Result.fail(e.getMessage());
+        }
+    }
+
+    /**
+     * 解析发票 PDF 中的金额（仅解析返回，不保存任何数据）。
+     * 前端在用户上传货代/报关代理发票 PDF 时调用，用于与手填金额进行比对校验。
+     */
+    @PostMapping("/parse-invoice-pdf")
+    @Operation(summary = "解析发票 PDF 中的金额")
+    @RequiresPermissions("business:declaration:update")
+    public Result<PdfInvoiceAmountParser.PdfParseResult> parseInvoicePdf(
+            @RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            PdfInvoiceAmountParser.PdfParseResult r = new PdfInvoiceAmountParser.PdfParseResult();
+            r.setSuccess(false);
+            r.setErrorMsg("未上传文件");
+            return Result.success(r);
+        }
+        try (var input = file.getInputStream()) {
+            PdfInvoiceAmountParser.PdfParseResult r = pdfInvoiceAmountParser.parseAmount(input);
+            return Result.success(r);
+        } catch (Exception e) {
+            log.warn("读取发票 PDF 失败: {}", e.getMessage());
+            PdfInvoiceAmountParser.PdfParseResult r = new PdfInvoiceAmountParser.PdfParseResult();
+            r.setSuccess(false);
+            r.setErrorMsg("读取 PDF 文件失败");
+            return Result.success(r);
         }
     }
 }

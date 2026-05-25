@@ -1520,32 +1520,92 @@ const handleRegenerateSimple = async (attachment: any) => {
     return
   }
   
-  // 根据文件类型调用不同接口
+  // 全套单据：让用户选择是否合并同款商品
+  if (fileType === 'AllDocuments') {
+    askMergeProductsChoice(declaration)
+    return
+  }
+
+  await doRegenerateByFileType(declaration, fileType)
+}
+
+// 弹出对话框询问用户是否合并同款商品
+const askMergeProductsChoice = (declaration: any) => {
+  const h = (window as any).Vue?.h || ((window as any).h) || null
+  // 若无法获取 h，回退到简单的 confirm
+  if (!h) {
+    Modal.confirm({
+      title: '重新生成全套单据',
+      content: '是否合并同款商品？（中文名称+英文名称+HS编码+单价 相同的产品将合并为一行）',
+      okText: '合并',
+      cancelText: '不合并',
+      onOk: () => doRegenerate(declaration, true),
+      onCancel: () => doRegenerate(declaration, false)
+    })
+    return
+  }
+
+  const modalRef = Modal.info({
+    title: '重新生成全套单据',
+    content: h('div', { style: 'margin-top: 12px; line-height: 1.8' }, [
+      h('p', {}, '请选择海关申报单中的商品处理方式：'),
+      h('p', { style: 'color: #666; font-size: 13px' },
+        '合并同款 = 中文名称+英文名称+HS编码+单价 完全相同的产品合并为一行（数量、金额累加）'),
+      h('div', { style: 'display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end' }, [
+        h('button', {
+          class: 'ant-btn',
+          onClick: () => { modalRef.destroy(); /* 取消，什么也不做 */ }
+        }, '取消'),
+        h('button', {
+          class: 'ant-btn',
+          onClick: () => { modalRef.destroy(); doRegenerate(declaration, false) }
+        }, '不合并'),
+        h('button', {
+          class: 'ant-btn ant-btn-primary',
+          onClick: () => { modalRef.destroy(); doRegenerate(declaration, true) }
+        }, '合并同款商品')
+      ])
+    ]),
+    okButtonProps: { style: { display: 'none' } } as any,
+    maskClosable: true
+  })
+}
+
+// 按文件类型执行重新生成（无对话框）
+const doRegenerateByFileType = async (declaration: any, fileType: string) => {
   try {
     let response
     switch (fileType) {
       case 'FullDocuments':
         response = await regenerateDocuments(declaration.id)
         break
-      case 'AllDocuments':
-        response = await regenerateAllDocuments(declaration.id)
-        break
       case 'Remittance_Deposit':
-        // 定金水单 - type=1
         response = await regenerateRemittanceReport(declaration.id, 1)
         break
       case 'Remittance_Balance':
-        // 尾款水单 - type=2
         response = await regenerateRemittanceReport(declaration.id, 2)
         break
       default:
         message.warning('不支持的文件类型')
         return
     }
-    
     if (response.data && response.data.code === 200) {
       message.success(`重新生成成功`)
-      // 重新加载附件列表
+      await loadAttachmentsForDeclaration(declaration)
+    } else {
+      message.error(`重新生成失败: ${response.data?.message || '未知错误'}`)
+    }
+  } catch (error: any) {
+    message.error(`重新生成失败: ${error.message || '网络错误'}`)
+  }
+}
+
+// 执行全套单据重新生成
+const doRegenerate = async (declaration: any, mergeProducts: boolean) => {
+  try {
+    const response = await regenerateAllDocuments(declaration.id, mergeProducts)
+    if (response.data && response.data.code === 200) {
+      message.success(`重新生成成功${mergeProducts ? '（同款商品已合并）' : ''}`)
       await loadAttachmentsForDeclaration(declaration)
     } else {
       message.error(`重新生成失败: ${response.data?.message || '未知错误'}`)
