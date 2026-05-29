@@ -1,6 +1,36 @@
 import request from '@/utils/request'
 
 /**
+ * 资料项附件（多文件）
+ */
+export interface MaterialAttachment {
+  id: number | string
+  itemId: number | string
+  fileName: string
+  fileUrl: string
+  fileSize?: number | null
+  /** 发票金额（仅发票类资料项） */
+  amount?: number | null
+  /** 币种 */
+  currency?: string | null
+  /** 发票号 */
+  invoiceNo?: string | null
+  /** 开票日期 */
+  invoiceDate?: string | null
+  /** 扩展字段 JSON */
+  extraData?: string | null
+  uploadBy?: number | string | null
+  uploadTime?: string | null
+  /** 上传人显示名 */
+  uploadByName?: string | null
+  /** 创建人显示名 */
+  createByName?: string | null
+  /** 更新人显示名 */
+  updateByName?: string | null
+  createTime?: string
+}
+
+/**
  * 申报资料项实例
  */
 export interface MaterialItem {
@@ -13,6 +43,8 @@ export interface MaterialItem {
   sort: number
   remark?: string
   formSchema?: string | null
+  /** 所属环节：MATERIAL_SUBMIT / INVOICE / FINANCE_SUPPLEMENT（从模板同步） */
+  stage?: string
   fileName?: string
   fileUrl?: string
   uploadBy?: number | string
@@ -29,6 +61,8 @@ export interface MaterialItem {
   updateByName?: string
   createTime?: string
   updateTime?: string
+  /** 附件列表（后端 viewByFormId 批量加载） */
+  attachments?: MaterialAttachment[]
 }
 
 /**
@@ -110,12 +144,67 @@ export function uploadMaterialFile(
 }
 
 /**
- * 清除附件（保留资料项）
+ * 解析发票 PDF 中的金额（仅返回解析结果，不写入任何资料项）
+ */
+export interface PdfParseResult {
+  amount?: number | null
+  success: boolean
+  errorMsg?: string | null
+  textSnippet?: string | null
+  /** 发票号码 */
+  invoiceNo?: string | null
+  /** 开票日期 yyyy-MM-dd */
+  invoiceDate?: string | null
+}
+export function parseInvoicePdf(file: File): Promise<any> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request({
+    url: '/v1/material/items/parse-invoice-pdf',
+    method: 'post',
+    data: formData,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+/**
+ * 清除附件（保留资料项，清空所有附件）
  */
 export function clearMaterialFile(id: number | string) {
   return request({
     url: `/v1/material/items/${id}/file`,
     method: 'delete'
+  })
+}
+
+/**
+ * 删除单个附件
+ */
+export function deleteMaterialAttachment(itemId: number | string, attachmentId: number | string) {
+  return request({
+    url: `/v1/material/items/${itemId}/file/${attachmentId}`,
+    method: 'delete'
+  })
+}
+
+/**
+ * 获取资料项附件列表
+ */
+export function getMaterialAttachments(itemId: number | string) {
+  return request({
+    url: `/v1/material/items/${itemId}/files`,
+    method: 'get'
+  })
+}
+
+/**
+ * 更新附件结构化字段（金额/发票号/开票日期等）
+ */
+export function updateMaterialAttachment(itemId: number | string, attachmentId: number | string, data: Partial<MaterialAttachment>) {
+  return request({
+    url: `/v1/material/items/${itemId}/file/${attachmentId}`,
+    method: 'put',
+    data
   })
 }
 
@@ -139,6 +228,63 @@ export function auditMaterial(data: { formId: number | string; result: 1 | 2; re
     url: '/v1/material/items/audit',
     method: 'post',
     data
+  })
+}
+
+/**
+ * 提交补充资料（完成 supplementSubmit 任务）
+ */
+export function submitSupplement(formId: number | string) {
+  return request({
+    url: '/v1/material/items/supplement/submit',
+    method: 'post',
+    params: { formId }
+  })
+}
+
+/**
+ * 补充资料审核（完成 supplementAudit 任务）
+ * @param data.result 1=通过 2=驳回
+ */
+export function auditSupplement(data: { formId: number | string; result: 1 | 2; remark?: string }) {
+  return request({
+    url: '/v1/material/items/supplement/audit',
+    method: 'post',
+    data
+  })
+}
+
+/**
+ * 提交申请开票金额（完成 invoiceAmountSubmit 任务）
+ */
+export function submitInvoiceAmount(formId: number | string) {
+  return request({
+    url: '/v1/material/items/invoice-amount/submit',
+    method: 'post',
+    params: { formId }
+  })
+}
+
+/**
+ * 开票金额审核（完成 invoiceAmountAudit 任务）
+ * @param data.result 1=通过 2=驳回
+ */
+export function auditInvoiceAmount(data: { formId: number | string; result: 1 | 2; remark?: string }) {
+  return request({
+    url: '/v1/material/items/invoice-amount/audit',
+    method: 'post',
+    data
+  })
+}
+
+/**
+ * 获取开票金额计算详情
+ */
+export function getInvoiceAmountDetail(formId: number | string) {
+  return request({
+    url: '/v1/material/items/invoice-amount/calculate',
+    method: 'get',
+    params: { formId }
   })
 }
 

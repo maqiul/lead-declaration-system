@@ -379,7 +379,7 @@ const handleView = (record: ProcessInstance) => {
 const handleViewBusiness = (businessKey: string | undefined) => {
   if (businessKey) {
     router.push({
-      path: '/declaration/manage',
+      path: '/declaration/entry',
       query: { action: 'view', id: businessKey }
     })
   }

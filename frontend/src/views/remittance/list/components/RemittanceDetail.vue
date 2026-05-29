@@ -8,11 +8,6 @@
     <a-spin :spinning="loading">
       <a-descriptions v-if="remittance" bordered :column="2">
         <a-descriptions-item label="水单编号">{{ remittance.remittanceNo }}</a-descriptions-item>
-        <a-descriptions-item label="水单类型">
-          <a-tag :color="remittance.remittanceType === 1 ? 'blue' : 'green'">
-            {{ remittance.remittanceType === 1 ? '定金' : '尾款' }}
-          </a-tag>
-        </a-descriptions-item>
         <a-descriptions-item label="收汇名称">{{ remittance.remittanceName }}</a-descriptions-item>
         <a-descriptions-item label="收汇日期">{{ remittance.remittanceDate }}</a-descriptions-item>
         <a-descriptions-item label="收汇金额">

@@ -109,6 +109,11 @@ public class DeclarationForm {
     private BigDecimal totalAmount;
 
     /**
+     * 申请开票金额
+     */
+    private BigDecimal requestedInvoiceAmount;
+
+    /**
      * 总箱数
      */
     private Integer totalCartons;

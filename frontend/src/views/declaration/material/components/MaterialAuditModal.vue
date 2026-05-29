@@ -56,7 +56,15 @@
             <div v-if="record.remark" class="text-xs text-gray-400 mt-1">{{ record.remark }}</div>
           </template>
           <template v-else-if="column.key === 'file'">
-            <template v-if="record.status === 1 && record.fileUrl">
+            <template v-if="record.attachments && record.attachments.length > 0">
+              <div v-for="att in record.attachments" :key="att.id" class="flex items-center gap-1 py-0.5">
+                <a :href="att.fileUrl" target="_blank" class="text-blue-600">{{ att.fileName || '查看附件' }}</a>
+              </div>
+              <div v-if="record.attachments.length > 1" class="text-xs text-gray-400">
+                共 {{ record.attachments.length }} 份文件
+              </div>
+            </template>
+            <template v-else-if="record.status === 1 && record.fileUrl">
               <a :href="record.fileUrl" target="_blank">{{ record.fileName || '查看附件' }}</a>
             </template>
             <template v-else>

@@ -1,6 +1,31 @@
 import request from '@/utils/request'
 
 /**
+ * 资料模板所属环节枚举：
+ *  - MATERIAL_SUBMIT     资料上传
+ *  - SUPPLEMENT          补充资料
+ *  - INVOICE             业务发票
+ */
+export const MATERIAL_STAGES = [
+  { value: 'MATERIAL_SUBMIT', label: '资料上传', color: 'green' },
+  { value: 'SUPPLEMENT', label: '补充资料', color: 'orange' },
+  { value: 'INVOICE', label: '业务发票', color: 'blue' }
+] as const
+export type MaterialStage = typeof MATERIAL_STAGES[number]['value']
+
+export const MATERIAL_STAGE_LABEL: Record<MaterialStage, string> = {
+  MATERIAL_SUBMIT: '资料上传',
+  SUPPLEMENT: '补充资料',
+  INVOICE: '业务发票'
+}
+
+export const MATERIAL_STAGE_COLOR: Record<MaterialStage, string> = {
+  MATERIAL_SUBMIT: 'green',
+  SUPPLEMENT: 'orange',
+  INVOICE: 'blue'
+}
+
+/**
  * 申报资料项模板
  */
 export interface MaterialTemplate {
@@ -12,6 +37,7 @@ export interface MaterialTemplate {
   remark?: string
   formSchema?: string | null
   enabled: number
+  stage?: MaterialStage
   createTime?: string
   updateTime?: string
 }
@@ -36,8 +62,10 @@ export const INVOICE_SCHEMA_PRESET: MaterialSchemaField[] = [
 
 /**
  * 获取资料项模板列表
+ * @param params.enabled 启用状态筛选
+ * @param params.stage   环节筛选
  */
-export function getMaterialTemplateList(params?: { enabled?: number }) {
+export function getMaterialTemplateList(params?: { enabled?: number; stage?: MaterialStage | string }) {
   return request({
     url: '/v1/material/templates',
     method: 'get',

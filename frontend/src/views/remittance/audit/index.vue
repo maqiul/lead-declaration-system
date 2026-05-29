@@ -73,13 +73,6 @@
               </a-form-item>
             </a-col>
             <a-col :span="8">
-              <a-form-item label="水单类型">
-                <a-tag :color="currentRemittance.remittanceType === 1 ? 'blue' : 'green'">
-                  {{ currentRemittance.remittanceType === 1 ? '定金' : '尾款' }}
-                </a-tag>
-              </a-form-item>
-            </a-col>
-            <a-col :span="8">
               <a-form-item label="收汇名称">
                 <span>{{ currentRemittance.remittanceName }}</span>
               </a-form-item>
@@ -206,11 +199,6 @@
     >
       <a-descriptions v-if="currentRemittance" bordered :column="3">
         <a-descriptions-item label="水单编号">{{ currentRemittance.remittanceNo }}</a-descriptions-item>
-        <a-descriptions-item label="水单类型">
-          <a-tag :color="currentRemittance.remittanceType === 1 ? 'blue' : 'green'">
-            {{ currentRemittance.remittanceType === 1 ? '定金' : '尾款' }}
-          </a-tag>
-        </a-descriptions-item>
         <a-descriptions-item label="收汇名称">{{ currentRemittance.remittanceName }}</a-descriptions-item>
         <a-descriptions-item label="收汇日期">{{ currentRemittance.remittanceDate }}</a-descriptions-item>
         <a-descriptions-item label="收汇金额">{{ currentRemittance.remittanceAmount }} {{ currentRemittance.currency }}</a-descriptions-item>

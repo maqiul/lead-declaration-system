@@ -83,6 +83,34 @@ public class FinancialSupplement {
     @Schema(description = "开票明细URL")
     private String detailsFileUrl;
 
+    @Schema(description = "申报单金额(来自申报单)")
+    @TableField(exist = false)
+    private BigDecimal declarationAmount;
+
+    @Schema(description = "申报单币种(来自申报单)")
+    @TableField(exist = false)
+    private String declarationCurrency;
+
+    @Schema(description = "申报单状态(来自申报单)")
+    @TableField(exist = false)
+    private Integer declarationStatus;
+
+    @Schema(description = "发货人(来自申报单)")
+    @TableField(exist = false)
+    private String shipperCompany;
+
+    @Schema(description = "收货人(来自申报单)")
+    @TableField(exist = false)
+    private String consigneeCompany;
+
+    @Schema(description = "总箱数(来自申报单)")
+    @TableField(exist = false)
+    private Integer totalCartons;
+
+    @Schema(description = "申请开票金额(来自申报单)")
+    @TableField(exist = false)
+    private BigDecimal requestedInvoiceAmount;
+
     @Schema(description = "币种")
     private String currency;
 

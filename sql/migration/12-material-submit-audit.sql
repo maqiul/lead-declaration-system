@@ -16,6 +16,7 @@ CREATE TABLE `declaration_material_template` (
     `remark`      VARCHAR(500) DEFAULT NULL COMMENT '说明',
     `form_schema` TEXT         DEFAULT NULL COMMENT '结构化字段配置 JSON（如发票金额/发票号等）',
     `enabled`     TINYINT      NOT NULL DEFAULT 1 COMMENT '启用 0-停用 1-启用',
+    `stage`       VARCHAR(50)  DEFAULT NULL COMMENT '所属环节',
     `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
@@ -46,6 +47,9 @@ CREATE TABLE `declaration_material_item` (
     `status`       TINYINT       NOT NULL DEFAULT 0 COMMENT '状态 0-未上传 1-已上传',
     `create_time`  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time`  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `create_by`    BIGINT(20)    DEFAULT NULL COMMENT '创建人ID',
+    `update_by`    BIGINT(20)    DEFAULT NULL COMMENT '最后更新人ID',
+    `stage`        VARCHAR(50)   DEFAULT NULL COMMENT '所属环节',
     PRIMARY KEY (`id`),
     KEY `idx_form_id` (`form_id`),
     KEY `idx_template_id` (`template_id`)

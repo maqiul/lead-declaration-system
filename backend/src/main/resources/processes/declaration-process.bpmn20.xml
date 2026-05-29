@@ -62,7 +62,45 @@
     <!-- 资料审核结果网关 -->
     <exclusiveGateway id="gw2" name="资料审核结果" />
 
-    <!-- 6. 业务发票提交 (填报人) -->
+    <!-- 6. 补充资料提交 (填报人) -->
+    <userTask id="supplementSubmit" name="补充资料提交" flowable:assignee="${starterId}">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
+        <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
+      </extensionElements>
+    </userTask>
+
+    <!-- 7. 补充资料审核 -->
+    <userTask id="supplementAudit" name="补充资料审核" flowable:candidateGroups="SUPPLEMENT_AUDITOR">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
+        <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
+      </extensionElements>
+    </userTask>
+
+    <!-- 补充资料审核结果网关 -->
+    <exclusiveGateway id="gw4" name="补充资料审核结果" />
+
+    <!-- 8. 申请开票金额 (填报人) -->
+    <userTask id="invoiceAmountSubmit" name="申请开票金额" flowable:assignee="${starterId}">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
+        <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
+      </extensionElements>
+    </userTask>
+
+    <!-- 9. 开票金额审核 -->
+    <userTask id="invoiceAmountAudit" name="开票金额审核" flowable:candidateGroups="INVOICE_AMOUNT_AUDITOR">
+      <extensionElements>
+        <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
+        <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
+      </extensionElements>
+    </userTask>
+
+    <!-- 开票金额审核结果网关 -->
+    <exclusiveGateway id="gw5" name="开票金额审核结果" />
+
+    <!-- 10. 业务发票提交 (填报人) -->
     <userTask id="invoiceSubmit" name="业务发票提交" flowable:assignee="${starterId}">
       <extensionElements>
         <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
@@ -121,13 +159,45 @@
     <!-- 资料审核 → 资料审核结果网关 -->
     <sequenceFlow id="f8" sourceRef="materialAudit" targetRef="gw2" />
 
-    <!-- 资料审核通过 → 业务发票提交 -->
-    <sequenceFlow id="f9_pass" name="通过" sourceRef="gw2" targetRef="invoiceSubmit">
+    <!-- 资料审核通过 → 补充资料提交 -->
+    <sequenceFlow id="f9_pass" name="通过" sourceRef="gw2" targetRef="supplementSubmit">
       <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
     </sequenceFlow>
 
     <!-- 资料审核驳回 → 回到资料提交 -->
     <sequenceFlow id="f9_reject" name="驳回" sourceRef="gw2" targetRef="materialSubmit">
+      <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+
+    <!-- 补充资料提交 → 补充资料审核 -->
+    <sequenceFlow id="f13" sourceRef="supplementSubmit" targetRef="supplementAudit" />
+
+    <!-- 补充资料审核 → 补充资料审核结果网关 -->
+    <sequenceFlow id="f14" sourceRef="supplementAudit" targetRef="gw4" />
+
+    <!-- 补充资料审核通过 → 申请开票金额 -->
+    <sequenceFlow id="f15_pass" name="通过" sourceRef="gw4" targetRef="invoiceAmountSubmit">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    </sequenceFlow>
+
+    <!-- 补充资料审核驳回 → 回到补充资料提交 -->
+    <sequenceFlow id="f15_reject" name="驳回" sourceRef="gw4" targetRef="supplementSubmit">
+      <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+
+    <!-- 申请开票金额 → 开票金额审核 -->
+    <sequenceFlow id="f16" sourceRef="invoiceAmountSubmit" targetRef="invoiceAmountAudit" />
+
+    <!-- 开票金额审核 → 开票金额审核结果网关 -->
+    <sequenceFlow id="f17" sourceRef="invoiceAmountAudit" targetRef="gw5" />
+
+    <!-- 开票金额审核通过 → 业务发票提交 -->
+    <sequenceFlow id="f18_pass" name="通过" sourceRef="gw5" targetRef="invoiceSubmit">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    </sequenceFlow>
+
+    <!-- 开票金额审核驳回 → 回到申请开票金额 -->
+    <sequenceFlow id="f18_reject" name="驳回" sourceRef="gw5" targetRef="invoiceAmountSubmit">
       <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
     </sequenceFlow>
 
@@ -149,7 +219,7 @@
 
   </process>
 
-  <!-- BPMN 图形定义（简化布局） -->
+  <!-- BPMN 图形定义（完整布局） -->
   <bpmndi:BPMNDiagram id="BPMNDiagram_declarationProcess">
     <bpmndi:BPMNPlane id="BPMNPlane_declarationProcess" bpmnElement="declarationProcess">
       <bpmndi:BPMNShape id="BPMNShape_startEvent" bpmnElement="startEvent">
@@ -188,22 +258,47 @@
         <omgdc:Bounds x="880" y="215" width="40" height="40" />
       </bpmndi:BPMNShape>
 
+      <bpmndi:BPMNShape id="BPMNShape_supplementSubmit" bpmnElement="supplementSubmit">
+        <omgdc:Bounds x="950" y="200" width="110" height="70" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_supplementAudit" bpmnElement="supplementAudit">
+        <omgdc:Bounds x="1090" y="200" width="110" height="70" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_gw4" bpmnElement="gw4" isMarkerVisible="true">
+        <omgdc:Bounds x="1230" y="215" width="40" height="40" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_invoiceAmountSubmit" bpmnElement="invoiceAmountSubmit">
+        <omgdc:Bounds x="1300" y="200" width="110" height="70" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_invoiceAmountAudit" bpmnElement="invoiceAmountAudit">
+        <omgdc:Bounds x="1440" y="200" width="110" height="70" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="BPMNShape_gw5" bpmnElement="gw5" isMarkerVisible="true">
+        <omgdc:Bounds x="1580" y="215" width="40" height="40" />
+      </bpmndi:BPMNShape>
+
       <bpmndi:BPMNShape id="BPMNShape_invoiceSubmit" bpmnElement="invoiceSubmit">
-        <omgdc:Bounds x="940" y="200" width="110" height="70" />
+        <omgdc:Bounds x="1650" y="200" width="110" height="70" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="BPMNShape_invoiceAudit" bpmnElement="invoiceAudit">
-        <omgdc:Bounds x="1080" y="200" width="110" height="70" />
+        <omgdc:Bounds x="1790" y="200" width="110" height="70" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="BPMNShape_gw3" bpmnElement="gw3" isMarkerVisible="true">
-        <omgdc:Bounds x="1220" y="215" width="40" height="40" />
+        <omgdc:Bounds x="1930" y="215" width="40" height="40" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="BPMNShape_endEvent" bpmnElement="endEvent">
-        <omgdc:Bounds x="1290" y="220" width="30" height="30" />
+        <omgdc:Bounds x="2000" y="220" width="30" height="30" />
       </bpmndi:BPMNShape>
 
+      <!-- ===== 连线 ===== -->
       <bpmndi:BPMNEdge id="BPMNEdge_f1" bpmnElement="f1">
         <omgdi:waypoint x="80" y="235" />
         <omgdi:waypoint x="110" y="235" />
@@ -242,33 +337,83 @@
         <omgdi:waypoint x="850" y="235" />
         <omgdi:waypoint x="880" y="235" />
       </bpmndi:BPMNEdge>
+      <!-- 资料审核通过 → 补充资料提交 -->
       <bpmndi:BPMNEdge id="BPMNEdge_f9_pass" bpmnElement="f9_pass">
         <omgdi:waypoint x="920" y="235" />
-        <omgdi:waypoint x="940" y="235" />
+        <omgdi:waypoint x="950" y="235" />
       </bpmndi:BPMNEdge>
+      <!-- 资料审核驳回 → 回到资料提交 -->
       <bpmndi:BPMNEdge id="BPMNEdge_f9_reject" bpmnElement="f9_reject">
         <omgdi:waypoint x="900" y="215" />
         <omgdi:waypoint x="900" y="160" />
         <omgdi:waypoint x="655" y="160" />
         <omgdi:waypoint x="655" y="200" />
       </bpmndi:BPMNEdge>
+      <!-- 补充资料提交 → 补充资料审核 -->
+      <bpmndi:BPMNEdge id="BPMNEdge_f13" bpmnElement="f13">
+        <omgdi:waypoint x="1060" y="235" />
+        <omgdi:waypoint x="1090" y="235" />
+      </bpmndi:BPMNEdge>
+      <!-- 补充资料审核 → gw4 -->
+      <bpmndi:BPMNEdge id="BPMNEdge_f14" bpmnElement="f14">
+        <omgdi:waypoint x="1200" y="235" />
+        <omgdi:waypoint x="1230" y="235" />
+      </bpmndi:BPMNEdge>
+      <!-- 补充资料审核通过 → 申请开票金额 -->
+      <bpmndi:BPMNEdge id="BPMNEdge_f15_pass" bpmnElement="f15_pass">
+        <omgdi:waypoint x="1270" y="235" />
+        <omgdi:waypoint x="1300" y="235" />
+      </bpmndi:BPMNEdge>
+      <!-- 补充资料审核驳回 → 回到补充资料提交 -->
+      <bpmndi:BPMNEdge id="BPMNEdge_f15_reject" bpmnElement="f15_reject">
+        <omgdi:waypoint x="1250" y="215" />
+        <omgdi:waypoint x="1250" y="160" />
+        <omgdi:waypoint x="1005" y="160" />
+        <omgdi:waypoint x="1005" y="200" />
+      </bpmndi:BPMNEdge>
+      <!-- 申请开票金额 → 开票金额审核 -->
+      <bpmndi:BPMNEdge id="BPMNEdge_f16" bpmnElement="f16">
+        <omgdi:waypoint x="1410" y="235" />
+        <omgdi:waypoint x="1440" y="235" />
+      </bpmndi:BPMNEdge>
+      <!-- 开票金额审核 → gw5 -->
+      <bpmndi:BPMNEdge id="BPMNEdge_f17" bpmnElement="f17">
+        <omgdi:waypoint x="1550" y="235" />
+        <omgdi:waypoint x="1580" y="235" />
+      </bpmndi:BPMNEdge>
+      <!-- 开票金额审核通过 → 业务发票提交 -->
+      <bpmndi:BPMNEdge id="BPMNEdge_f18_pass" bpmnElement="f18_pass">
+        <omgdi:waypoint x="1620" y="235" />
+        <omgdi:waypoint x="1650" y="235" />
+      </bpmndi:BPMNEdge>
+      <!-- 开票金额审核驳回 → 回到申请开票金额 -->
+      <bpmndi:BPMNEdge id="BPMNEdge_f18_reject" bpmnElement="f18_reject">
+        <omgdi:waypoint x="1600" y="215" />
+        <omgdi:waypoint x="1600" y="160" />
+        <omgdi:waypoint x="1355" y="160" />
+        <omgdi:waypoint x="1355" y="200" />
+      </bpmndi:BPMNEdge>
+      <!-- 业务发票提交 → 业务发票审核 -->
       <bpmndi:BPMNEdge id="BPMNEdge_f10" bpmnElement="f10">
-        <omgdi:waypoint x="1050" y="235" />
-        <omgdi:waypoint x="1080" y="235" />
+        <omgdi:waypoint x="1760" y="235" />
+        <omgdi:waypoint x="1790" y="235" />
       </bpmndi:BPMNEdge>
+      <!-- 业务发票审核 → gw3 -->
       <bpmndi:BPMNEdge id="BPMNEdge_f11" bpmnElement="f11">
-        <omgdi:waypoint x="1190" y="235" />
-        <omgdi:waypoint x="1220" y="235" />
+        <omgdi:waypoint x="1900" y="235" />
+        <omgdi:waypoint x="1930" y="235" />
       </bpmndi:BPMNEdge>
+      <!-- 发票审核通过 → 完成 -->
       <bpmndi:BPMNEdge id="BPMNEdge_f12_pass" bpmnElement="f12_pass">
-        <omgdi:waypoint x="1260" y="235" />
-        <omgdi:waypoint x="1290" y="235" />
+        <omgdi:waypoint x="1970" y="235" />
+        <omgdi:waypoint x="2000" y="235" />
       </bpmndi:BPMNEdge>
+      <!-- 发票审核驳回 → 回到业务发票提交 -->
       <bpmndi:BPMNEdge id="BPMNEdge_f12_reject" bpmnElement="f12_reject">
-        <omgdi:waypoint x="1240" y="215" />
-        <omgdi:waypoint x="1240" y="160" />
-        <omgdi:waypoint x="995" y="160" />
-        <omgdi:waypoint x="995" y="200" />
+        <omgdi:waypoint x="1950" y="215" />
+        <omgdi:waypoint x="1950" y="130" />
+        <omgdi:waypoint x="1705" y="130" />
+        <omgdi:waypoint x="1705" y="200" />
       </bpmndi:BPMNEdge>
 
     </bpmndi:BPMNPlane>

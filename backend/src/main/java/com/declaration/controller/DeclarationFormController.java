@@ -70,6 +70,7 @@ public class DeclarationFormController {
     private final UserService userService;
     private final BusinessAuditRecordDao auditRecordDao;
     private final InvoiceService invoiceService; // 新增发票服务
+    private final DeclarationFlowMigrationService declarationFlowMigrationService;
 
     /**
      * 获取申报单统计数据
@@ -500,29 +501,42 @@ public class DeclarationFormController {
     @RequiresPermissions("business:declaration:audit")
     public Result<String> regenerateRemittanceReport(
             @Parameter(description = "申报单ID") @PathVariable Long id,
-            @Parameter(description = "水单类型 1-定金 2-尾款") @RequestParam Integer type) {
+            @Parameter(description = "水单ID(可选,不传则重新生成所有水单)") @RequestParam(required = false) Long remittanceId) {
         try {
             DeclarationForm form = declarationFormService.getFullDeclarationForm(id);
             if (form == null) {
                 return Result.fail("申报单不存在");
             }
 
-            // 查找对应类型的水单记录
-            LambdaQueryWrapper<DeclarationRemittance> query = new LambdaQueryWrapper<>();
-            query.eq(DeclarationRemittance::getFormId, id)
-                    .eq(DeclarationRemittance::getRemittanceType, type);
-
-            DeclarationRemittance remittance = remittanceService.getOne(query);
-            if (remittance == null) {
-                return Result.fail("未找到对应的水单记录");
+            if (remittanceId != null) {
+                // 重新生成指定水单报告
+                DeclarationRemittance remittance = remittanceService.getById(remittanceId);
+                if (remittance == null) {
+                    return Result.fail("未找到对应的水单记录");
+                }
+                excelExportService.generateAndSaveRemittanceReport(remittance, form);
+                log.info("申报单 {} 水单({})重新生成成功", form.getFormNo(), remittance.getRemittanceNo());
+                return Result.success("水单报告重新生成成功");
+            } else {
+                // 重新生成所有关联水单报告
+                List<Map<String, Object>> remittances = remittanceService.getRemittancesByFormId(id);
+                if (remittances == null || remittances.isEmpty()) {
+                    return Result.fail("未找到关联水单");
+                }
+                int count = 0;
+                for (Map<String, Object> r : remittances) {
+                    Long rId = r.get("id") != null ? ((Number) r.get("id")).longValue() : null;
+                    if (rId != null) {
+                        DeclarationRemittance rem = remittanceService.getById(rId);
+                        if (rem != null) {
+                            excelExportService.generateAndSaveRemittanceReport(rem, form);
+                            count++;
+                        }
+                    }
+                }
+                log.info("申报单 {} 重新生成 {} 份水单报告成功", form.getFormNo(), count);
+                return Result.success("已重新生成 " + count + " 份水单报告");
             }
-
-            // 重新生成水单报告
-            excelExportService.generateAndSaveRemittanceReport(remittance, form);
-            String typeName = type == 1 ? "定金" : "尾款";
-            log.info("申报单 {} {}水单重新生成成功", form.getFormNo(), typeName);
-
-            return Result.success(typeName + "水单重新生成成功");
         } catch (Exception e) {
             log.error("重新生成水单报告失败", e);
             return Result.fail("水单报告生成失败: " + e.getMessage());
@@ -697,96 +711,41 @@ public class DeclarationFormController {
     }
 
     /**
-     * 恢复流程 - 将老申报单迁移到新版 BPMN 流程，并根据当前业务状态跳到对应节点
-     *
-     * 背景：旧 BPMN 在 status=2 阶段后即结束，造成老申报单 Flowable 流程已结束但业务流程未走完。
-     * 本接口会启动新版 declarationProcess，绑定相同 businessKey，并直接移到业务对应的 userTask 等待用户操作。
-     * 通过传入流程变量 resumeMode=true，DeclarationServiceTask 会跳过生成文件等自动动作。
+     * 恢复流程 - 将老申报单迁移到新版 BPMN 流程，并根据当前业务状态（及审核痕迹）跳到对应节点。
+     * 详见 {@link DeclarationFlowMigrationService}。
      */
+    @GetMapping("/{id}/flow-migration-hint")
+    @Operation(summary = "流程迁移提示（是否旧版、是否建议恢复）")
+    @RequiresPermissions("business:declaration:view")
+    public Result<Map<String, Object>> flowMigrationHint(@PathVariable Long id) {
+        return Result.success(declarationFlowMigrationService.migrationHint(id));
+    }
+
     @PostMapping("/{id}/resume-flow")
     @Operation(summary = "恢复老流程（迁移到新版流程对应节点）")
     @RequiresPermissions("business:declaration:resume:flow")
     public Result<Map<String, Object>> resumeFlow(
             @Parameter(description = "申报单ID") @PathVariable Long id) {
-
-        DeclarationForm form = declarationFormService.getById(id);
-        if (form == null) {
-            return Result.fail("申报单不存在");
-        }
-        Integer status = form.getStatus();
-        if (status == null) {
-            return Result.fail("申报单状态异常，无法恢复");
-        }
-
-        // 根据当前业务状态确定目标节点
-        String targetActivityId;
-        switch (status) {
-            case 2: targetActivityId = "materialSubmit"; break;
-            case 3: targetActivityId = "materialAudit"; break;
-            case 4: targetActivityId = "invoiceSubmit"; break;
-            case 5: targetActivityId = "invoiceAudit"; break;
-            default:
-                return Result.fail("当前状态(" + status + ")不支持恢复流程，仅允许 status 在 2~5 之间");
-        }
-
-        // 检查是否已有活跃流程
-        long activeCount = runtimeService.createProcessInstanceQuery()
-                .processInstanceBusinessKey(String.valueOf(id))
-                .count();
-        if (activeCount > 0) {
-            return Result.fail("申报单已存在活跃流程实例，无需恢复");
-        }
-
-        ProcessInstance pi = null;
         try {
-            // 启动新的 declarationProcess，标记恢复模式让 serviceTask 跳过自动动作
-            Map<String, Object> vars = new HashMap<>();
-            vars.put("starterId", form.getCreateBy() != null ? String.valueOf(form.getCreateBy()) : "system");
-            vars.put("resumeMode", true);
-            pi = runtimeService.startProcessInstanceByKey(
-                    "declarationProcess", String.valueOf(id), vars);
-
-            // 启动后 execution 会在第一个等待节点 deptAudit，拿到当前 activityId
-            String currentActivity = runtimeService.createExecutionQuery()
-                    .processInstanceId(pi.getId())
-                    .onlyChildExecutions()
-                    .list().stream()
-                    .map(Execution::getActivityId)
-                    .filter(Objects::nonNull)
-                    .findFirst()
-                    .orElse("deptAudit");
-
-            // 跳转到业务对应节点
-            if (!currentActivity.equals(targetActivityId)) {
-                runtimeService.createChangeActivityStateBuilder()
-                        .processInstanceId(pi.getId())
-                        .moveActivityIdTo(currentActivity, targetActivityId)
-                        .changeState();
-            }
-
-            // 清掉恢复标记，避免后续流程 serviceTask 也被跳过
-            runtimeService.removeVariable(pi.getId(), "resumeMode");
-
-            Map<String, Object> data = new HashMap<>();
-            data.put("processInstanceId", pi.getId());
-            data.put("fromActivityId", currentActivity);
-            data.put("targetActivityId", targetActivityId);
-            data.put("status", status);
-            log.info("申报单 {} 流程已恢复，从 {} 跳至 {}", id, currentActivity, targetActivityId);
-            return Result.success(data);
+            return Result.success(declarationFlowMigrationService.resumeOne(id));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return Result.fail(e.getMessage());
         } catch (Exception e) {
             log.error("恢复申报单 {} 流程失败", id, e);
-            // 回滚：如果流程已启动但后续操作失败，删除心升实例避免脏数据
-            if (pi != null) {
-                try {
-                    runtimeService.deleteProcessInstance(pi.getId(), "resume-flow 失败回滚");
-                    log.warn("已回滚脟流程实例: {}", pi.getId());
-                } catch (Exception ex) {
-                    log.error("回滚流程实例 {} 失败", pi.getId(), ex);
-                }
-            }
             return Result.fail("恢复流程失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 批量恢复老流程（建议先 dryRun=true 预览，再正式执行）。
+     */
+    @PostMapping("/migrate-flow/batch")
+    @Operation(summary = "批量迁移老申报单到新版流程")
+    @RequiresPermissions("business:declaration:resume:flow")
+    public Result<Map<String, Object>> migrateFlowBatch(
+            @Parameter(description = "true=仅预览不执行") @RequestParam(defaultValue = "true") boolean dryRun,
+            @Parameter(description = "限定业务状态，如 2,3；空=1~9") @RequestParam(required = false) List<Integer> statuses) {
+        return Result.success(declarationFlowMigrationService.resumeBatch(dryRun, statuses));
     }
 
     /**
@@ -826,20 +785,24 @@ public class DeclarationFormController {
     @GetMapping("/batch-tasks")
     @Operation(summary = "批量获取申报单的活跃任务")
     @RequiresPermissions("business:declaration:view")
-    public Result<Map<String, List<String>>> getBatchActiveTasks(
+    public Result<Map<String, Object>> getBatchActiveTasks(
             @Parameter(description = "申报单ID列表，逗号分隔") @RequestParam String ids) {
 
         log.info("批量获取任务请求，ids: {}", ids);
 
         if (ids == null || ids.trim().isEmpty()) {
             log.info("IDs为空，返回空结果");
-            return Result.success(new HashMap<>());
+            Map<String, Object> empty = new HashMap<>();
+            empty.put("tasks", new HashMap<>());
+            empty.put("migration", new HashMap<>());
+            return Result.success(empty);
         }
 
         try {
             List<String> idList = Arrays.asList(ids.split(","));
             log.info("解析得到 {} 个ID: {}", idList.size(), idList);
-            Map<String, List<String>> result = new HashMap<>();
+            Map<String, List<String>> taskMap = new HashMap<>();
+            Map<String, Boolean> migrationMap = new HashMap<>();
 
             // 优化：先批量查询所有相关的流程实例，建立 processInstanceId -> businessKey 映射
             Map<String, String> processInstanceToBusinessKey = new HashMap<>();
@@ -873,7 +836,16 @@ public class DeclarationFormController {
 
             if (processInstanceIds.isEmpty()) {
                 log.info("没有找到任何流程实例，返回空结果");
-                return Result.success(result);
+                for (String id : idList) {
+                    String key = id.trim();
+                    if (!key.isEmpty()) {
+                        migrationMap.put(key, declarationFlowMigrationService.needsLegacyMigration(Long.valueOf(key)));
+                    }
+                }
+                Map<String, Object> emptyPayload = new HashMap<>();
+                emptyPayload.put("tasks", taskMap);
+                emptyPayload.put("migration", migrationMap);
+                return Result.success(emptyPayload);
             }
 
             // 批量查询所有相关的活跃任务
@@ -888,14 +860,29 @@ public class DeclarationFormController {
             for (Task task : tasks) {
                 String businessKey = processInstanceToBusinessKey.get(task.getProcessInstanceId());
                 if (businessKey != null) {
-                    result.computeIfAbsent(businessKey, k -> new ArrayList<>())
+                    taskMap.computeIfAbsent(businessKey, k -> new ArrayList<>())
                             .add(task.getTaskDefinitionKey());
                     log.debug("任务映射: {} -> {}", businessKey, task.getTaskDefinitionKey());
                 }
             }
 
-            log.info("最终结果: {}", result);
-            return Result.success(result);
+            for (String id : idList) {
+                String key = id.trim();
+                if (key.isEmpty()) {
+                    continue;
+                }
+                try {
+                    migrationMap.put(key, declarationFlowMigrationService.needsLegacyMigration(Long.valueOf(key)));
+                } catch (Exception ex) {
+                    migrationMap.put(key, false);
+                }
+            }
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("tasks", taskMap);
+            payload.put("migration", migrationMap);
+            log.info("最终结果 tasks={}, migration={}", taskMap, migrationMap);
+            return Result.success(payload);
 
         } catch (Exception e) {
             log.error("批量获取任务失败，ids: {}", ids, e);
@@ -910,6 +897,7 @@ public class DeclarationFormController {
             @Parameter(description = "分页参数") PageParam pageParam,
             @Parameter(description = "申报单号") @RequestParam(required = false) String formNo,
             @Parameter(description = "状态") @RequestParam(required = false) Integer status,
+            @Parameter(description = "状态列表（逗号分隔，如 0,1,9）") @RequestParam(required = false) String statusList,
             @Parameter(description = "排除的状态") @RequestParam(required = false) Integer excludeStatus,
             @Parameter(description = "最小状态（>=，用于水单关联候选等场景）") @RequestParam(required = false) Integer minStatus) {
 
@@ -923,7 +911,17 @@ public class DeclarationFormController {
             if (formNo != null && !formNo.isEmpty()) {
                 queryWrapper.like(DeclarationForm::getFormNo, formNo);
             }
-            if (status != null) {
+            if (statusList != null && !statusList.isEmpty()) {
+                // 支持多状态过滤：逗号分隔的状态列表
+                List<Integer> statuses = Arrays.stream(statusList.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(Integer::parseInt)
+                        .collect(Collectors.toList());
+                if (!statuses.isEmpty()) {
+                    queryWrapper.in(DeclarationForm::getStatus, statuses);
+                }
+            } else if (status != null) {
                 queryWrapper.eq(DeclarationForm::getStatus, status);
             }
             if (excludeStatus != null) {

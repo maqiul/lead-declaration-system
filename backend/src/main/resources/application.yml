@@ -6,6 +6,14 @@ server:
 spring:
   application:
     name: lead-declaration-system
+
+  # 文件上传大小限制
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 100MB
+      file-size-threshold: 2MB
     
   # 数据源配置
   datasource:
@@ -109,3 +117,7 @@ logging:
     com.baomidou.mybatisplus: debug
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+
+# OCR 配置（发票识别，基于 RapidOCR/PaddleOCR）
+ocr:
+  enabled: true

@@ -142,14 +142,39 @@ public class FinancialSupplementController {
     public Result<FinancialSupplement> createSupplement(
             @RequestBody FinancialSupplement supplement) {
         
-        // 自动填充formNo字段
         if (supplement.getFormId() != null) {
             DeclarationForm form = formService.getById(supplement.getFormId());
             if (form != null) {
                 supplement.setFormNo(form.getFormNo());
             }
+        } else if (supplement.getFormNo() != null && !supplement.getFormNo().isBlank()) {
+            DeclarationForm form = formService.lambdaQuery()
+                    .eq(DeclarationForm::getFormNo, supplement.getFormNo().trim())
+                    .one();
+            if (form == null) {
+                return Result.fail(400, "申报单不存在: " + supplement.getFormNo());
+            }
+            supplement.setFormId(form.getId());
+            supplement.setFormNo(form.getFormNo());
+        } else {
+            return Result.fail(400, "请选择申报单");
         }
-        
+
+        DeclarationForm targetForm = formService.getById(supplement.getFormId());
+        if (targetForm == null) {
+            return Result.fail(400, "申报单不存在");
+        }
+        if (targetForm.getStatus() == null || targetForm.getStatus() < 3) {
+            return Result.fail(400, "仅支持资料提交环节之后的申报单维护退税点");
+        }
+
+        long exists = supplementService.lambdaQuery()
+                .eq(FinancialSupplement::getFormId, supplement.getFormId())
+                .count();
+        if (exists > 0) {
+            return Result.fail(400, "该申报单已有退税点记录，请直接编辑");
+        }
+
         supplement.setCreateTime(LocalDateTime.now());
         supplement.setUpdateTime(LocalDateTime.now());
         supplementService.save(supplement);
@@ -189,7 +214,45 @@ public class FinancialSupplementController {
         wrapper.orderByDesc(FinancialSupplement::getCreateTime);
         
         IPage<FinancialSupplement> result = supplementService.page(page, wrapper);
+        
+        // 填充申报单信息
+        for (FinancialSupplement item : result.getRecords()) {
+            if (item.getFormId() != null) {
+                DeclarationForm form = formService.getById(item.getFormId());
+                if (form != null) {
+                    item.setDeclarationAmount(form.getTotalAmount());
+                    item.setDeclarationCurrency(form.getCurrency());
+                    item.setDeclarationStatus(form.getStatus());
+                    item.setShipperCompany(form.getShipperCompany());
+                    item.setConsigneeCompany(form.getConsigneeCompany());
+                    item.setTotalCartons(form.getTotalCartons());
+                    item.setRequestedInvoiceAmount(form.getRequestedInvoiceAmount());
+                }
+            }
+        }
+        
         return Result.success(result);
+    }
+
+    /**
+     * 可新增退税点的申报单：资料已提交（status&gt;=3）且尚未建立财务单证记录。
+     */
+    @GetMapping("/eligible-declarations")
+    @Operation(summary = "查询可新增财务单证的申报单")
+    @RequiresPermissions("business:declaration:finance:supplement")
+    public Result<IPage<DeclarationForm>> listEligibleDeclarations(
+            PageParam pageParam,
+            @Parameter(description = "申报单号（模糊）") @RequestParam(required = false) String formNo) {
+        Page<DeclarationForm> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
+        LambdaQueryWrapper<DeclarationForm> wrapper = new LambdaQueryWrapper<>();
+        wrapper.ge(DeclarationForm::getStatus, 3);
+        wrapper.apply(
+                "NOT EXISTS (SELECT 1 FROM financial_supplement fs WHERE fs.form_id = declaration_form.id)");
+        if (formNo != null && !formNo.isBlank()) {
+            wrapper.like(DeclarationForm::getFormNo, formNo.trim());
+        }
+        wrapper.orderByDesc(DeclarationForm::getUpdateTime);
+        return Result.success(formService.page(page, wrapper));
     }
 
     @GetMapping("/form/{formId}/export-finance-calculation")
@@ -252,47 +315,26 @@ public class FinancialSupplementController {
             
             rowNum++;
             
-            // 定金明细
-            XSSFRow depositTitleRow = sheet.createRow(rowNum++);
-            depositTitleRow.createCell(0).setCellValue("定金收汇明细");
-            depositTitleRow.getCell(0).setCellStyle(headerStyle);
+            // 收汇明细
+            XSSFRow remTitleRow = sheet.createRow(rowNum++);
+            remTitleRow.createCell(0).setCellValue("收汇明细");
+            remTitleRow.getCell(0).setCellStyle(headerStyle);
             sheet.addMergedRegion(new CellRangeAddress(rowNum-1, rowNum-1, 0, 3));
             
             @SuppressWarnings("unchecked")
-            List<Map<String, Object>> depositDetails = (List<Map<String, Object>>) calcDetail.get("depositDetails");
-            if (depositDetails != null && !depositDetails.isEmpty()) {
-                for (Map<String, Object> d : depositDetails) {
+            List<Map<String, Object>> remittanceDetails = (List<Map<String, Object>>) calcDetail.get("remittanceDetails");
+            if (remittanceDetails != null && !remittanceDetails.isEmpty()) {
+                for (Map<String, Object> d : remittanceDetails) {
                     String name = d.get("remittanceName") != null ? d.get("remittanceName").toString() : "";
                     BigDecimal amt = (BigDecimal) d.get("amount");
-                    BigDecimal rate = (BigDecimal) d.get("exchangeRate");
-                    BigDecimal cny = (BigDecimal) d.get("cny");
-                    createDataRow(sheet, rowNum++, name.isEmpty() ? "定金" : name, 
-                            String.format("%,.2f USD × %s = %,.2f CNY", amt, rate, cny), headerStyle);
+                    BigDecimal rate = (BigDecimal) d.get("taxRate");
+                    BigDecimal cny = (BigDecimal) d.get("cnyAmount");
+                    String currency = d.get("currency") != null ? d.get("currency").toString() : "USD";
+                    createDataRow(sheet, rowNum++, name.isEmpty() ? "水单" : name, 
+                            String.format("%,.2f %s × %s = %,.2f CNY", amt, currency, rate, cny), headerStyle);
                 }
             }
-            createDataRow(sheet, rowNum++, "定金合计(CNY)", String.format("%,.2f", calcDetail.get("depositCny")), headerStyle);
-            
-            rowNum++;
-            
-            // 尾款明细
-            XSSFRow balanceTitleRow = sheet.createRow(rowNum++);
-            balanceTitleRow.createCell(0).setCellValue("尾款收汇明细");
-            balanceTitleRow.getCell(0).setCellStyle(headerStyle);
-            sheet.addMergedRegion(new CellRangeAddress(rowNum-1, rowNum-1, 0, 3));
-            
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> balanceDetails = (List<Map<String, Object>>) calcDetail.get("balanceDetails");
-            if (balanceDetails != null && !balanceDetails.isEmpty()) {
-                for (Map<String, Object> b : balanceDetails) {
-                    String name = b.get("remittanceName") != null ? b.get("remittanceName").toString() : "";
-                    BigDecimal amt = (BigDecimal) b.get("amount");
-                    BigDecimal rate = (BigDecimal) b.get("exchangeRate");
-                    BigDecimal cny = (BigDecimal) b.get("cny");
-                    createDataRow(sheet, rowNum++, name.isEmpty() ? "尾款" : name, 
-                            String.format("%,.2f USD × %s = %,.2f CNY", amt, rate, cny), headerStyle);
-                }
-            }
-            createDataRow(sheet, rowNum++, "尾款合计(CNY)", String.format("%,.2f", calcDetail.get("balanceCny")), headerStyle);
+            createDataRow(sheet, rowNum++, "收汇合计(CNY)", String.format("%,.2f", calcDetail.get("totalCny")), headerStyle);
 
             rowNum++;
             

@@ -103,7 +103,7 @@ const pieChartRef = ref<HTMLDivElement>()
 const quickActions = ref([
   { label: '新增用户', icon: markRaw(UserAddOutlined), path: '/system/user', bg: 'linear-gradient(135deg, #EEF2FF, #E0E7FF)' },
   { label: '退税申请', icon: markRaw(FileOutlined), path: '/tax-refund/list', bg: 'linear-gradient(135deg, #ECFDF5, #D1FAE5)' },
-  { label: '申报管理', icon: markRaw(ProfileOutlined), path: '/declaration/manage', bg: 'linear-gradient(135deg, #FFF7ED, #FED7AA)' },
+  { label: '申报录入', icon: markRaw(ProfileOutlined), path: '/declaration/entry', bg: 'linear-gradient(135deg, #FFF7ED, #FED7AA)' },
   { label: '组织管理', icon: markRaw(ApartmentOutlined), path: '/system/org', bg: 'linear-gradient(135deg, #FFF1F2, #FECDD3)' },
 ])
 

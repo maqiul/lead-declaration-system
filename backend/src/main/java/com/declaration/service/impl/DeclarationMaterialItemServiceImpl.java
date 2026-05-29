@@ -8,11 +8,16 @@ import com.declaration.entity.BusinessAuditRecord;
 import com.declaration.entity.DeclarationForm;
 import com.declaration.entity.DeclarationMaterialItem;
 import com.declaration.entity.DeclarationMaterialTemplate;
+import com.declaration.entity.FinancialSupplement;
+import com.declaration.entity.MaterialAttachment;
 import com.declaration.entity.User;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.DeclarationMaterialItemService;
 import com.declaration.service.DeclarationMaterialTemplateService;
+import com.declaration.service.DeclarationRemittanceService;
+import com.declaration.service.FinancialSupplementService;
 import com.declaration.service.InvoiceService;
+import com.declaration.service.MaterialAttachmentService;
 import com.declaration.service.UserService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,17 +25,21 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.TaskService;
 import org.flowable.task.api.Task;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 申报资料项 Service 实现
@@ -48,10 +57,17 @@ public class DeclarationMaterialItemServiceImpl
     private final InvoiceService invoiceService;
     private final BusinessAuditRecordDao auditRecordDao;
     private final DeclarationFormService declarationFormService;
+    private final MaterialAttachmentService materialAttachmentService;
+    @Lazy
+    @Autowired
+    private FinancialSupplementService financialSupplementService;
+    private final DeclarationRemittanceService remittanceService;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** 审核记录 business_type 常量（提交与审核共用一个类型，同一条记录的两个阶段）*/
     public static final String BT_MATERIAL_AUDIT  = "DECLARATION_MATERIAL_AUDIT";
+    public static final String BT_SUPPLEMENT_AUDIT = "DECLARATION_SUPPLEMENT_AUDIT";
+    public static final String BT_INVOICE_AMOUNT_AUDIT = "DECLARATION_INVOICE_AMOUNT_AUDIT";
     public static final String BT_INVOICE_AUDIT   = "DECLARATION_INVOICE_AUDIT";
 
     /**
@@ -118,6 +134,8 @@ public class DeclarationMaterialItemServiceImpl
     private String labelOfType(String businessType) {
         switch (businessType) {
             case BT_MATERIAL_AUDIT:  return "资料审核";
+            case BT_SUPPLEMENT_AUDIT: return "补充资料审核";
+            case BT_INVOICE_AMOUNT_AUDIT: return "开票金额审核";
             case BT_INVOICE_AUDIT:   return "业务发票审核";
             default: return businessType;
         }
@@ -245,6 +263,7 @@ public class DeclarationMaterialItemServiceImpl
                 virtual.setId(null); // 虚拟标识
                 virtual.setFormId(formId);
                 virtual.setTemplateId(tpl.getId());
+                virtual.setStage(tpl.getStage());
                 virtual.setCode(tpl.getCode());
                 virtual.setName(tpl.getName());
                 virtual.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());
@@ -257,6 +276,27 @@ public class DeclarationMaterialItemServiceImpl
             }
         }
         result.addAll(manualItems);
+
+        // 批量加载附件（避免 N+1）
+        List<Long> realIds = result.stream()
+                .map(DeclarationMaterialItem::getId)
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+        if (!realIds.isEmpty()) {
+            Map<Long, List<MaterialAttachment>> attMap = materialAttachmentService.listByItemIds(realIds);
+            for (DeclarationMaterialItem it : result) {
+                if (it.getId() != null) {
+                    it.setAttachments(attMap.getOrDefault(it.getId(), Collections.emptyList()));
+                } else {
+                    it.setAttachments(Collections.emptyList());
+                }
+            }
+        } else {
+            for (DeclarationMaterialItem it : result) {
+                it.setAttachments(Collections.emptyList());
+            }
+        }
+
         return result;
     }
 
@@ -292,6 +332,7 @@ public class DeclarationMaterialItemServiceImpl
         DeclarationMaterialItem item = new DeclarationMaterialItem();
         item.setFormId(formId);
         item.setTemplateId(tpl.getId());
+        item.setStage(tpl.getStage());
         item.setCode(tpl.getCode());
         item.setName(tpl.getName());
         item.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());
@@ -328,6 +369,7 @@ public class DeclarationMaterialItemServiceImpl
             DeclarationMaterialItem item = new DeclarationMaterialItem();
             item.setFormId(formId);
             item.setTemplateId(tpl.getId());
+            item.setStage(tpl.getStage());
             item.setCode(tpl.getCode());
             item.setName(tpl.getName());
             item.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());
@@ -349,6 +391,7 @@ public class DeclarationMaterialItemServiceImpl
             throw new RuntimeException("申报单ID不能为空");
         }
         // 懒创建模式下，必填校验必须基于"模板 + 手动项"而非仅仅已落库的实例
+        // 只校验资料提交阶段的项，不包含补充资料(SUPPLEMENT)和发票(INVOICE)阶段
         List<DeclarationMaterialItem> items = listByFormId(formId);
         Map<String, DeclarationMaterialItem> itemByCode = new HashMap<>();
         List<DeclarationMaterialItem> manualItems = new ArrayList<>();
@@ -356,12 +399,21 @@ public class DeclarationMaterialItemServiceImpl
             if (it.getTemplateId() != null && it.getCode() != null) {
                 itemByCode.put(it.getCode(), it);
             } else {
-                manualItems.add(it);
+                // 手动新增项：只校验非补充/发票阶段的
+                String stage = it.getStage();
+                if (!"SUPPLEMENT".equals(stage) && !"INVOICE".equals(stage)) {
+                    manualItems.add(it);
+                }
             }
         }
         List<DeclarationMaterialTemplate> templates = templateService.listEnabled();
         if (templates != null) {
             for (DeclarationMaterialTemplate tpl : templates) {
+                // 跳过补充资料和发票阶段的模板
+                String tplStage = tpl.getStage();
+                if ("SUPPLEMENT".equals(tplStage) || "INVOICE".equals(tplStage)) {
+                    continue;
+                }
                 boolean required = tpl.getRequired() != null && tpl.getRequired() == 1;
                 DeclarationMaterialItem it = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
                 boolean uploaded = it != null && it.getStatus() != null && it.getStatus() == 1
@@ -377,7 +429,7 @@ public class DeclarationMaterialItemServiceImpl
                 }
             }
         }
-        // 单据内手动新增的项直接校验
+        // 单据内手动新增的项直接校验（已过滤非补充/发票阶段）
         for (DeclarationMaterialItem it : manualItems) {
             boolean required = it.getRequired() != null && it.getRequired() == 1;
             boolean uploaded = it.getStatus() != null && it.getStatus() == 1
@@ -426,17 +478,142 @@ public class DeclarationMaterialItemServiceImpl
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void submitSupplement(Long formId, Long currentUserId) {
+        if (formId == null) {
+            throw new RuntimeException("申报单ID不能为空");
+        }
+        // 检查 SUPPLEMENT 阶段的资料项是否已上传附件
+        List<DeclarationMaterialItem> supplementItems = lambdaQuery()
+                .eq(DeclarationMaterialItem::getFormId, formId)
+                .eq(DeclarationMaterialItem::getStage, "SUPPLEMENT")
+                .list();
+        if (supplementItems.isEmpty()) {
+            throw new RuntimeException("没有补充资料项，请先在资料模板中配置");
+        }
+        // 校验所有必填项都有附件
+        for (DeclarationMaterialItem item : supplementItems) {
+            if (item.getRequired() != null && item.getRequired() == 1) {
+                long attCount = materialAttachmentService.countByItemId(item.getId());
+                if (attCount == 0) {
+                    throw new RuntimeException("补充资料「" + item.getName() + "」为必填项，请先上传附件");
+                }
+            }
+        }
+        Task task = findTask(formId, "supplementSubmit");
+        if (task == null) {
+            throw new RuntimeException("当前申报单没有待补充资料提交任务");
+        }
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("approved", true);
+        flowableTaskService.complete(task.getId(), variables);
+        insertPendingAuditRecord(formId, BT_SUPPLEMENT_AUDIT, currentUserId, "补充资料提交待审核");
+        log.info("申报单 {} 补充资料提交完成，操作人={}", formId, currentUserId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void auditSupplement(Long formId, boolean approved, String remark, Long auditorId) {
+        if (formId == null) {
+            throw new RuntimeException("申报单ID不能为空");
+        }
+        Task task = findTask(formId, "supplementAudit");
+        if (task == null) {
+            throw new RuntimeException("当前申报单没有待补充资料审核任务");
+        }
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("approved", approved);
+        if (remark != null) {
+            variables.put("auditRemark", remark);
+        }
+        flowableTaskService.complete(task.getId(), variables);
+        finishAuditRecord(formId, BT_SUPPLEMENT_AUDIT, approved, remark, auditorId);
+        log.info("申报单 {} 补充资料审核完成 approved={} 审核人={}", formId, approved, auditorId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitInvoiceAmount(Long formId, Long currentUserId) {
+        if (formId == null) {
+            throw new RuntimeException("申报单ID不能为空");
+        }
+        // 前置校验：外汇水单已关联（通过关联表检查）
+        List<Map<String, Object>> relatedRemittances = remittanceService.getRemittancesByFormId(formId);
+        if (relatedRemittances == null || relatedRemittances.isEmpty()) {
+            throw new RuntimeException("请先提交外汇水单后再申请开票金额");
+        }
+        // 前置校验：退税率已设置
+        FinancialSupplement supplement = financialSupplementService.lambdaQuery()
+                .eq(FinancialSupplement::getFormId, formId)
+                .one();
+        if (supplement == null || supplement.getTaxRefundRate() == null) {
+            throw new RuntimeException("请先在财务单证页面设置退税率后再申请开票金额");
+        }
+        // 自动计算开票金额
+        Map<String, Object> calcDetail = financialSupplementService.getCalculationDetail(formId);
+        Object invoiceAmountObj = calcDetail.get("invoiceAmount");
+        if (invoiceAmountObj == null) {
+            throw new RuntimeException("开票金额计算失败，请检查收汇、退税、货代、报关等数据");
+        }
+        java.math.BigDecimal invoiceAmount = new java.math.BigDecimal(invoiceAmountObj.toString());
+        // 保存到 declaration_form
+        DeclarationForm form = declarationFormService.getById(formId);
+        if (form == null) {
+            throw new RuntimeException("申报单不存在");
+        }
+        form.setRequestedInvoiceAmount(invoiceAmount);
+        declarationFormService.updateById(form);
+        // 完成 Flowable 任务
+        Task task = findTask(formId, "invoiceAmountSubmit");
+        if (task == null) {
+            throw new RuntimeException("当前申报单没有待申请开票金额任务");
+        }
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("approved", true);
+        flowableTaskService.complete(task.getId(), variables);
+        insertPendingAuditRecord(formId, BT_INVOICE_AMOUNT_AUDIT, currentUserId, "申请开票金额待审核");
+        log.info("申报单 {} 申请开票金额完成，金额={} 操作人={}", formId, invoiceAmount, currentUserId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void auditInvoiceAmount(Long formId, boolean approved, String remark, Long auditorId) {
+        if (formId == null) {
+            throw new RuntimeException("申报单ID不能为空");
+        }
+        Task task = findTask(formId, "invoiceAmountAudit");
+        if (task == null) {
+            throw new RuntimeException("当前申报单没有待开票金额审核任务");
+        }
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("approved", approved);
+        if (remark != null) {
+            variables.put("auditRemark", remark);
+        }
+        flowableTaskService.complete(task.getId(), variables);
+        finishAuditRecord(formId, BT_INVOICE_AMOUNT_AUDIT, approved, remark, auditorId);
+        log.info("申报单 {} 开票金额审核完成 approved={} 审核人={}", formId, approved, auditorId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void submitInvoice(Long formId, Long currentUserId) {
         if (formId == null) {
             throw new RuntimeException("申报单ID不能为空");
         }
-        long invoiceCount = invoiceService.lambdaQuery()
-                .eq(com.declaration.entity.DeclarationInvoice::getFormId, formId)
-                .eq(com.declaration.entity.DeclarationInvoice::getCategory, 1)
-                .eq(com.declaration.entity.DeclarationInvoice::getDeleted, 0)
-                .count();
-        if (invoiceCount <= 0) {
-            throw new RuntimeException("请至少上传一张业务发票后再提交");
+        // 检查 INVOICE 阶段的资料项是否已上传附件
+        List<DeclarationMaterialItem> invoiceItems = lambdaQuery()
+                .eq(DeclarationMaterialItem::getFormId, formId)
+                .eq(DeclarationMaterialItem::getStage, "INVOICE")
+                .list();
+        if (invoiceItems.isEmpty()) {
+            throw new RuntimeException("没有业务发票资料项，请先在资料模板中配置");
+        }
+        boolean hasAttachment = invoiceItems.stream().anyMatch(item -> {
+            long count = materialAttachmentService.countByItemId(item.getId());
+            return count > 0;
+        });
+        if (!hasAttachment) {
+            throw new RuntimeException("请至少上传一份业务发票附件后再提交");
         }
         Task task = findTask(formId, "invoiceSubmit");
         if (task == null) {
@@ -445,7 +622,6 @@ public class DeclarationMaterialItemServiceImpl
         Map<String, Object> variables = new HashMap<>();
         variables.put("approved", true);
         flowableTaskService.complete(task.getId(), variables);
-        // 插入待审核记录（同一条，审核时 update）
         insertPendingAuditRecord(formId, BT_INVOICE_AUDIT, currentUserId, "业务发票提交待审核");
         log.info("申报单 {} 发票提交完成，操作人={}", formId, currentUserId);
     }

@@ -343,7 +343,7 @@ const handleView = (task: Task) => {
   // 统一逻辑：跳转到业务单据页
   if (task.businessKey) {
     router.push({
-      path: '/declaration/manage',
+      path: '/declaration/entry',
       query: { action: 'view', id: task.businessKey }
     })
   } else {
@@ -407,7 +407,7 @@ const handleComplete = (task: Task) => {
   if (task.processName && task.processName.includes('申报') || task.processName === 'declarationProcess') {
     message.info('正为您跳转至业务单据处理页');
     router.push({
-      path: '/declaration/manage',
+      path: '/declaration/entry',
       query: { action: 'audit', id: task.businessKey, taskId: task.taskId }
     })
     return

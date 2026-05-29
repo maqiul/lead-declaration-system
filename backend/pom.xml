@@ -139,6 +139,42 @@
             <version>${hutool.version}</version>
         </dependency>
 
+        <!-- Apache PDFBox：发票 PDF 金额提取 -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>2.0.31</version>
+        </dependency>
+
+        <!-- RapidOCR：基于 PaddleOCR 的 Java OCR（发票识别） -->
+        <dependency>
+            <groupId>io.github.mymonstercat</groupId>
+            <artifactId>rapidocr</artifactId>
+            <version>0.0.7</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>slf4j-api</artifactId>
+                    <groupId>org.slf4j</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!--
+            原生库平台依赖：不要用 rapidocr-onnx-platform（它按"打包机器"的系统自动只打入当前平台的库，
+            在 Windows 打的包里没有 Linux 的 .so，部署到 Linux 会报 nativeLoader is null）。
+            这里显式声明 Windows + Linux 两个平台，保证同一个 jar 在两种系统都能加载到原生库。
+            如需在 mac/arm 等其他平台运行，按需再补充对应的 rapidocr-onnx-* 依赖。
+        -->
+        <dependency>
+            <groupId>io.github.mymonstercat</groupId>
+            <artifactId>rapidocr-onnx-windows-x86_64</artifactId>
+            <version>1.2.2</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.mymonstercat</groupId>
+            <artifactId>rapidocr-onnx-linux-x86_64</artifactId>
+            <version>1.2.2</version>
+        </dependency>
+
 
         <!-- Flowable 工作流引擎 -->
         <dependency>

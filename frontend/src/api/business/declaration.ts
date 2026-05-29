@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 
-// 申报坕管睆相关API
+// 申报单管理相关API
 export interface DeclarationQueryParams {
   pageNum?: number
   pageSize?: number
@@ -8,6 +8,7 @@ export interface DeclarationQueryParams {
   size?: number
   formNo?: string
   status?: number
+  statusList?: string  // 逗号分隔的多状态列表，如 '0,1,9'
   excludeStatus?: number
   startTime?: string
   endTime?: string
@@ -73,7 +74,7 @@ export interface CartonProduct {
   quantity: number
 }
 
-// 统计数杮类型定义
+// 统计数据类型定义
 export interface StatisticsData {
   totalForms: number
   monthForms: number
@@ -97,7 +98,7 @@ export interface StatisticsData {
   }>
 }
 
-// 获坖申报坕列表
+// 获取申报单列表
 export function getDeclarationList(params: DeclarationQueryParams) {
   return request({
     url: '/v1/declarations',
@@ -106,7 +107,7 @@ export function getDeclarationList(params: DeclarationQueryParams) {
   })
 }
 
-// 获坖申报坕详情
+// 获取申报单详情
 export function getDeclarationDetail(id: number, status?: number) {
   return request({
     url: `/v1/declarations/${id}`,
@@ -115,7 +116,7 @@ export function getDeclarationDetail(id: number, status?: number) {
   })
 }
 
-// 新增申报坕
+// 新增申报单
 export function addDeclaration(data: DeclarationForm) {
   return request({
     url: '/v1/declarations',
@@ -133,7 +134,7 @@ export function saveDraft(data: DeclarationForm) {
   })
 }
 
-// 修改申报
+// 修改申报单
 export function updateDeclaration(id: number, data: DeclarationForm) {
   return request({
     url: `/v1/declarations/${id}`,
@@ -142,7 +143,7 @@ export function updateDeclaration(id: number, data: DeclarationForm) {
   })
 }
 
-// 删除申报
+// 删除申报单
 export function deleteDeclaration(id: number, status?: number) {
   return request({
     url: `/v1/declarations/${id}`,
@@ -151,7 +152,7 @@ export function deleteDeclaration(id: number, status?: number) {
   })
 }
 
-// 提交申报
+// 提交申报单
 export function submitDeclaration(id: number) {
   return request({
     url: `/v1/declarations/${id}/submit`,
@@ -159,7 +160,7 @@ export function submitDeclaration(id: number) {
   })
 }
 
-// 杝交审核（定金/尾款/杝货坕/财务补充）
+// 提交审核（定金/尾款/提货单/财务补充）
 export function submitForAudit(id: number, type: 'deposit' | 'balance' | 'pickup' | 'financeUpload') {
   return request({
     url: `/v1/declarations/${id}/submit-audit`,
@@ -207,7 +208,7 @@ export function auditDeclaration(id: number, result: number, remark?: string, ta
   })
 }
 
-// 获坖申报坕的当剝活跃Flowable任务列表
+// 获取申报单的当前活跃Flowable任务列表
 export function getActiveTasks(id: number) {
   return request({
     url: `/v1/declarations/${id}/tasks`,
@@ -232,7 +233,27 @@ export function resumeDeclarationFlow(id: number | string) {
   })
 }
 
-// 保存水坕信杯
+export function getFlowMigrationHint(id: number | string) {
+  return request({
+    url: `/v1/declarations/${id}/flow-migration-hint`,
+    method: 'get'
+  })
+}
+
+/** 批量迁移老流程（dryRun=true 仅预览） */
+export function migrateDeclarationFlowBatch(dryRun = true, statuses?: number[]) {
+  const params: Record<string, unknown> = { dryRun }
+  if (statuses?.length) {
+    params.statuses = statuses
+  }
+  return request({
+    url: '/v1/declarations/migrate-flow/batch',
+    method: 'post',
+    params
+  })
+}
+
+// 保存水单信息
 export function saveRemittance(id: number, data: any) {
   return request({
     url: `/v1/declarations/${id}/remittance`,
@@ -241,7 +262,7 @@ export function saveRemittance(id: number, data: any) {
   })
 }
 
-// 获坖水坕信杯
+// 获取水单信息
 export function getRemittance(remittanceId: number) {
   return request({
     url: `/v1/declarations/remittance/${remittanceId}`,
@@ -249,7 +270,7 @@ export function getRemittance(remittanceId: number) {
   })
 }
 
-// 更新水坕信杯
+// 更新水单信息
 export function updateRemittance(remittanceId: number, data: any) {
   return request({
     url: `/v1/declarations/remittance/${remittanceId}`,
@@ -258,7 +279,7 @@ export function updateRemittance(remittanceId: number, data: any) {
   })
 }
 
-// 删除水坕
+// 删除水单
 export function deleteRemittance(remittanceId: number) {
   return request({
     url: `/v1/declarations/remittance/${remittanceId}`,
@@ -266,7 +287,7 @@ export function deleteRemittance(remittanceId: number) {
   })
 }
 
-// 获坖申报坕产哝列表
+// 获取申报单产品列表
 export function getDeclarationProducts(formId: number) {
   return request({
     url: `/v1/declarations/${formId}/products`,
@@ -274,7 +295,7 @@ export function getDeclarationProducts(formId: number) {
   })
 }
 
-// 保存申报坕产哝
+// 保存申报单产品
 export function saveDeclarationProducts(formId: number, products: DeclarationProduct[]) {
   return request({
     url: `/v1/declarations/${formId}/products`,
@@ -283,7 +304,7 @@ export function saveDeclarationProducts(formId: number, products: DeclarationPro
   })
 }
 
-// 获坖申报坕箱孝列表
+// 获取申报单箱子列表
 export function getDeclarationCartons(formId: number) {
   return request({
     url: `/v1/declarations/${formId}/cartons`,
@@ -291,7 +312,7 @@ export function getDeclarationCartons(formId: number) {
   })
 }
 
-// 保存申报坕箱孝
+// 保存申报单箱子
 export function saveDeclarationCartons(formId: number, cartons: DeclarationCarton[]) {
   return request({
     url: `/v1/declarations/${formId}/cartons`,
@@ -300,7 +321,7 @@ export function saveDeclarationCartons(formId: number, cartons: DeclarationCarto
   })
 }
 
-// 保存箱孝产哝关蝔
+// 保存箱子产品关联
 export function saveCartonProducts(cartonProducts: CartonProduct[]) {
   return request({
     url: '/v1/declarations/carton-products',
@@ -309,7 +330,7 @@ export function saveCartonProducts(cartonProducts: CartonProduct[]) {
   })
 }
 
-// 获坖箱孝产哝关蝔
+// 获取箱子产品关联
 export function getCartonProducts(cartonId: number) {
   return request({
     url: `/v1/declarations/carton-products/${cartonId}`,
@@ -317,7 +338,7 @@ export function getCartonProducts(cartonId: number) {
   })
 }
 
-// 导出申报坕
+// 导出申报单
 export function exportDeclaration(id: number) {
   return request({
     url: `/v1/declarations/${id}/export`,
@@ -326,7 +347,7 @@ export function exportDeclaration(id: number) {
   })
 }
 
-// 导出开票明细生戝坕
+// 导出开票明细计算单
 export function exportFinanceCalculation(id: number) {
   return request({
     url: `/v1/financial-supplements/form/${id}/export-finance-calculation`,
@@ -334,7 +355,7 @@ export function exportFinanceCalculation(id: number) {
   })
 }
 
-// 批針导出申报坕
+// 批量导出申报单
 export function batchExportDeclaration(ids: number[]) {
   return request({
     url: '/v1/declarations/batch-export',
@@ -344,7 +365,7 @@ export function batchExportDeclaration(ids: number[]) {
   })
 }
 
-// 获坖杝货坕附件列表
+// 获取提货单附件列表
 export function getPickupAttachments(id: number) {
   return request({
     url: `/v1/declarations/${id}/attachments/pickup`,
@@ -352,7 +373,7 @@ export function getPickupAttachments(id: number) {
   })
 }
 
-// 保存杝货坕附件
+// 保存提货单附件
 export function savePickupAttachment(id: number, data: any) {
   return request({
     url: `/v1/declarations/${id}/attachments/pickup`,
@@ -369,7 +390,7 @@ export interface FinancialSupplementQueryParams {
   status?: number
 }
 
-// 分页获坖财务补充列表
+// 分页获取财务补充列表
 export function getFinancialSupplementList(params: FinancialSupplementQueryParams) {
   return request({
     url: '/v1/financial-supplements',
@@ -378,11 +399,24 @@ export function getFinancialSupplementList(params: FinancialSupplementQueryParam
   })
 }
 
-// 根杮申报坕ID获坖财务补充记录
+// 根据申报单ID获取财务补充记录
 export function getFinancialSupplement(formId: number) {
   return request({
     url: `/v1/financial-supplements/form/${formId}`,
     method: 'get'
+  })
+}
+
+/** 可新增财务单证的申报单（资料已提交且尚无退税点记录） */
+export function getEligibleDeclarationsForFinance(params?: {
+  current?: number
+  size?: number
+  formNo?: string
+}) {
+  return request({
+    url: '/v1/financial-supplements/eligible-declarations',
+    method: 'get',
+    params
   })
 }
 
@@ -429,7 +463,7 @@ export function uploadFile(file: File, type?: string) {
   })
 }
 
-// 获坖申报坕统计数杮
+// 获取申报单统计数据
 export function getDeclarationStatistics() {
   return request({
     url: '/v1/declarations/statistics',
@@ -437,7 +471,7 @@ export function getDeclarationStatistics() {
   })
 }
 
-// 替杢申报坕附件
+// 替换申报单附件
 export function replaceDeclarationAttachment(formId: number, attachmentId: number, file: File) {
   const formData = new FormData()
   formData.append('file', file)
@@ -460,7 +494,7 @@ export function getDeclarationAttachments(formId: number) {
   })
 }
 
-// 針新生戝坕杮
+// 重新生成单据
 export function regenerateDocuments(id: number) {
   return request({
     url: `/v1/declarations/${id}/regenerate-documents`,
@@ -468,25 +502,26 @@ export function regenerateDocuments(id: number) {
   })
 }
 
-// 針新生戝全套坕杮
-export function regenerateAllDocuments(id: number) {
+// 重新生成全套单据
+export function regenerateAllDocuments(id: number, mergeProducts: boolean = false) {
   return request({
     url: `/v1/declarations/${id}/regenerate-all-documents`,
-    method: 'post'
+    method: 'post',
+    params: { mergeProducts }
   })
 }
 
-// 針新生戝水坕报告
-export function regenerateRemittanceReport(id: number, type: number) {
+// 重新生成水单报告
+export function regenerateRemittanceReport(id: number, remittanceId?: number) {
   return request({
     url: `/v1/declarations/${id}/regenerate-remittance-report`,
     method: 'post',
-    params: { type }
+    params: remittanceId ? { remittanceId } : {}
   })
 }
 
-// ========== 杝货坕相关 API ==========
-// 杝交杝货坕
+// ========== 提货单相关 API ==========
+// 提交提货单
 export function saveDeliveryOrder(formId: number, data: any) {
   return request({
     url: `/v1/declarations/${formId}/delivery-order`,
@@ -495,7 +530,7 @@ export function saveDeliveryOrder(formId: number, data: any) {
   })
 }
 
-// 获坖杝货坕列表
+// 获取提货单列表
 export function getDeliveryOrders(formId: number) {
   return request({
     url: `/v1/declarations/${formId}/delivery-orders`,
@@ -503,7 +538,7 @@ export function getDeliveryOrders(formId: number) {
   })
 }
 
-// 更新杝货坕
+// 更新提货单
 export function updateDeliveryOrder(id: number, data: any) {
   return request({
     url: `/v1/declarations/delivery-order/${id}`,
@@ -512,7 +547,7 @@ export function updateDeliveryOrder(id: number, data: any) {
   })
 }
 
-// 删除杝货坕
+// 删除提货单
 export function deleteDeliveryOrder(id: number) {
   return request({
     url: `/v1/declarations/delivery-order/${id}`,
@@ -522,7 +557,7 @@ export function deleteDeliveryOrder(id: number) {
 
 // === 财务人员相关接坣 ===
 
-// 获坖开票明细计算详情
+// 获取开票明细计算详情
 export function getCalculationDetail(formId: number) {
   return request({
     url: `/v1/financial-supplements/form/${formId}/calculation-detail`,
@@ -531,7 +566,7 @@ export function getCalculationDetail(formId: number) {
 }
 
 
-// 审核水坕
+// 审核水单
 export function auditRemittance(id: number, data: { approved: boolean; remark: string }) {
   return request({
     url: `/v1/declarations/remittance/${id}/audit`,
@@ -540,7 +575,7 @@ export function auditRemittance(id: number, data: { approved: boolean; remark: s
   })
 }
 
-// 审核杝货坕
+// 审核提货单
 export function auditDeliveryOrder(id: number, data: { approved: boolean; remark: string }) {
   return request({
     url: `/v1/declarations/delivery-order/${id}/audit`,
@@ -549,7 +584,7 @@ export function auditDeliveryOrder(id: number, data: { approved: boolean; remark
   })
 }
 
-// 获坖坯用的银行账户列表（用于外汇银行选择）
+// 获取启用的银行账户列表（用于外汇银行选择）
 export function getEnabledBankAccounts(currency?: string) {
   return request({
     url: '/v1/bank-accounts/enabled',
@@ -558,17 +593,18 @@ export function getEnabledBankAccounts(currency?: string) {
   })
 }
 
-// 获坖申报坕的水坕列表
+// 获取申报单的水单列表
 export function getRemittanceListByFormId(formId: number) {
   return request({
     url: `/v1/declarations/${formId}/remittances`,
     method: 'get'
   })
 }
-// === �˻زݸ���� API ===
+
+// === 退回草稿相关 API ===
 
 /**
- * �����˻زݸ�
+ * 申请退回草稿
  */
 export function applyReturnToDraft(id: number, reason: string) {
   return request({
@@ -578,8 +614,9 @@ export function applyReturnToDraft(id: number, reason: string) {
   })
 }
 
+
 /**
- * ����˻زݸ�����
+ * 审核退回草稿申请
  */
 export function auditReturnToDraft(id: number, data: { approved: boolean; remark: string }) {
   return request({
@@ -590,7 +627,7 @@ export function auditReturnToDraft(id: number, data: { approved: boolean; remark
 }
 
 /**
- * ??????????
+ * 获取退回草稿审核历史
  */
 export function getReturnAuditHistory(id: number) {
   return request({
@@ -600,7 +637,7 @@ export function getReturnAuditHistory(id: number) {
 }
 
 /**
- * ????????????(??? - ?remittance??)
+ * 根据申报单ID获取水单列表（独立资源 - remittance）
  */
 export function getRemittancesByFormId(formId: number) {
   return request({

@@ -20,6 +20,19 @@
           <template #icon><reload-outlined /></template>
           刷新
         </a-button>
+        <a-divider type="vertical" />
+        <span class="text-gray-500">环节筛选：</span>
+        <a-select
+          v-model:value="filterStage"
+          placeholder="全部环节"
+          allowClear
+          style="width: 160px"
+          @change="loadList"
+        >
+          <a-select-option v-for="s in MATERIAL_STAGES" :key="s.value" :value="s.value">
+            {{ s.label }}
+          </a-select-option>
+        </a-select>
       </a-space>
     </a-card>
 
@@ -34,7 +47,12 @@
         class="ui-table"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'required'">
+          <template v-if="column.key === 'stage'">
+            <a-tag :color="MATERIAL_STAGE_COLOR[record.stage as MaterialStage] || 'default'" class="ui-tag">
+              {{ MATERIAL_STAGE_LABEL[record.stage as MaterialStage] || record.stage || '未设置' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.key === 'required'">
             <a-tag :color="record.required === 1 ? 'red' : 'default'" class="ui-tag">
               {{ record.required === 1 ? '必填' : '选填' }}
             </a-tag>
@@ -112,6 +130,15 @@
 
         <a-row :gutter="16">
           <a-col :span="12">
+            <a-form-item label="所属环节" name="stage">
+              <a-select v-model:value="formData.stage" placeholder="选择所属环节">
+                <a-select-option v-for="s in MATERIAL_STAGES" :key="s.value" :value="s.value">
+                  {{ s.label }}
+                </a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
             <a-form-item label="是否必填" name="required">
               <a-radio-group v-model:value="formData.required" button-style="solid">
                 <a-radio :value="1">必填</a-radio>
@@ -119,6 +146,9 @@
               </a-radio-group>
             </a-form-item>
           </a-col>
+        </a-row>
+
+        <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="排序" name="sort">
               <a-input-number v-model:value="formData.sort" :min="0" :max="9999" class="w-full" />
@@ -253,8 +283,12 @@ import {
   updateMaterialTemplate,
   deleteMaterialTemplate,
   INVOICE_SCHEMA_PRESET,
+  MATERIAL_STAGES,
+  MATERIAL_STAGE_LABEL,
+  MATERIAL_STAGE_COLOR,
   type MaterialTemplate,
-  type MaterialSchemaField
+  type MaterialSchemaField,
+  type MaterialStage
 } from '@/api/system/materialTemplate'
 
 interface SchemaFieldRow extends MaterialSchemaField {
@@ -274,11 +308,13 @@ const genRid = () => ++_ridSeq
 
 const list = ref<MaterialTemplate[]>([])
 const loading = ref(false)
+const filterStage = ref<MaterialStage | undefined>(undefined)
 
 const columns = [
   { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
   { title: '编码', dataIndex: 'code', key: 'code', width: 200 },
   { title: '名称', dataIndex: 'name', key: 'name', width: 200 },
+  { title: '所属环节', dataIndex: 'stage', key: 'stage', width: 120 },
   { title: '必填', dataIndex: 'required', key: 'required', width: 100 },
   { title: '启用', dataIndex: 'enabled', key: 'enabled', width: 100 },
   { title: '说明', dataIndex: 'remark', key: 'remark', ellipsis: true },
@@ -297,7 +333,8 @@ const defaultForm = (): MaterialTemplate => ({
   sort: 0,
   remark: '',
   formSchema: '',
-  enabled: 1
+  enabled: 1,
+  stage: 'MATERIAL_SUBMIT' as MaterialStage
 })
 
 const formData = reactive<MaterialTemplate>(defaultForm())
@@ -384,7 +421,7 @@ const formRules: Record<string, RuleObject | RuleObject[]> = {
 const loadList = async () => {
   try {
     loading.value = true
-    const response = await getMaterialTemplateList()
+    const response = await getMaterialTemplateList(filterStage.value ? { stage: filterStage.value } : undefined)
     if (response.data?.code === 200) {
       list.value = response.data.data || []
     }

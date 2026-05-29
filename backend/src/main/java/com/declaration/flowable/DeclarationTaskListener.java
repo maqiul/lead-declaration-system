@@ -30,10 +30,14 @@ import org.springframework.stereotype.Component;
  * 1 - 待初审
  * 2 - 待资料提交（海关报关单已生成）
  * 3 - 待资料审核
- * 4 - 待发票提交（资料审核通过后）
- * 5 - 待发票审核
- * 6 - 已完成（可进入财务流程）
- * 9 - 退回待审
+ * 4 - 待补充资料提交（资料审核通过后）
+ * 5 - 待补充资料审核
+ * 6 - 待申请开票金额（补充资料审核通过后）
+ * 7 - 待开票金额审核
+ * 8 - 待发票提交（开票金额审核通过后）
+ * 9 - 待发票审核
+ * 10 - 已完成（可进入财务流程）
+ * 11 - 退回待审
  */
 @Slf4j
 @Component("declarationTaskListener")
@@ -44,6 +48,7 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
     private final DeclarationAttachmentService attachmentService;
     private final DeclarationMaterialItemService materialItemService;
     private final RuntimeService runtimeService;
+    private final DeclarationProcessVersionHelper processVersionHelper;
 
     @Override
     public void notify(DelegateTask delegateTask) {
@@ -123,7 +128,7 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
                         newStatus = 2;
                         break;
                     case "endEvent":
-                        newStatus = 6;
+                        newStatus = 10;  // 流程完成 → 已完成
                         break;
                 }
             } else {
@@ -152,14 +157,31 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
                 case "materialAudit":            // 资料审核
                     newStatus = 3;
                     break;
-                case "invoiceSubmit":            // 业务发票提交
+                case "supplementSubmit":         // 补充资料提交
                     newStatus = 4;
                     break;
-                case "invoiceAudit":             // 业务发票审核
+                case "supplementAudit":          // 补充资料审核
                     newStatus = 5;
                     break;
-                case "endEvent":                 // 流程完成
+                case "invoiceAmountSubmit":      // 申请开票金额
                     newStatus = 6;
+                    break;
+                case "invoiceAmountAudit":       // 开票金额审核
+                    newStatus = 7;
+                    break;
+                case "invoiceSubmit":            // 业务发票提交
+                    // 旧版 BPMN 资料审通过后直达 invoiceSubmit，业务上应先走补充资料(status=4)
+                    if (isLegacyProcessDefinition(delegateTask)) {
+                        newStatus = 4;
+                    } else {
+                        newStatus = 8;
+                    }
+                    break;
+                case "invoiceAudit":             // 业务发票审核
+                    newStatus = 9;
+                    break;
+                case "endEvent":                 // 流程完成
+                    newStatus = 10;
                     break;
             }
         }
@@ -177,6 +199,18 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
                 log.info("申报单 {} (ID={}) 状态更新为: {} (节点: {}, 事件: {})",
                          form.getFormNo(), form.getId(), newStatus, taskKey, eventName);
             }
+        }
+    }
+
+    private boolean isLegacyProcessDefinition(DelegateTask delegateTask) {
+        try {
+            if (delegateTask == null || delegateTask.getProcessDefinitionId() == null) {
+                return false;
+            }
+            return !processVersionHelper.isNewVersionDefinition(delegateTask.getProcessDefinitionId());
+        } catch (Exception e) {
+            log.warn("判断流程版本失败: {}", e.getMessage());
+            return false;
         }
     }
 
@@ -217,8 +251,18 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
             return true;
         }
 
-        // 发票审核驳回回到 invoiceSubmit 需要回调 5 → 4
+        // 补充资料审核驳回回到 supplementSubmit 需要回调 5 → 4
         if (newStatus == 4 && currentStatus != null && currentStatus == 5) {
+            return true;
+        }
+
+        // 开票金额审核驳回回到 invoiceAmountSubmit 需要回调 7 → 6
+        if (newStatus == 6 && currentStatus != null && currentStatus == 7) {
+            return true;
+        }
+
+        // 发票审核驳回回到 invoiceSubmit 需要回调 9 → 8
+        if (newStatus == 8 && currentStatus != null && currentStatus == 9) {
             return true;
         }
 

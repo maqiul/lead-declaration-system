@@ -96,15 +96,15 @@ src/main/java/com/declaration
 - Redis 5.0+
 
 ### 2. 数据库配置
+全部 SQL 脚本已统一收敛到仓库根目录 `sql/`，详见 `sql/README.md`。
+
 ```sql
--- 执行基础数据库初始化脚本
-source src/main/resources/db/init.sql
+-- 方式 A：完整快照初始化（推荐，含全部表与 Flowable ACT_* 表）
+source ../sql/init/00-full-database-dump.sql
 
--- 执行权限管理模块脚本
-source src/main/resources/db/permission.sql
-
--- 执行工作流模块脚本
-source src/main/resources/db/workflow.sql
+-- 方式 B：结构化初始化 + 按序号执行 sql/migration/ 下迁移脚本
+-- source ../sql/init/01-schema-and-base-data.sql
+-- source ../sql/init/02-menu-seed.sql
 ```
 
 ### 3. 修改配置

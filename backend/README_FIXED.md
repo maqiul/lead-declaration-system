@@ -29,7 +29,7 @@
 
 ### 数据库配置
 1. 创建MySQL数据库：`lead_declaration`
-2. 执行初始化脚本：`src/main/resources/db/init.sql`
+2. 执行初始化脚本：`sql/init/00-full-database-dump.sql`（脚本已统一收敛到仓库根目录 `sql/`，详见 `sql/README.md`）
 
 ### 配置文件
 修改 `src/main/resources/application.yml` 中的数据库连接信息：

@@ -30,10 +30,17 @@ public class DeclarationMaterialTemplateController {
     @Operation(summary = "获取资料项模板列表")
     @RequiresPermissions("system:material:template:view")
     public Result<List<DeclarationMaterialTemplate>> list(
-            @RequestParam(required = false) Integer enabled) {
+            @RequestParam(required = false) Integer enabled,
+            @RequestParam(required = false) String stage) {
         LambdaQueryWrapper<DeclarationMaterialTemplate> wrapper = new LambdaQueryWrapper<>();
         if (enabled != null) {
             wrapper.eq(DeclarationMaterialTemplate::getEnabled, enabled);
+        }
+        if (StringUtils.hasText(stage)) {
+            if (!templateService.validStages().contains(stage)) {
+                return Result.fail("非法的环节类型：" + stage);
+            }
+            wrapper.eq(DeclarationMaterialTemplate::getStage, stage);
         }
         wrapper.orderByAsc(DeclarationMaterialTemplate::getSort)
                .orderByAsc(DeclarationMaterialTemplate::getId);
@@ -49,6 +56,12 @@ public class DeclarationMaterialTemplateController {
         }
         if (!StringUtils.hasText(entity.getName())) {
             return Result.fail("资料名称不能为空");
+        }
+        // stage 默认值与校验
+        if (!StringUtils.hasText(entity.getStage())) {
+            entity.setStage("MATERIAL_SUBMIT");
+        } else if (!templateService.validStages().contains(entity.getStage())) {
+            return Result.fail("非法的环节类型：" + entity.getStage());
         }
         long codeCount = templateService.count(new LambdaQueryWrapper<DeclarationMaterialTemplate>()
                 .eq(DeclarationMaterialTemplate::getCode, entity.getCode()));
@@ -67,6 +80,10 @@ public class DeclarationMaterialTemplateController {
     public Result<Boolean> update(@RequestBody DeclarationMaterialTemplate entity) {
         if (entity.getId() == null) {
             return Result.fail("ID不能为空");
+        }
+        // stage 校验
+        if (entity.getStage() != null && !templateService.validStages().contains(entity.getStage())) {
+            return Result.fail("非法的环节类型：" + entity.getStage());
         }
         if (StringUtils.hasText(entity.getCode())) {
             long codeCount = templateService.count(new LambdaQueryWrapper<DeclarationMaterialTemplate>()

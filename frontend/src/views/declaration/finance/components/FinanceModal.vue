@@ -6,7 +6,8 @@
     :confirmLoading="saveLoading"
     @ok="handleSave"
     @cancel="handleClose"
-    :footer="null"
+    okText="保存退税点"
+    cancelText="关闭"
   >
     <a-spin :spinning="loading">
       <!-- 财务补充表单内容 -->
@@ -99,14 +100,9 @@
                     />
                   </a-form-item>
                   <a-form-item>
-                    <a-space>
-                      <a-button type="primary" @click="handleGenerateCalculation" :loading="calcLoading">
-                        生成开票明细
-                      </a-button>
-                      <a-button @click="handleSave" :loading="saveLoading">
-                        保存参数
-                      </a-button>
-                    </a-space>
+                    <a-button type="primary" @click="handleGenerateCalculation" :loading="calcLoading" block>
+                      预览开票金额计算
+                    </a-button>
                   </a-form-item>
                 </a-form>
               </a-card>
@@ -204,7 +200,8 @@
                 </template>
                 <template v-else>
                   <div style="text-align: center; color: #999; padding: 40px 0;">
-                    <p>请先设置退税参数，然后点击"生成开票明细"按钮计算开票金额</p>
+                    <p>请先设置退税点，然后点击“预览开票金额计算”查看计算结果</p>
+                    <p style="font-size: 12px; color: #bbb;">确认无误后点击底部“保存退税点”按钮保存</p>
                   </div>
                 </template>
               </a-card>
@@ -217,7 +214,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import { DownloadOutlined } from '@ant-design/icons-vue'
 import { getFinancialSupplement, createFinancialSupplement, updateFinancialSupplement, exportFinanceCalculation, uploadFile, getDeclarationDetail, getCalculationDetail } from '@/api/business/declaration'

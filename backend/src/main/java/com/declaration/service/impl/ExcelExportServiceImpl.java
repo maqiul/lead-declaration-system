@@ -490,7 +490,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         Map<String, Object> data = new HashMap<>();
 
         // 水单基本信息
-        data.put("remittanceType", remittance.getRemittanceType() == 1 ? "定金" : "尾款");
+        data.put("remittanceType", remittance.getRemittanceName() != null ? remittance.getRemittanceName() : remittance.getRemittanceNo());
         data.put("remittanceName", remittance.getRemittanceName());
         // 格式化水单日期为英文格式
         if (remittance.getRemittanceDate() != null) {
@@ -661,7 +661,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             formDir.mkdirs();
         }
 
-        String typeName = remittance.getRemittanceType() == 1 ? "定金" : "尾款";
+        String typeName = remittance.getRemittanceName() != null ? remittance.getRemittanceName() : remittance.getRemittanceNo();
         String fileName = "Remittance_" + typeName + "_" + form.getFormNo() + "_" + IdUtil.simpleUUID() + ".xlsx";
         String filePath = Paths.get(formDir.getAbsolutePath(), fileName).toString();
         File targetFile = new File(filePath);
@@ -679,7 +679,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         }
 
         // 构建附件对象
-        String fileType = "Remittance_" + (remittance.getRemittanceType() == 1 ? "Deposit" : "Balance");
+        String fileType = "Remittance";
         DeclarationAttachment attachment = new DeclarationAttachment();
         attachment.setFormId(form.getId());
         attachment.setFileName(typeName + "水单_" + form.getFormNo() + ".xlsx");
@@ -687,10 +687,11 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         attachment.setFileType(fileType);
         attachment.setCreateTime(LocalDateTime.now());
 
-        // 查询是否存在同类型旧记录，实现替换而非新增
+        // 查询是否存在同水单旧记录，实现替换而非新增（通过文件名匹配）
         LambdaQueryWrapper<DeclarationAttachment> query = new LambdaQueryWrapper<>();
         query.eq(DeclarationAttachment::getFormId, form.getId())
-                .eq(DeclarationAttachment::getFileType, fileType);
+                .eq(DeclarationAttachment::getFileType, fileType)
+                .like(DeclarationAttachment::getFileName, remittance.getRemittanceNo());
         DeclarationAttachment oldAttachment = attachmentService.getOne(query);
 
         if (oldAttachment != null) {

@@ -641,9 +641,8 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                 throw new RuntimeException("水单不存在");
             }
 
-            // 获取申报单 ID 和水单类型
+            // 获取申报单 ID
             Long formId = remittance.getFormId();
-            Integer remittanceType = remittance.getRemittanceType(); // 1-定金 2-尾款
 
             remittance.setStatus(approved ? 1 : 2); // 1-已审核 2-已驳回
             remittance.setAuditRemark(remark);

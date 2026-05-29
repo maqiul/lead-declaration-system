@@ -4,10 +4,12 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.declaration.entity.DeclarationMaterialItem;
 import com.declaration.entity.DeclarationRemittance;
 import com.declaration.entity.FinancialSupplement;
+import com.declaration.entity.MaterialAttachment;
 import com.declaration.dao.FinancialSupplementMapper;
 import com.declaration.service.DeclarationMaterialItemService;
 import com.declaration.service.DeclarationRemittanceService;
 import com.declaration.service.FinancialSupplementService;
+import com.declaration.service.MaterialAttachmentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,7 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
 
     private final DeclarationRemittanceService remittanceService;
     private final DeclarationMaterialItemService materialItemService;
+    private final MaterialAttachmentService materialAttachmentService;
 
     // 数字格式化器
     private static final DecimalFormat AMOUNT_FORMAT = new DecimalFormat("#,##0.00");
@@ -31,14 +34,28 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
     private static final String CODE_FREIGHT = "FREIGHT_INVOICE";
     private static final String CODE_CUSTOMS = "CUSTOMS_AGENT_INVOICE";
 
-    /** 从申报资料项中按 code 读取发票金额，不存在或为 null 时返回 0 */
+    /** 从申报资料项中按 code 读取发票金额，支持多附件金额汇总 */
     private BigDecimal getInvoiceAmountFromMaterial(Long formId, String code) {
         if (formId == null || code == null) return BigDecimal.ZERO;
         List<DeclarationMaterialItem> items = materialItemService.listByFormId(formId);
         if (items == null) return BigDecimal.ZERO;
         for (DeclarationMaterialItem item : items) {
-            if (code.equals(item.getCode()) && item.getAmount() != null) {
-                return item.getAmount();
+            if (code.equals(item.getCode())) {
+                // 优先汇总附件级别的金额（支持多张发票）
+                if (item.getId() != null) {
+                    List<MaterialAttachment> attachments = materialAttachmentService.listByItemId(item.getId());
+                    if (attachments != null && !attachments.isEmpty()) {
+                        BigDecimal total = BigDecimal.ZERO;
+                        for (MaterialAttachment att : attachments) {
+                            if (att.getAmount() != null) {
+                                total = total.add(att.getAmount());
+                            }
+                        }
+                        return total;
+                    }
+                }
+                // 无附件时回退到 item 级别金额
+                return item.getAmount() != null ? item.getAmount() : BigDecimal.ZERO;
             }
         }
         return BigDecimal.ZERO;

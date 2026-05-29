@@ -1,6 +1,6 @@
 <template>
   <div class="declaration-form-page">
-    <a-card :title="(isMaterialMode ? (isReadonly ? '申报资料查看' : '提交申报资料') : isMaterialAuditMode ? '申报单详情 - 资料审核' : isInvoiceAuditMode ? '申报单详情 - 发票审核' : isInvoiceUploadMode ? '申报单详情 - 上传发票' : '出口申报表单')" >
+    <a-card :title="(isMaterialMode ? (isReadonly ? '申报资料查看' : '提交申报资料') : isMaterialAuditMode ? '申报单详情 - 资料审核' : isSupplementMode ? '申报单详情 - 补充资料提交' : isSupplementAuditMode ? '申报单详情 - 补充资料审核' : canSubmitInvoiceAmount ? '申报单详情 - 申请开票金额' : (canAuditInvoiceAmount || isInvoiceAmountAuditMode) ? '申报单详情 - 开票金额审核' : isInvoiceAmountMode ? '申报单详情 - 申请开票金额' : isInvoiceAuditMode ? '申报单详情 - 发票审核' : isInvoiceUploadMode ? '申报单详情 - 上传发票' : '出口申报表单')" >
       <template #extra>
         <a-space>
           <a-button @click="goBack">
@@ -75,8 +75,78 @@
             </a-button>
           </template>
 
-          <!-- 发票审核模式下的按钮：状态 5（待发票审核）时显示 -->
-          <template v-else-if="isInvoiceAuditMode && formStatus === 5">
+          <!-- 补充资料提交：状态 4 时显示（不限 mode，避免从列表进入时漏显） -->
+          <template v-else-if="canSubmitSupplement">
+            <a-button
+              type="primary"
+              @click="handleSubmitSupplement"
+              :loading="submitting"
+              v-permission="['business:declaration:supplement:submit']"
+            >
+              <template #icon><UploadOutlined /></template>
+              提交补充资料
+            </a-button>
+          </template>
+
+          <!-- 补充资料审核：状态 5 时显示 -->
+          <template v-else-if="canAuditSupplement">
+            <a-button
+              type="primary"
+              @click="handleSupplementAuditApprove"
+              :loading="submitting"
+              v-permission="['business:declaration:audit:supplement']"
+            >
+              <template #icon><CheckCircleOutlined /></template>
+              审核通过
+            </a-button>
+            <a-button
+              danger
+              @click="handleSupplementAuditReject"
+              :loading="submitting"
+              v-permission="['business:declaration:audit:supplement']"
+            >
+              <template #icon><CloseCircleOutlined /></template>
+              审核驳回
+            </a-button>
+          </template>
+
+          <!-- 申请开票金额：状态 6 时显示（不限 mode，避免无发票提交菜单时漏显） -->
+          <template v-else-if="canSubmitInvoiceAmount">
+            <a-button
+              type="primary"
+              @click="handleSubmitInvoiceAmount"
+              :loading="submitting"
+              v-permission="['business:declaration:invoice-amount:submit']"
+            >
+              <template #icon><UploadOutlined /></template>
+              提交开票金额申请
+            </a-button>
+          </template>
+
+          <!-- 开票金额审核：状态 7 时显示 -->
+          <template v-else-if="canAuditInvoiceAmount">
+            <a-button
+              type="primary"
+              @click="handleInvoiceAmountAuditApprove"
+              :loading="submitting"
+              v-permission="['business:declaration:audit:invoice-amount']"
+            >
+              <template #icon><CheckCircleOutlined /></template>
+              审核通过
+            </a-button>
+            <a-button
+              danger
+              @click="handleInvoiceAmountAuditReject"
+              :loading="submitting"
+              v-permission="['business:declaration:audit:invoice-amount']"
+            >
+              <template #icon><CloseCircleOutlined /></template>
+              审核驳回
+            </a-button>
+          </template>
+
+          <!-- 业务发票审核：状态 9 -->
+          <template v-else-if="canAuditInvoice">
             <a-button
               type="primary"
               @click="handleInvoiceAuditApprove"
@@ -97,10 +167,8 @@
             </a-button>
           </template>
 
-          <!-- 发票提交模式下的按钮：状态 4（待发票提交）时显示 -->
-          <!-- 注意：发票上传模式下 isReadonly 会被置为 true（申报单基本信息只读），
-               但发票区可操作，因此按钮可见不应受 isReadonly 约束 -->
-          <template v-else-if="isInvoiceUploadMode && formStatus === 4">
+          <!-- 业务发票提交：状态 8（页头快捷入口，与业务发票区块内按钮一致） -->
+          <template v-else-if="canSubmitInvoice">
             <a-button
               type="primary"
               @click="handleSubmitInvoice"
@@ -131,7 +199,7 @@
       
       <!-- 退回原因提示 -->
       <a-alert
-        v-if="formStatus === 9 && returnReason"
+        v-if="formStatus === 11 && returnReason"
         message="退回申请原因"
         :description="returnReason"
         type="warning"
@@ -140,7 +208,7 @@
       />
       
       <!-- 基本信息 -->
-      <a-card title="基本信息" size="small" class="section-card">
+      <a-card id="section-basic" title="基本信息" size="small" class="section-card">
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="申报单号">
@@ -275,7 +343,7 @@
       </a-card>
       
       <!-- 产品明细 -->
-      <a-card title="产品明细" size="small" class="section-card">
+      <a-card id="section-products" title="产品明细" size="small" class="section-card">
         <template #extra>
           <a-button v-if="!isFormReadonly" type="primary" size="small" @click="addProduct">
             <template #icon><PlusOutlined /></template>
@@ -717,7 +785,47 @@
       </a-card>
 
       <!-- 申报资料 (状态 2 及以上显示) -->
-      <a-card v-if="formStatus && formStatus >= 2" title="申报资料" size="small" class="section-card">
+      <a-card v-if="formStatus && formStatus >= 2" id="section-material" title="申报资料" size="small" class="section-card">
+        <template #extra>
+          <a-space>
+            <!-- 资料提交按钮：状态 2 且非审核模式 -->
+            <a-button
+              v-if="formStatus === 2 && isMaterialMode && !isReadonly"
+              type="primary"
+              size="small"
+              @click="handleSubmitMaterial"
+              :loading="submitting"
+              v-permission="['business:declaration:material:submit']"
+            >
+              <template #icon><UploadOutlined /></template>
+              提交资料审核
+            </a-button>
+            
+            <!-- 资料审核按钮：状态 3 且审核模式 -->
+            <template v-if="formStatus === 3 && isMaterialAuditMode">
+              <a-button
+                type="primary"
+                size="small"
+                @click="handleMaterialAuditApprove"
+                :loading="submitting"
+                v-permission="['business:declaration:audit:material']"
+              >
+                <template #icon><CheckCircleOutlined /></template>
+                审核通过
+              </a-button>
+              <a-button
+                danger
+                size="small"
+                @click="handleMaterialAuditReject"
+                :loading="submitting"
+                v-permission="['business:declaration:audit:material']"
+              >
+                <template #icon><CloseCircleOutlined /></template>
+                审核驳回
+              </a-button>
+            </template>
+          </a-space>
+        </template>
         <a-spin :spinning="materialLoading">
           <!-- 进度卡片 -->
           <div class="progress-card">
@@ -728,7 +836,7 @@
                 <span v-else>资料查看</span>
               </div>
               <div class="progress-desc">
-                共 <b>{{ materialItems.length }}</b> 项资料，必填 <b class="text-red-500">{{ materialRequiredCount }}</b> 项，
+                共 <b>{{ coreMaterialItems.length }}</b> 项资料，必填 <b class="text-red-500">{{ materialRequiredCount }}</b> 项，
                 已上传 <b :class="materialUploadedCount === materialRequiredCount ? 'text-green-500' : 'text-blue-500'">{{ materialUploadedCount }}</b> 项
               </div>
             </div>
@@ -742,6 +850,29 @@
             </div>
           </div>
 
+          <!-- 环节 Tabs -->
+          <a-tabs v-model:activeKey="activeStageTab" size="small" class="stage-tabs">
+            <a-tab-pane v-for="stage in availableStages" :key="stage.value">
+              <template #tab>
+                <span>
+                  {{ stage.label }}
+                  <a-badge
+                    v-if="stageStats[stage.value] && stageStats[stage.value].required > 0"
+                    :count="stageStats[stage.value].uploaded + '/' + stageStats[stage.value].required"
+                    :number-style="{ backgroundColor: stageStats[stage.value].uploaded >= stageStats[stage.value].required ? '#52c41a' : '#1677ff', fontSize: '11px', boxShadow: 'none' }"
+                    class="ml-1"
+                  />
+                  <a-badge
+                    v-else-if="stageStats[stage.value]"
+                    :count="stageStats[stage.value].total"
+                    :number-style="{ backgroundColor: '#8c8c8c', fontSize: '11px', boxShadow: 'none' }"
+                    class="ml-1"
+                  />
+                </span>
+              </template>
+            </a-tab-pane>
+          </a-tabs>
+
           <div class="toolbar" v-if="isMaterialEditable">
             <a-space>
               <a-button type="primary" size="small" class="material-customize-btn" @click="openAddMaterialRow"
@@ -753,7 +884,7 @@
           </div>
 
           <a-table
-            :dataSource="materialItems"
+            :dataSource="activeStageItems"
             :columns="materialColumns"
             :pagination="false"
             :rowKey="materialRowKey"
@@ -766,7 +897,7 @@
               <div class="schema-inline" v-if="parseMaterialSchema(record.formSchema).length">
                 <div
                   class="schema-field"
-                  v-for="field in parseMaterialSchema(record.formSchema)"
+                  v-for="field in parseMaterialSchema(record.formSchema).filter((f: any) => !isInvoiceMaterial(record as MaterialItem) || !MATERIAL_FIXED_KEYS.includes(f.key))"
                   :key="field.key"
                 >
                   <label class="schema-label">
@@ -847,102 +978,115 @@
                     <a-tag v-if="parseMaterialSchema(record.formSchema).length" color="purple" class="ui-tag">
                       <FormOutlined /> 需填写字段
                     </a-tag>
-                  </div>
-                  <div v-if="record.remark" class="name-remark">{{ record.remark }}</div>
-                </div>
-              </template>
-              <template v-else-if="column.key === 'file'">
-                <template v-if="record.status === 1 && record.fileUrl">
-                  <div class="file-cell file-uploaded">
-                    <FileTextOutlined class="file-icon" />
-                    <div class="file-info">
-                      <a :href="record.fileUrl" target="_blank" class="file-name">{{ record.fileName || '查看附件' }}</a>
-                      <div class="file-time" v-if="record.uploadTime">
-                        {{ formatMaterialDateTime(record.uploadTime) }}
-                      </div>
+                    <!-- 上传按鈕内嵌在名称行 -->
+                    <div class="name-upload-actions" v-if="isMaterialEditable">
+                      <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem)">
+                        <a-button type="primary" size="small" class="material-upload-btn">
+                          <template #icon><UploadOutlined v-if="record.status !== 1" /><PlusOutlined v-else /></template>
+                          {{ record.status === 1 ? '追加' : '上传' }}
+                        </a-button>
+                      </a-upload>
+                      <a-dropdown v-if="checkPermission(['business:declaration:material:customize'])" :trigger="['click']">
+                        <a-button size="small" type="text"><MoreOutlined /></a-button>
+                        <template #overlay>
+                          <a-menu>
+                            <a-menu-item @click="openEditMaterialRow(record as MaterialItem)"><EditOutlined /> 编辑名称/说明</a-menu-item>
+                            <a-menu-item v-if="record.status === 1" @click="confirmClearMaterialFile(record as MaterialItem)"><DeleteOutlined /> <span class="text-red-500">清除附件</span></a-menu-item>
+                            <a-menu-item v-if="record.templateId == null" @click="confirmDeleteMaterialRow(record as MaterialItem)"><CloseOutlined /> <span class="text-red-500">删除资料项</span></a-menu-item>
+                          </a-menu>
+                        </template>
+                      </a-dropdown>
                     </div>
                   </div>
-                </template>
-                <template v-else>
-                  <div class="file-cell file-empty">
-                    <CloudUploadOutlined class="file-icon" />
-                    <span>尚未上传</span>
-                  </div>
-                </template>
-              </template>
-              <template v-else-if="column.key === 'action'">
-                <a-space v-if="isMaterialEditable" :size="4">
-                  <a-upload
-                    :show-upload-list="false"
-                    :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem)"
-                  >
-                    <a-button type="primary" size="small" class="material-upload-btn">
-                      <template #icon>
-                        <UploadOutlined v-if="record.status !== 1" />
-                        <SwapOutlined v-else />
-                      </template>
-                      {{ record.status === 1 ? '替换' : '上传' }}
-                    </a-button>
-                  </a-upload>
-                  <a-dropdown v-if="checkPermission(['business:declaration:material:customize'])" :trigger="['click']">
-                    <a-button size="small" type="text">
-                      <MoreOutlined />
-                    </a-button>
-                    <template #overlay>
-                      <a-menu>
-                        <a-menu-item @click="openEditMaterialRow(record as MaterialItem)">
-                          <EditOutlined /> 编辑名称/说明
-                        </a-menu-item>
-                        <a-menu-item v-if="record.status === 1" @click="confirmClearMaterialFile(record as MaterialItem)">
-                          <DeleteOutlined /> <span class="text-red-500">清除附件</span>
-                        </a-menu-item>
-                        <a-menu-item v-if="record.templateId == null" @click="confirmDeleteMaterialRow(record as MaterialItem)">
-                          <CloseOutlined /> <span class="text-red-500">删除资料项</span>
-                        </a-menu-item>
-                      </a-menu>
+                  <div v-if="record.remark" class="name-remark">{{ record.remark }}</div>
+
+                  <!-- 附件列表（在资料项名称下方） -->
+                  <template v-if="record.attachments && record.attachments.length > 0">
+                    <!-- 发票类：每个附件独立卡片 -->
+                    <template v-if="isInvoiceMaterial(record as MaterialItem)">
+                      <div v-for="att in record.attachments" :key="att.id" class="att-invoice-card">
+                        <!-- 第一行：文件 + 字段 + 删除 -->
+                        <div class="att-row-main">
+                          <div class="att-file-name">
+                            <FileTextOutlined class="file-icon-sm" />
+                            <a :href="att.fileUrl" target="_blank" class="file-name-sm" :title="att.fileName">{{ displayAttFileName(att) }}</a>
+                          </div>
+                          <div class="att-divider-v"></div>
+                          <template v-if="isMaterialEditable">
+                            <div class="att-field-inline">
+                              <span class="att-field-label">金额</span>
+                              <a-input-number :value="att.amount ?? undefined" @update:value="(v: any) => saveAttachmentField(record as MaterialItem, att, 'amount', v)" placeholder="-" size="small" :precision="2" style="width: 120px" />
+                            </div>
+                            <div class="att-field-inline">
+                              <span class="att-field-label">发票号</span>
+                              <a-input :value="att.invoiceNo ?? undefined" @update:value="(v: any) => saveAttachmentField(record as MaterialItem, att, 'invoiceNo', v)" @blur="() => saveAttachmentField(record as MaterialItem, att, 'invoiceNo', att.invoiceNo)" placeholder="-" size="small" style="width: 180px" :maxlength="100" />
+                            </div>
+                            <div class="att-field-inline">
+                              <span class="att-field-label">日期</span>
+                              <a-date-picker :value="att.invoiceDate || undefined" value-format="YYYY-MM-DD" @update:value="(v: any) => saveAttachmentField(record as MaterialItem, att, 'invoiceDate', v)" placeholder="-" size="small" style="width: 140px" />
+                            </div>
+                          </template>
+                          <template v-else>
+                            <span class="att-val-tag">¥{{ att.amount ?? '-' }}</span>
+                            <span class="att-val-tag">{{ att.invoiceNo || '-' }}</span>
+                            <span class="att-val-tag">{{ att.invoiceDate || '-' }}</span>
+                          </template>
+                          <a-popconfirm v-if="isMaterialEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                            <DeleteOutlined class="file-delete-btn" />
+                          </a-popconfirm>
+                        </div>
+                        <!-- 第二行：元数据 -->
+                        <div class="att-row-meta">
+                          <span><UserOutlined /> 创建 {{ att.createByName || '-' }}</span>
+                          <span class="att-meta-dot"></span>
+                          <span><EditOutlined /> 更新 {{ att.updateByName || '-' }}</span>
+                          <span class="att-meta-dot"></span>
+                          <span><ClockCircleOutlined /> {{ att.uploadTime ? att.uploadTime.substring(0, 16) : '-' }}</span>
+                        </div>
+                      </div>
                     </template>
-                  </a-dropdown>
-                </a-space>
-                <span v-else class="text-gray-400">—</span>
+                    <!-- 非发票类：统一卡片风格 -->
+                    <template v-else>
+                      <div v-for="att in record.attachments" :key="att.id" class="att-invoice-card">
+                        <div class="att-row-main">
+                          <div class="att-file-name">
+                            <FileTextOutlined class="file-icon-sm" />
+                            <a :href="att.fileUrl" target="_blank" class="file-name-sm" :title="att.fileName">{{ displayAttFileName(att) }}</a>
+                          </div>
+                          <a-popconfirm v-if="isMaterialEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                            <DeleteOutlined class="file-delete-btn" />
+                          </a-popconfirm>
+                        </div>
+                        <div class="att-row-meta">
+                          <span><UserOutlined /> 创建 {{ att.createByName || '-' }}</span>
+                          <span class="att-meta-dot"></span>
+                          <span><EditOutlined /> 更新 {{ att.updateByName || '-' }}</span>
+                          <span class="att-meta-dot"></span>
+                          <span><ClockCircleOutlined /> {{ att.uploadTime ? att.uploadTime.substring(0, 16) : '-' }}</span>
+                        </div>
+                      </div>
+                      <div class="file-count-hint" v-if="record.attachments.length > 1">共 {{ record.attachments.length }} 份文件</div>
+                    </template>
+                  </template>
+                  <!-- 兼容旧数据 -->
+                  <template v-else-if="record.status === 1 && record.fileUrl">
+                    <div class="file-item-row">
+                      <FileTextOutlined class="file-icon-sm" />
+                      <a :href="record.fileUrl" target="_blank" class="file-name-sm">{{ record.fileName || '查看附件' }}</a>
+                    </div>
+                  </template>
+                  <!-- 未上传 -->
+                  <template v-else>
+                    <div class="file-cell file-empty"><CloudUploadOutlined class="file-icon" /><span>尚未上传</span></div>
+                  </template>
+                </div>
               </template>
             </template>
           </a-table>
         </a-spin>
       </a-card>
 
-      <!-- 业务发票 (仅在待发票提交/待发票审核/已完成阶段显示，status>=4) -->
-      <a-card v-if="formStatus && formStatus >= 4" title="业务发票" size="small" class="section-card" style="margin-top: 16px;">
-        <template #extra>
-          <a-button v-if="!isFormReadonly || isInvoiceUploadMode" type="primary" size="small" @click="showInvoiceModal" v-permission="['business:declaration:update']">
-            <PlusOutlined /> 上传发票
-          </a-button>
-        </template>
-
-        <a-table
-          :dataSource="businessInvoiceList"
-          :columns="businessInvoiceColumns"
-          :pagination="false"
-          rowKey="id"
-          size="small"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'fileName'">
-              <a v-if="record.fileUrl" :href="getInvoiceFileUrl(record.fileUrl)" target="_blank">
-                <DownloadOutlined /> {{ record.fileName || '查看' }}
-              </a>
-              <span v-else style="color: #999;">无附件</span>
-            </template>
-            <template v-if="column.key === 'action'">
-              <a-popconfirm title="确定删除该发票记录吗？" @confirm="handleDeleteInvoice(record.id)">
-                <a-button v-if="!isFormReadonly || isInvoiceUploadMode" type="link" danger size="small">
-                  <template #icon><DeleteOutlined /></template>
-                  删除
-                </a-button>
-              </a-popconfirm>
-            </template>
-          </template>
-        </a-table>
-      </a-card>
+      <!-- 业务发票已合并至申报资料模块的「业务发票」环节标签页 -->
 
       <!-- 新增/编辑资料项弹窗 -->
       <a-modal
@@ -978,311 +1122,442 @@
           </a-form-item>
         </a-form>
       </a-modal>
-      
-      <!-- 财务补充单证 -->
-      <a-card v-if="financeSupplement?.id || isFinanceUploadMode" :title="isFinanceUploadMode ? '财务补充单证 (可编辑)' : '财务补充单证 (已上传详情)'" size="small" class="section-card">
-        <template #extra v-if="isFinanceUploadMode">
-          <a-button type="primary" size="small" @click="handleSaveFinanceSupplement" :loading="submittingSupplement" v-permission="['business:declaration:finance:supplement']">保存内容</a-button>
+      <!-- 补充资料（SUPPLEMENT 环节独立区域） -->
+      <a-card v-if="showSupplementSection" id="section-supplement" title="补充资料" size="small" class="section-card">
+        <template #extra>
+          <a-space>
+            <!-- 补充资料提交按钮：状态 4 -->
+            <a-button
+              v-if="canSubmitSupplement"
+              type="primary"
+              size="small"
+              @click="handleSubmitSupplement"
+              :loading="submitting"
+              v-permission="['business:declaration:supplement:submit']"
+            >
+              <template #icon><UploadOutlined /></template>
+              提交补充资料
+            </a-button>
+            
+            <!-- 补充资料审核按钮：状态 5 -->
+            <template v-if="canAuditSupplement">
+              <a-button
+                type="primary"
+                size="small"
+                @click="handleSupplementAuditApprove"
+                :loading="submitting"
+                v-permission="['business:declaration:audit:supplement']"
+              >
+                <template #icon><CheckCircleOutlined /></template>
+                审核通过
+              </a-button>
+              <a-button
+                danger
+                size="small"
+                @click="handleSupplementAuditReject"
+                :loading="submitting"
+                v-permission="['business:declaration:audit:supplement']"
+              >
+                <template #icon><CloseCircleOutlined /></template>
+                审核驳回
+              </a-button>
+            </template>
+          </a-space>
         </template>
-        <a-form layout="vertical" :model="financeSupplement">
+        <a-spin :spinning="materialLoading">
+          <!-- 进度卡片 -->
+          <div class="progress-card">
+            <div class="progress-left">
+              <div class="progress-title">
+                <FileDoneOutlined class="text-blue-500 mr-2" />
+                <span v-if="isSupplementEditable">补充资料上传进度</span>
+                <span v-else>补充资料查看</span>
+              </div>
+              <div class="progress-desc">
+                共 <b>{{ supplementStats.total }}</b> 项资料，必填 <b class="text-red-500">{{ supplementStats.required }}</b> 项，
+                已上传 <b :class="supplementStats.uploaded === supplementStats.required ? 'text-green-500' : 'text-blue-500'">{{ supplementStats.uploaded }}</b> 项
+              </div>
+            </div>
+            <div class="progress-right">
+              <a-progress
+                type="circle"
+                :percent="supplementStats.required === 0 ? (supplementStats.total === 0 ? 0 : 100) : Math.round((supplementStats.uploaded / supplementStats.required) * 100)"
+                :width="60"
+                :stroke-color="supplementStats.uploaded >= supplementStats.required && supplementStats.required > 0 ? '#52c41a' : '#1677ff'"
+              />
+            </div>
+          </div>
+
+          <a-table :dataSource="supplementItems" :columns="materialColumns" :pagination="false" rowKey="id" size="small" class="material-table" :expandIcon="() => null">
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'name'">
+                <div class="name-cell">
+                  <div class="name-main">
+                    <span class="name-text">{{ (record as MaterialItem).name }}</span>
+                    <a-tag v-if="(record as MaterialItem).required === 1" color="red" class="ui-tag">必填</a-tag>
+                    <a-tag v-else class="ui-tag">选填</a-tag>
+                    <div class="name-upload-actions" v-if="isSupplementEditable">
+                      <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem)">
+                        <a-button type="primary" size="small" class="material-upload-btn">
+                          <template #icon><UploadOutlined v-if="(record as MaterialItem).status !== 1" /><PlusOutlined v-else /></template>
+                          {{ (record as MaterialItem).status === 1 ? '追加' : '上传' }}
+                        </a-button>
+                      </a-upload>
+                    </div>
+                  </div>
+                  <div v-if="(record as MaterialItem).remark" class="name-remark">{{ (record as MaterialItem).remark }}</div>
+                  <!-- 附件列表 -->
+                  <template v-if="record.attachments && record.attachments.length > 0">
+                    <div v-for="att in record.attachments" :key="att.id" class="att-invoice-card">
+                      <div class="att-row-main">
+                        <div class="att-file-name">
+                          <FileTextOutlined class="file-icon-sm" />
+                          <a :href="att.fileUrl" target="_blank" class="file-name-sm" :title="att.fileName">{{ displayAttFileName(att) }}</a>
+                        </div>
+                        <a-popconfirm v-if="isSupplementEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                          <DeleteOutlined class="file-delete-btn" />
+                        </a-popconfirm>
+                      </div>
+                      <div class="att-row-meta">
+                        <span><UserOutlined /> 创建 {{ att.createByName || '-' }}</span>
+                        <span class="att-meta-dot"></span>
+                        <span><EditOutlined /> 更新 {{ att.updateByName || '-' }}</span>
+                        <span class="att-meta-dot"></span>
+                        <span><ClockCircleOutlined /> {{ att.uploadTime ? att.uploadTime.substring(0, 16) : '-' }}</span>
+                      </div>
+                    </div>
+                    <div class="file-count-hint" v-if="record.attachments.length > 1">共 {{ record.attachments.length }} 份文件</div>
+                  </template>
+                  <template v-else>
+                    <div class="file-cell file-empty"><CloudUploadOutlined class="file-icon" /><span>尚未上传</span></div>
+                  </template>
+                </div>
+              </template>
+            </template>
+          </a-table>
+        </a-spin>
+      </a-card>
+
+      <!-- 申请开票金额区域 -->
+      <a-card v-if="showInvoiceAmountSection" id="section-invoice-amount" title="申请开票金额" size="small" class="section-card">
+        <template #extra>
+          <a-space>
+            <a-button
+              v-if="canSubmitInvoiceAmount"
+              type="primary"
+              size="small"
+              @click="handleSubmitInvoiceAmount"
+              :loading="submitting"
+              v-permission="['business:declaration:invoice-amount:submit']"
+            >
+              <template #icon><UploadOutlined /></template>
+              提交开票金额
+            </a-button>
+            
+            <template v-if="canAuditInvoiceAmount">
+              <a-button
+                type="primary"
+                size="small"
+                @click="handleInvoiceAmountAuditApprove"
+                :loading="submitting"
+                v-permission="['business:declaration:audit:invoice-amount']"
+              >
+                <template #icon><CheckCircleOutlined /></template>
+                审核通过
+              </a-button>
+              <a-button
+                danger
+                size="small"
+                @click="handleInvoiceAmountAuditReject"
+                :loading="submitting"
+                v-permission="['business:declaration:audit:invoice-amount']"
+              >
+                <template #icon><CloseCircleOutlined /></template>
+                审核驳回
+              </a-button>
+            </template>
+          </a-space>
+        </template>
+        <a-spin :spinning="invoiceAmountLoading">
+          <div class="progress-card">
+            <div class="progress-left">
+              <div class="progress-title">
+                <CalculatorOutlined class="text-blue-500 mr-2" />
+                <span v-if="isInvoiceAmountEditable">开票金额计算详情</span>
+                <span v-else>开票金额查看</span>
+              </div>
+              <div class="progress-desc">
+                系统根据收汇、退税、货代发票、报关代理发票自动计算
+              </div>
+            </div>
+            <div class="progress-right">
+              <a-button v-if="showInvoiceAmountSection" type="link" @click="loadInvoiceAmountDetail">
+                <template #icon><ReloadOutlined /></template>
+                {{ isInvoiceAmountEditable ? '刷新计算' : '加载详情' }}
+              </a-button>
+              <a-button v-if="invoiceAmountCalcDetail" type="link" @click="handleDownloadCalcFile">
+                <template #icon><DownloadOutlined /></template>
+                下载计算文件
+              </a-button>
+            </div>
+          </div>
+
           <a-alert
+            v-if="isInvoiceAmountEditable"
             type="info"
             show-icon
-            message="货代发票与报关代理发票由申报资料提交环节录入，本区域仅展示，如需修改请到申报资料页。"
+            message="提交开票金额申请前，请确认外汇水单已提交。系统将自动计算开票金额。"
             style="margin-bottom: 12px"
           />
-          <a-row :gutter="16">
-             <!-- 货代发票（来自申报资料，只读） -->
-             <a-col :span="8">
-               <a-card title="货代发票（来自申报资料）" size="small">
-                 <a-form-item label="发票号">
-                   <a-input v-model:value="financeSupplement.freightInvoiceNo" disabled />
-                 </a-form-item>
-                 <a-form-item label="金额">
-                   <a-input-number v-model:value="financeSupplement.freightAmount" style="width: 100%" disabled />
-                 </a-form-item>
-                 <a-form-item label="附件">
-                   <div v-if="financeSupplement.freightFileName">
-                     <a :href="financeSupplement.freightFileUrl" target="_blank">{{ financeSupplement.freightFileName }}</a>
-                   </div>
-                   <span v-else style="color: #999">未上传</span>
-                 </a-form-item>
-               </a-card>
-             </a-col>
 
-             <!-- 报关发票（来自申报资料，只读） -->
-             <a-col :span="8">
-               <a-card title="报关代理发票（来自申报资料）" size="small">
-                 <a-form-item label="发票号">
-                   <a-input v-model:value="financeSupplement.customsInvoiceNo" disabled />
-                 </a-form-item>
-                 <a-form-item label="金额">
-                   <a-input-number v-model:value="financeSupplement.customsAmount" style="width: 100%" disabled />
-                 </a-form-item>
-                 <a-form-item label="附件">
-                   <div v-if="financeSupplement.customsFileName">
-                     <a :href="financeSupplement.customsFileUrl" target="_blank">{{ financeSupplement.customsFileName }}</a>
-                   </div>
-                   <span v-else style="color: #999">未上传</span>
-                 </a-form-item>
-               </a-card>
-             </a-col>
+          <!-- 关联水单列表 -->
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+              <LinkOutlined style="margin-right: 6px; color: #1677ff;" />
+              <span style="font-weight: 600; font-size: 14px;">关联水单</span>
+              <a-tag v-if="invoiceAmountRemittances.length > 0" style="margin-left: 8px;">{{ invoiceAmountRemittances.length }} 笔</a-tag>
+            </div>
+            <a-table
+              v-if="invoiceAmountRemittances.length > 0"
+              :dataSource="invoiceAmountRemittances"
+              :columns="remittanceColumns"
+              :pagination="false"
+              size="small"
+              rowKey="id"
+              :scroll="{ x: 860 }"
+              bordered
+            />
+            <a-empty v-else description="暂无关联水单，请先在水单管理中关联并审核通过" :image-style="{ height: '30px' }" />
+          </div>
 
-             <!-- 海关回执 -->
-             <a-col :span="8">
-               <a-card title="海关回执" size="small">
-                 <a-form-item label="附件">
-                   <div v-if="!isFinanceUploadMode && financeSupplement.customsReceiptFileName">
-                     <a :href="financeSupplement.customsReceiptFileUrl" target="_blank">{{ financeSupplement.customsReceiptFileName }}</a>
-                   </div>
-                   <a-upload
-                     v-else-if="isFinanceUploadMode"
-                     :max-count="1"
-                     :before-upload="(file) => beforeSupplementPhotoUpload(file, 'customsReceipt')"
-                     @remove="() => handleRemoveSupplementPhoto('customsReceipt')"
-                     :file-list="financeSupplement.customsReceiptFileList || (financeSupplement.customsReceiptFileName ? [{uid: '-4', name: financeSupplement.customsReceiptFileName, status: 'done', url: financeSupplement.customsReceiptFileUrl}] : [])"
-                   >
-                     <a-button><UploadOutlined /> {{ financeSupplement.customsReceiptFileName ? '替换附件' : '上传附件' }}</a-button>
-                   </a-upload>
-                   <span v-else style="color: #999">无附件</span>
-                 </a-form-item>
-               </a-card>
-             </a-col>
+          <a-descriptions v-if="invoiceAmountCalcDetail" bordered size="small" :column="2" style="margin-bottom: 12px;">
+            <a-descriptions-item label="收汇金额">
+              {{ invoiceAmountCalcDetail.totalCny ?? '-' }}
+            </a-descriptions-item>
+            <a-descriptions-item label="退税点%">
+              {{ invoiceAmountCalcDetail.taxRefundRate ? invoiceAmountCalcDetail.taxRefundRate + '%' : '-' }}
+            </a-descriptions-item>
+            <a-descriptions-item label="货代发票金额">
+              {{ invoiceAmountCalcDetail.freightInvoiceAmount ?? '-' }}
+            </a-descriptions-item>
+            <a-descriptions-item label="报关代理发票金额">
+              {{ invoiceAmountCalcDetail.customsInvoiceAmount ?? '-' }}
+            </a-descriptions-item>
+            <a-descriptions-item label="银行手续费">
+              {{ invoiceAmountCalcDetail.bankFeeAmount ?? '-' }}
+            </a-descriptions-item>
+            <a-descriptions-item label="开票金额">
+              <b class="text-blue-600 text-lg">{{ invoiceAmountCalcDetail.invoiceAmount ?? '-' }}</b>
+            </a-descriptions-item>
+          </a-descriptions>
 
-             <a-col :span="24" style="margin-top: 16px;"></a-col>
-
-             <!-- 外汇明细 -->
-             <a-col :span="24" style="margin-top: 16px;">
-               <a-card title="外汇明细" size="small">
-                 <template #extra>
-                   <a-tag v-if="remittanceList.length > 0" color="success">
-                     已关联 {{ remittanceList.length }} 条水单
-                   </a-tag>
-                   <a-tag v-else color="default">暂无水单</a-tag>
-                 </template>
-
-                 <!-- 水单列表展示 -->
-                 <a-table
-                   v-if="remittanceList.length > 0"
-                   :dataSource="remittanceList"
-                   :columns="remittanceSummaryColumns"
-                   :pagination="false"
-                   rowKey="id"
-                   size="small"
-                 >
-                   <template #bodyCell="{ column, record }">
-                     <template v-if="column.key === 'remittanceName'">
-                       <a-tag :color="record.status === 2 ? 'green' : 'blue'">
-                         {{ record.remittanceName }}
-                       </a-tag>
-                     </template>
-                     <template v-else-if="column.key === 'bankAccount'">
-                       {{ record.bankAccountName || '未设置' }}
-                     </template>
-                     <template v-else-if="column.key === 'amount'">
-                       <span style="font-weight: 500;">{{ record.remittanceAmount?.toFixed(2) || '0.00' }}</span>
-                       <span style="font-size: 12px; color: #888; margin-left: 4px;">{{ record.currency }}</span>
-                     </template>
-                     <template v-else-if="column.key === 'relationAmount'">
-                       <span style="font-weight: 500; color: #1890ff;">{{ record.totalRelatedAmount?.toFixed(2) || record.remittanceAmount?.toFixed(2) || '0.00' }}</span>
-                       <div style="font-size: 11px; color: #888;">关联到本申报单</div>
-                     </template>
-                     <template v-else-if="column.key === 'bankFeeRate'">
-                       {{ ((record.bankFeeRate || 0) * 100).toFixed(2) }}%
-                     </template>
-                     <template v-else-if="column.key === 'bankFee'">
-                       {{ record.bankFee?.toFixed(2) || '0.00' }}
-                     </template>
-                     <template v-else-if="column.key === 'date'">
-                       {{ record.remittanceDate ? dayjs(record.remittanceDate).format('YYYY-MM-DD') : '-' }}
-                     </template>
-                     <template v-else-if="column.key === 'status'">
-                       <a-tag :color="getStatusColor(record.status)">
-                         {{ getRemittanceStatusText(record.status) }}
-                       </a-tag>
-                     </template>
-                   </template>
-                 </a-table>
-
-                 <a-empty v-else description="暂无水单数据" :image="simpleImage" />
-
-                 <!-- 汇总统计 -->
-                 <a-divider style="margin: 16px 0 12px;" />
-                 <a-row :gutter="16">
-                   <a-col :span="8">
-                     <a-statistic title="收汇总计" :value="totalRemittanceAmount" :precision="2" :value-style="{ color: '#3f8600' }">
-                       <template #suffix>{{ formData.currency }}</template>
-                     </a-statistic>
-                   </a-col>
-                   <a-col :span="8">
-                     <a-statistic title="手续费合计" :value="totalBankFeeAmount" :precision="2" :value-style="{ color: '#cf1322' }">
-                       <template #suffix>{{ formData.currency }}</template>
-                     </a-statistic>
-                   </a-col>
-                   <a-col :span="8">
-                     <a-statistic title="净收汇金额" :value="netRemittanceAmount" :precision="2" :value-style="{ color: '#1890ff' }">
-                       <template #suffix>{{ formData.currency }}</template>
-                     </a-statistic>
-                   </a-col>
-                 </a-row>
-               </a-card>
-             </a-col>
-
-          </a-row>
-
-          <!-- 开票明细附件 -->
-          <a-row :gutter="16" style="margin-top: 16px;">
-            <a-col :span="24">
-              <a-card title="开票明细附件" size="small">
-                <template #extra v-if="isFinanceUploadMode">
-                  <a-button type="primary" size="small" @click="handleGenerateFinanceDetails" :loading="generatingDetails" v-permission="['business:declaration:finance:supplement']">
-                    <template #icon><DownloadOutlined /></template>
-                    生成并下载开票明细
-                  </a-button>
-                </template>
-
-                <div v-if="!isFinanceUploadMode && financeSupplement.detailsFileName">
-                  <a :href="financeSupplement.detailsFileUrl" target="_blank" style="font-size: 14px;">
-                    <DownloadOutlined /> {{ financeSupplement.detailsFileName }}
-                  </a>
+          <!-- 开票金额计算详情 -->
+          <div v-if="invoiceAmountCalcDetail" class="calc-detail-wrap">
+            <!-- 收入部分 -->
+            <div class="calc-section calc-income">
+              <div class="calc-section-title">
+                <RiseOutlined style="margin-right: 6px;" /> 收入部分
+              </div>
+              <div class="calc-row" v-for="(rd, idx) in (invoiceAmountCalcDetail.remittanceDetails || [])" :key="'rd-' + idx">
+                <span class="calc-label">{{ rd.remittanceName || '水单' }}</span>
+                <span class="calc-value">{{ fmtAmt(rd.amount) }} {{ rd.currency || 'USD' }} × {{ Number(rd.taxRate || 0).toFixed(4) }} = <b>{{ fmtAmt(rd.cnyAmount) }} CNY</b></span>
+              </div>
+              <div class="calc-row calc-subtotal">
+                <span class="calc-label">收汇合计</span>
+                <span class="calc-value text-green-600"><b>{{ fmtAmt(invoiceAmountCalcDetail.totalCny) }} CNY</b></span>
+              </div>
+              <div class="calc-row" v-if="invoiceAmountCalcDetail.taxRefundRate">
+                <span class="calc-label">退税加成 ({{ invoiceAmountCalcDetail.taxRefundRate }}%)</span>
+                <span class="calc-value">{{ fmtAmt(invoiceAmountCalcDetail.totalGoodsAmount) }} × (1 + {{ invoiceAmountCalcDetail.taxRefundRate }}%) = <b>{{ fmtAmt(invoiceAmountCalcDetail.amountWithTaxRefund) }} CNY</b></span>
+              </div>
+              <div class="calc-row calc-highlight" v-else>
+                <span class="calc-label">退税加成</span>
+                <span class="calc-value text-gray-400">未录入退税点</span>
+              </div>
+            </div>
+          
+            <!-- 支出部分 -->
+            <div class="calc-section calc-expense">
+              <div class="calc-section-title">
+                <FallOutlined style="margin-right: 6px;" /> 支出部分（扣减项）
+              </div>
+              <div class="calc-row">
+                <span class="calc-label">货代发票</span>
+                <span class="calc-value text-red-500">-{{ fmtAmt(invoiceAmountCalcDetail.freightInvoiceAmount) }} CNY</span>
+              </div>
+              <div class="calc-row">
+                <span class="calc-label">报关代理发票</span>
+                <span class="calc-value text-red-500">-{{ fmtAmt(invoiceAmountCalcDetail.customsInvoiceAmount) }} CNY</span>
+              </div>
+              <div class="calc-row">
+                <span class="calc-label">银行手续费{{ invoiceAmountCalcDetail.bankFeeRate ? ' (≈' + Number(invoiceAmountCalcDetail.bankFeeRate).toFixed(2) + '%)' : '' }}</span>
+                <span class="calc-value text-red-500">-{{ fmtAmt(invoiceAmountCalcDetail.bankFeeAmount) }} CNY</span>
+              </div>
+              <div class="calc-row calc-subtotal">
+                <span class="calc-label">支出合计</span>
+                <span class="calc-value text-red-600"><b>-{{ fmtAmt(calcExpenseTotal) }} CNY</b></span>
+              </div>
+            </div>
+          
+            <!-- 开票金额 -->
+            <div class="calc-section calc-result">
+              <div class="calc-row">
+                <span class="calc-label">开票金额</span>
+                <span class="calc-value">
+                  {{ fmtAmt(invoiceAmountCalcDetail.amountWithTaxRefund) }} - {{ fmtAmt(calcExpenseTotal) }} =
+                  <b class="text-blue-600" style="font-size: 18px;">{{ fmtAmt(invoiceAmountCalcDetail.invoiceAmount) }} CNY</b>
+                </span>
+              </div>
+            </div>
+          
+            <!-- 计算过程 -->
+            <a-collapse :bordered="false" size="small" v-if="invoiceAmountCalcDetail.calculationSteps && invoiceAmountCalcDetail.calculationSteps.length > 0">
+              <a-collapse-panel key="steps" header="计算过程明细">
+                <div class="calc-steps">
+                  <div v-for="(step, idx) in invoiceAmountCalcDetail.calculationSteps" :key="idx" class="calc-step-item">
+                    <span class="calc-step-no">{{ Number(idx) + 1 }}</span>
+                    <span class="calc-step-text">{{ step }}</span>
+                  </div>
                 </div>
-                <a-upload
-                  v-else-if="isFinanceUploadMode"
-                  :max-count="1"
-                  :before-upload="(file) => beforeSupplementPhotoUpload(file, 'details')"
-                  @remove="() => handleRemoveSupplementPhoto('details')"
-                  :file-list="financeSupplement.detailsFileList || (financeSupplement.detailsFileName ? [{uid: '-3', name: financeSupplement.detailsFileName, status: 'done', url: financeSupplement.detailsFileUrl}] : [])"
-                >
-                  <a-button>
-                    <UploadOutlined /> {{ financeSupplement.detailsFileName ? '替换附件' : '上传附件' }}
-                  </a-button>
-                </a-upload>
-                <span v-else style="color: #999">无附件</span>
-              </a-card>
-            </a-col>
-          </a-row>
+              </a-collapse-panel>
+            </a-collapse>
+          </div>
+          <a-empty v-else :description="isInvoiceAmountEditable ? '点击刷新计算加载开票金额详情' : '暂无开票金额计算数据'" />
+        </a-spin>
+      </a-card>
 
-          <!-- 财务汇总信息 (只读，与财务补充弹窗样式一致) -->
-          <a-row :gutter="16" style="margin-top: 16px;" v-if="!isFinanceUploadMode">
-            <a-col :span="24">
-              <a-card size="small">
-                <template #title>
-                  <span>财务汇总信息</span>
-                  <a-tag v-if="parsedCalculationDetail" color="success" style="margin-left: 8px;">已生成明细</a-tag>
-                  <a-tag v-else color="warning" style="margin-left: 8px;">待生成明细</a-tag>
-                </template>
-                <a-row :gutter="24">
-                  <a-col :span="10">
-                    <a-card title="退税参数" size="small">
-                      <a-form layout="vertical">
-                        <a-form-item label="退税点 (%)">
-                          <a-input-number :value="financeSupplement.taxRefundRate" style="width: 100%" disabled />
-                        </a-form-item>
-                        <a-form-item label="货代发票金额">
-                          <a-input-number :value="financeSupplement.freightAmount" style="width: 100%" disabled />
-                        </a-form-item>
-                        <a-form-item label="报关代理发票金额">
-                          <a-input-number :value="financeSupplement.customsAmount" style="width: 100%" disabled />
-                        </a-form-item>
-                      </a-form>
-                    </a-card>
-                  </a-col>
-                  <a-col :span="14">
-                    <a-card title="开票明细计算" size="small">
-                      <template v-if="parsedCalculationDetail">
-                        <div class="calculation-box">
-                          <!-- 收汇明细 -->
-                          <div class="calc-section">
-                            <div class="calc-title" style="color: #1890ff;">收汇明细</div>
-                            <template v-if="parsedCalculationDetail.remittanceDetails && parsedCalculationDetail.remittanceDetails.length > 0">
-                              <div v-for="(item, index) in parsedCalculationDetail.remittanceDetails" :key="'r'+index">
-                                <div class="calc-row">
-                                  <span class="calc-label">{{ item.remittanceName || '收汇' }}:</span>
-                                  <span class="calc-value">
-                                    {{ formatMoney(item.amount) }} {{ item.currency || 'USD' }}
-                                    <span v-if="item.relationAmount && item.fullAmount && item.relationAmount !== item.fullAmount" style="color: #999; font-size: 11px;">(水单全额: {{ formatMoney(item.fullAmount) }})</span>
-                                    × {{ item.taxRate }} = {{ formatMoney(item.cnyAmount) }} CNY
-                                  </span>
-                                </div>
-                                <div class="calc-row" style="font-size: 12px; color: #666; margin-left: 20px;">
-                                  <span>银行: {{ item.bankAccountName || '-' }} | 手续费率: {{ ((item.bankFeeRate || 0) * 100).toFixed(2) }}% | 手续费: {{ formatMoney(item.bankFee || 0) }} {{ item.currency || 'USD' }} = {{ formatMoney(item.bankFeeCny || 0) }} CNY</span>
-                                </div>
-                              </div>
-                            </template>
-                            <div class="calc-row total" style="margin-top: 8px;">
-                              <span class="calc-label">收汇合计:</span>
-                              <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
-                              <span v-if="parsedCalculationDetail.weightedExchangeRate" style="margin-left: 12px; color: #999; font-size: 12px;">加权平均汇率: {{ parsedCalculationDetail.weightedExchangeRate }}</span>
-                            </div>
-                          </div>
-                          
-                          <a-divider />
-                          
-                          <!-- 总货物金额 -->
-                          <div class="calc-section">
-                            <div class="calc-row">
-                              <span class="calc-label">总货物金额:</span>
-                              <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
-                            </div>
-                          </div>
-                          
-                          <a-divider />
-                          
-                          <!-- 开票金额计算 -->
-                          <div class="calc-section">
-                            <div class="calc-title">开票金额计算</div>
-                            <div class="calc-row">
-                              <span class="calc-label">货款金额:</span>
-                              <span class="calc-value">{{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
-                            </div>
-                            <div class="calc-row">
-                              <span class="calc-label">退税金额 ({{ formatMoney(parsedCalculationDetail.totalGoodsAmount) }} × {{ parsedCalculationDetail.taxRefundRate }}%):</span>
-                              <span class="calc-value" style="color: #52c41a;">+{{ formatMoney(parsedCalculationDetail.amountWithTaxRefund - parsedCalculationDetail.totalGoodsAmount) }} CNY</span>
-                            </div>
-                            <div class="calc-row total-with-tax">
-                              <span class="calc-label">含税总金额 (货款+退税):</span>
-                              <span class="calc-value highlight">{{ formatMoney(parsedCalculationDetail.amountWithTaxRefund) }} CNY</span>
-                            </div>
-                            <div class="calc-row deduct">
-                              <span class="calc-label">- 货代发票金额:</span>
-                              <span class="calc-value">{{ formatMoney(parsedCalculationDetail.freightInvoiceAmount || 0) }} CNY</span>
-                            </div>
-                            <div class="calc-row deduct">
-                              <span class="calc-label">- 海关代理发票金额:</span>
-                              <span class="calc-value">{{ formatMoney(parsedCalculationDetail.customsInvoiceAmount || 0) }} CNY</span>
-                            </div>
-                            <div class="calc-row deduct">
-                              <span class="calc-label">- 银行手续费合计:</span>
-                              <span class="calc-value">{{ formatMoney(parsedCalculationDetail.bankFeeAmount) }} CNY <span style="font-size: 11px; color: #999;">（综合费率≈{{ parsedCalculationDetail.bankFeeRate }}%）</span></span>
-                            </div>
-                          </div>
-                          
-                          <a-divider />
-                          
-                          <div class="calc-section">
-                            <div class="calc-row final">
-                              <span class="calc-label">开票金额:</span>
-                              <span class="calc-value final-value">{{ formatMoney(parsedCalculationDetail.invoiceAmount) }} CNY</span>
-                            </div>
-                            <div class="calc-row" v-if="financeSupplement.taxRefundAmount">
-                              <span class="calc-label">退税金额:</span>
-                              <span class="calc-value" style="color: #52c41a;">+{{ formatMoney(financeSupplement.taxRefundAmount) }} CNY</span>
-                            </div>
-                          </div>
+      <!-- 业务发票（INVOICE 环节独立区域） -->
+      <a-card v-if="showInvoiceSection" id="section-invoice" :title="isInvoiceEditable ? '业务发票 (可编辑)' : '业务发票'" size="small" class="section-card">
+        <template #extra>
+          <a-space>
+            <a-button
+              v-if="canSubmitInvoice"
+              type="primary"
+              size="small"
+              @click="handleSubmitInvoice"
+              :loading="submitting"
+              v-permission="['business:declaration:invoice:submit']"
+            >
+              <template #icon><UploadOutlined /></template>
+              提交发票审核
+            </a-button>
+            <template v-if="canAuditInvoice">
+              <a-button
+                type="primary"
+                size="small"
+                @click="handleInvoiceAuditApprove"
+                :loading="submitting"
+                v-permission="['business:declaration:audit:invoice']"
+              >
+                <template #icon><CheckCircleOutlined /></template>
+                审核通过
+              </a-button>
+              <a-button
+                danger
+                size="small"
+                @click="handleInvoiceAuditReject"
+                :loading="submitting"
+                v-permission="['business:declaration:audit:invoice']"
+              >
+                <template #icon><CloseCircleOutlined /></template>
+                审核驳回
+              </a-button>
+            </template>
+          </a-space>
+        </template>
+        <a-spin :spinning="materialLoading">
+          <!-- 进度卡片 -->
+          <div class="progress-card">
+            <div class="progress-left">
+              <div class="progress-title">
+                <FileDoneOutlined class="text-blue-500 mr-2" />
+                <span v-if="isInvoiceEditable">业务发票上传进度</span>
+                <span v-else>业务发票查看</span>
+              </div>
+              <div class="progress-desc">
+                共 <b>{{ invoiceStats.total }}</b> 项资料，必填 <b class="text-red-500">{{ invoiceStats.required }}</b> 项，
+                已上传 <b :class="invoiceStats.uploaded === invoiceStats.required ? 'text-green-500' : 'text-blue-500'">{{ invoiceStats.uploaded }}</b> 项
+              </div>
+            </div>
+            <div class="progress-right">
+              <a-progress
+                type="circle"
+                :percent="invoiceStats.required === 0 ? (invoiceStats.total === 0 ? 0 : 100) : Math.round((invoiceStats.uploaded / invoiceStats.required) * 100)"
+                :width="60"
+                :stroke-color="invoiceStats.uploaded >= invoiceStats.required && invoiceStats.required > 0 ? '#52c41a' : '#1677ff'"
+              />
+            </div>
+          </div>
+
+          <a-alert v-if="isInvoiceEditable" type="info" show-icon message="请上传业务发票相关附件，支持上传多份发票" style="margin-bottom: 12px" />
+          <a-table :dataSource="invoiceStageItems" :columns="materialColumns" :pagination="false" rowKey="id" size="small" class="material-table" :expandIcon="() => null">
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'name'">
+                <div class="name-cell">
+                  <div class="name-main">
+                    <span class="name-text">{{ (record as MaterialItem).name }}</span>
+                    <a-tag v-if="(record as MaterialItem).required === 1" color="red" class="ui-tag">必填</a-tag>
+                    <a-tag v-else class="ui-tag">选填</a-tag>
+                    <div class="name-upload-actions" v-if="isInvoiceEditable">
+                      <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem)">
+                        <a-button type="primary" size="small" class="material-upload-btn">
+                          <template #icon><UploadOutlined v-if="(record as MaterialItem).status !== 1" /><PlusOutlined v-else /></template>
+                          {{ (record as MaterialItem).status === 1 ? '追加' : '上传' }}
+                        </a-button>
+                      </a-upload>
+                    </div>
+                  </div>
+                  <div v-if="(record as MaterialItem).remark" class="name-remark">{{ (record as MaterialItem).remark }}</div>
+                  <!-- 附件列表（发票类：带金额/发票号/日期字段） -->
+                  <template v-if="record.attachments && record.attachments.length > 0">
+                    <div v-for="att in record.attachments" :key="att.id" class="att-invoice-card">
+                      <div class="att-row-main">
+                        <div class="att-file-name">
+                          <FileTextOutlined class="file-icon-sm" />
+                          <a :href="att.fileUrl" target="_blank" class="file-name-sm" :title="att.fileName">{{ displayAttFileName(att) }}</a>
                         </div>
-                      </template>
-                      <template v-else>
-                        <div style="text-align: center; color: #999; padding: 40px 0;">
-                          <p>请先在财务补充中设置退税参数，然后点击"生成开票明细"按钮计算开票金额</p>
-                        </div>
-                      </template>
-                    </a-card>
-                  </a-col>
-                </a-row>
-              </a-card>
-            </a-col>
-          </a-row>
-        </a-form>
+                        <div class="att-divider-v"></div>
+                        <template v-if="isInvoiceEditable">
+                          <div class="att-field-inline">
+                            <span class="att-field-label">金额</span>
+                            <a-input-number :value="att.amount ?? undefined" @update:value="(v: any) => saveAttachmentField(record as MaterialItem, att, 'amount', v)" placeholder="-" size="small" :precision="2" style="width: 120px" />
+                          </div>
+                          <div class="att-field-inline">
+                            <span class="att-field-label">发票号</span>
+                            <a-input :value="att.invoiceNo ?? undefined" @update:value="(v: any) => saveAttachmentField(record as MaterialItem, att, 'invoiceNo', v)" placeholder="-" size="small" style="width: 180px" :maxlength="100" />
+                          </div>
+                          <div class="att-field-inline">
+                            <span class="att-field-label">日期</span>
+                            <a-date-picker :value="att.invoiceDate ? dayjs(att.invoiceDate) : undefined" @update:value="(v: any) => saveAttachmentField(record as MaterialItem, att, 'invoiceDate', v ? v.format('YYYY-MM-DD') : null)" size="small" style="width: 150px" />
+                          </div>
+                        </template>
+                        <template v-else>
+                          <span class="att-val-tag">¥{{ att.amount ?? '-' }}</span>
+                          <span class="att-val-tag">{{ att.invoiceNo || '-' }}</span>
+                          <span class="att-val-tag">{{ att.invoiceDate || '-' }}</span>
+                        </template>
+                        <a-popconfirm v-if="isInvoiceEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                          <DeleteOutlined class="file-delete-btn" />
+                        </a-popconfirm>
+                      </div>
+                      <div class="att-row-meta">
+                        <span><UserOutlined /> 创建 {{ att.createByName || '-' }}</span>
+                        <span class="att-meta-dot"></span>
+                        <span><EditOutlined /> 更新 {{ att.updateByName || '-' }}</span>
+                        <span class="att-meta-dot"></span>
+                        <span><ClockCircleOutlined /> {{ att.uploadTime ? att.uploadTime.substring(0, 16) : '-' }}</span>
+                      </div>
+                    </div>
+                    <div class="file-count-hint" v-if="record.attachments.length > 1">共 {{ record.attachments.length }} 份文件</div>
+                  </template>
+                  <template v-else>
+                    <div class="file-cell file-empty"><CloudUploadOutlined class="file-icon" /><span>尚未上传</span></div>
+                  </template>
+                </div>
+              </template>
+            </template>
+          </a-table>
+        </a-spin>
       </a-card>
 
     </a-card>
@@ -1316,45 +1591,6 @@
   </a-table>
 </a-modal>
 
-<!-- 业务发票上传弹窗 -->
-<a-modal
-  v-model:open="invoiceModalVisible"
-  title="上传业务发票"
-  @ok="handleInvoiceSubmit"
-  width="600px"
->
-  <a-form :model="invoiceForm" layout="vertical">
-    <a-form-item label="发票名称">
-      <a-input v-model:value="invoiceForm.invoiceName" />
-    </a-form-item>
-    <a-form-item label="发票号码" required>
-      <a-input v-model:value="invoiceForm.invoiceNo" />
-    </a-form-item>
-    <a-row :gutter="16">
-      <a-col :span="12">
-        <a-form-item label="金额 (不含税)">
-          <a-input-number v-model:value="invoiceForm.amount" style="width: 100%" :precision="2" />
-        </a-form-item>
-      </a-col>
-      <a-col :span="12">
-        <a-form-item label="税额">
-          <a-input-number v-model:value="invoiceForm.taxAmount" style="width: 100%" :precision="2" />
-        </a-form-item>
-      </a-col>
-    </a-row>
-    <a-form-item label="发票文件" required>
-      <a-upload
-        :before-upload="beforeInvoiceUpload"
-        :file-list="invoiceFileList"
-        :max-count="1"
-        accept=".pdf,.jpg,.png"
-      >
-        <a-button><UploadOutlined /> 选择文件</a-button>
-      </a-upload>
-    </a-form-item>
-  </a-form>
-</a-modal>
-
 <!-- 审核意见弹窗 -->
 <a-modal
   v-model:open="remarkModalVisible"
@@ -1379,18 +1615,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, h } from 'vue'
+import { ref, reactive, computed, onMounted, watch, h, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message, Modal, Empty, Textarea } from 'ant-design-vue'
+import { message, Modal, Textarea } from 'ant-design-vue'
 import { checkPermission } from '@/directives/permission'
 import type { SelectValue } from 'ant-design-vue/lib/select';
 import {
   PlusOutlined,
   UploadOutlined,
-  DownloadOutlined,
   HistoryOutlined,
   EnvironmentOutlined,
-  SwapOutlined,
   MoreOutlined,
   EditOutlined,
   DeleteOutlined,
@@ -1398,18 +1632,24 @@ import {
   FormOutlined,
   FileTextOutlined,
   FileDoneOutlined,
+  UserOutlined,
+  ClockCircleOutlined,
   CloudUploadOutlined,
   RollbackOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   SaveOutlined,
   SendOutlined,
-  CheckOutlined
+  CheckOutlined,
+  CalculatorOutlined,
+  ReloadOutlined,
+  LinkOutlined,
+  DownloadOutlined,
+  RiseOutlined,
+  FallOutlined
 } from '@ant-design/icons-vue'
 import dayjs, { Dayjs } from 'dayjs'
 
-// Empty组件的simpleImage
-const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
 import {
   getDeclarationDetail, 
   addDeclaration, 
@@ -1420,14 +1660,10 @@ import {
   submitDeclaration,
   auditDeclaration,
   getActiveTasks,
-  getFinancialSupplement,
-  createFinancialSupplement,
-  updateFinancialSupplement,
   auditReturnToDraft,
   getReturnAuditHistory,
-  getBusinessInvoices,
-  uploadBusinessInvoice,
-  deleteBusinessInvoice
+  exportFinanceCalculation,
+  // 业务发票 API 已废弃，统一使用资料项 INVOICE 环节
 } from '@/api/business/declaration'
 import {
   getMaterialItems,
@@ -1436,20 +1672,34 @@ import {
   deleteMaterialItem,
   uploadMaterialFile,
   clearMaterialFile,
+  deleteMaterialAttachment,
+  updateMaterialAttachment,
   ensureMaterialItem,
   submitMaterial,
   submitInvoice,
   auditMaterial,
   auditInvoice,
   parseInvoicePdf,
-  type MaterialItem
+  submitSupplement,
+  auditSupplement,
+  submitInvoiceAmount,
+  auditInvoiceAmount,
+  getInvoiceAmountDetail,
+  type MaterialItem,
+  type MaterialAttachment
 } from '@/api/business/materialItem'
+import { getRemittancesByFormId } from '@/api/business/remittance'
+import {
+  MATERIAL_STAGES,
+  type MaterialStage
+} from '@/api/system/materialTemplate'
 import { getProductTypes } from '@/api/system/product'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
 import { getEnabledPaymentMethods } from '@/api/system/paymentMethod'
 import { getEnabledCountries } from '@/api/system'
 import { getEnabledCurrencies } from '@/api/system/currency'
 import { getActiveMeasurementUnits, type MeasurementUnit } from '@/api/system/measurement-unit'
+import { getCitiesByCountry } from '@/api/system/city-info'
 import {  findUnitByCode } from '@/utils/measurement-unit'
 
 // 文件预览 URL 生成函数
@@ -1461,12 +1711,15 @@ const router = useRouter()
 
 // 页面状态
 const isAudit = ref(route.query.mode === 'audit')
-const isFinanceUploadMode = ref(route.query.mode === 'financeUpload') // 财务补充模式
 const isPaymentMode = ref(route.query.mode === 'payment') // 水单提交模式
 const isMaterialMode = ref(route.query.mode === 'material') // 资料提交/查看模式
 const isMaterialAuditMode = ref(route.query.mode === 'materialAudit') // 资料审核模式
 const isInvoiceAuditMode = ref(route.query.mode === 'invoiceAudit') // 发票审核模式
 const isInvoiceUploadMode = ref(route.query.mode === 'invoiceUpload') // 发票上传模式
+const isSupplementMode = ref(route.query.mode === 'supplement') // 补充资料提交模式
+const isSupplementAuditMode = ref(route.query.mode === 'supplementAudit') // 补充资料审核模式
+const isInvoiceAmountMode = ref(route.query.mode === 'invoiceAmount') // 申请开票金额提交模式
+const isInvoiceAmountAuditMode = ref(route.query.mode === 'invoiceAmountAudit') // 开票金额审核模式
 const isReadonly = ref(route.query.readonly === 'true' || isAudit.value)
 const formId = ref(route.query.id ? Number(route.query.id) : null)
 const formStatus = ref<number | null>(route.query.status ? Number(route.query.status) : null)
@@ -1500,14 +1753,14 @@ const activeTasks = ref<any[]>([])
 // 计量单位列表
 const measurementUnits = ref<MeasurementUnit[]>([])
 
-// 基本信息是否只读（审核模式、查看模式、水单提交模式、财务补充模式、资料模式、资料审核模式、发票上传模式都只读）
-const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value || isFinanceUploadMode.value || isMaterialMode.value || isMaterialAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value)
+// 基本信息是否只读（审核模式、查看模式、水单提交模式、资料模式、资料审核模式、发票上传模式都只读）
+const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value || isMaterialMode.value || isMaterialAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value || isSupplementMode.value || isSupplementAuditMode.value || isInvoiceAmountMode.value || isInvoiceAmountAuditMode.value)
 
 // 当前审核阶段（从 URL taskKey 中获取）
 
 // 获取当前审核阶段文本
 const getAuditActionText = () => {
-  if (formStatus.value === 9) return '退回'
+  if (formStatus.value === 11) return '退回'
   return '审核'
 }
 
@@ -1518,7 +1771,11 @@ const getBusinessTypeText = (type: string) => {
     'DECLARATION_AUDIT': '申报审核',
     'REMittance_AUDIT': '水单审核',
     'DELIVERY_ORDER_AUDIT': '提货单审核',
-    'DECLARATION_SUBMIT': '申报提交'
+    'DECLARATION_SUBMIT': '申报提交',
+    'DECLARATION_MATERIAL_AUDIT': '资料审核',
+    'DECLARATION_SUPPLEMENT_AUDIT': '补充资料审核',
+    'DECLARATION_INVOICE_AMOUNT_AUDIT': '开票金额审核',
+    'DECLARATION_INVOICE_AUDIT': '业务发票审核'
   }
   return map[type] || type
 }
@@ -1527,207 +1784,26 @@ const getBusinessTypeText = (type: string) => {
 const getStatusText = (status: number) => {
   const statusMap: Record<number, string> = {
     0: '草稿',
-    1: '待审核',
-    2: '已完成'
+    1: '待初审',
+    2: '待资料提交',
+    3: '待资料审核',
+    4: '待补充资料提交',
+    5: '待补充资料审核',
+    6: '待开票金额提交',
+    7: '待开票金额审核',
+    8: '待发票提交',
+    9: '待发票审核',
+    10: '已完成',
+    11: '退回待审'
   }
   return statusMap[status] || '未知'
 }
-
-// 财务补充模式逻辑
-const financeSupplement = ref<any>({
-  id: null,
-  freightAmount: null,
-  freightInvoiceNo: '',
-  freightFileName: '',
-  freightFileUrl: '',
-  customsAmount: null,
-  customsInvoiceNo: '',
-  customsFileName: '',
-  customsFileUrl: '',
-  taxRefundAmount: null,
-  detailsAmount: null,
-  detailsInvoiceNo: '',
-  detailsFileName: '',
-  detailsFileUrl: '',
-  currency: 'CNY',
-  // 银行账户相关字段
-  foreignExchangeBank: '', // 外汇银行名称（对应下拉框选择的银行账户ID）
-  bankFeeRate: null, // 银行手续费率
-  taxRefundRate: null, // 退税点
-  selectedBankAccount: null // 选中的银行账户对象
-})
-
-const submittingSupplement = ref(false)
 
 // 申报要素弹窗相关变量
 const elementsModalVisible = ref(false)
 const currentProductForElements = ref<any>(null)
 const currentElementValues = ref<any[]>([])
 const elementsLoading = ref(false)
-
-const loadFinancialSupplement = async () => {
-  if (!formId.value) return
-  try {
-    console.log('加载财务补充记录, formId:', formId.value)
-    
-    // 先重置财务补充对象，避免旧数据残留
-    financeSupplement.value = {
-      id: null,
-      freightAmount: null,
-      freightInvoiceNo: '',
-      freightFileName: '',
-      freightFileUrl: '',
-      customsAmount: null,
-      customsInvoiceNo: '',
-      customsFileName: '',
-      customsFileUrl: '',
-      taxRefundAmount: null,
-      detailsAmount: null,
-      detailsInvoiceNo: '',
-      detailsFileName: '',
-      detailsFileUrl: '',
-      currency: 'CNY',
-      foreignExchangeBank: '',
-      bankFeeRate: null,
-      taxRefundRate: null,
-      selectedBankAccount: null
-    }
-    
-    const res = await getFinancialSupplement(formId.value)
-    console.log('财务补充记录响应:', res)
-    if (res.data && res.data.code === 200 && res.data.data) {
-      Object.assign(financeSupplement.value, res.data.data)
-      console.log('财务补充数据加载成功:', financeSupplement.value)
-
-      financeSupplement.value.freightFileList = financeSupplement.value.freightFileName ? [{uid: '-1', name: financeSupplement.value.freightFileName, status: 'done', url: financeSupplement.value.freightFileUrl}] : []
-      financeSupplement.value.customsFileList = financeSupplement.value.customsFileName ? [{uid: '-2', name: financeSupplement.value.customsFileName, status: 'done', url: financeSupplement.value.customsFileUrl}] : []
-      financeSupplement.value.detailsFileList = financeSupplement.value.detailsFileName ? [{uid: '-3', name: financeSupplement.value.detailsFileName, status: 'done', url: financeSupplement.value.detailsFileUrl}] : []
-      financeSupplement.value.customsReceiptFileList = financeSupplement.value.customsReceiptFileName ? [{uid: '-4', name: financeSupplement.value.customsReceiptFileName, status: 'done', url: financeSupplement.value.customsReceiptFileUrl}] : []
-    } else {
-      console.log('未找到财务补充记录，使用默认空数据')
-    }
-
-    // 货代发票与报关代理发票统一从申报资料项实时读取（只读展示）
-    try {
-      const matRes: any = await getMaterialItems(formId.value)
-      const items: MaterialItem[] = (matRes?.data?.data || []) as MaterialItem[]
-      const freight = items.find((i) => i.code === 'FREIGHT_INVOICE')
-      const customs = items.find((i) => i.code === 'CUSTOMS_AGENT_INVOICE')
-      if (freight) {
-        financeSupplement.value.freightInvoiceNo = freight.invoiceNo || ''
-        financeSupplement.value.freightAmount = freight.amount ?? null
-        financeSupplement.value.freightFileUrl = freight.fileUrl || ''
-        financeSupplement.value.freightFileName = freight.fileName || ''
-      }
-      if (customs) {
-        financeSupplement.value.customsInvoiceNo = customs.invoiceNo || ''
-        financeSupplement.value.customsAmount = customs.amount ?? null
-        financeSupplement.value.customsFileUrl = customs.fileUrl || ''
-        financeSupplement.value.customsFileName = customs.fileName || ''
-      }
-    } catch (e) {
-      console.warn('资料项货代/报关发票加载失败，展示为空', e)
-    }
-  } catch (error) {
-    console.error('获取财务补充记录失败', error)
-    message.error('加载财务补充记录失败')
-  }
-}
-
-const handleSaveFinanceSupplement = async () => {
-  if (!formId.value) return
-  
-  submittingSupplement.value = true
-  try {
-    // 确保设置formId
-    financeSupplement.value.formId = formId.value
-
-    // 货代/报关发票已迁到申报资料维护，本页不再写入这 8 个字段
-    const {
-      freightAmount: _fa, freightInvoiceNo: _fn, freightFileUrl: _fu, freightFileName: _ffn,
-      customsAmount: _ca, customsInvoiceNo: _cn, customsFileUrl: _cu, customsFileName: _cfn,
-      freightFileList: _ffl, customsFileList: _cfl,
-      ...supplementPayload
-    } = financeSupplement.value
-    void _fa; void _fn; void _fu; void _ffn; void _ca; void _cn; void _cu; void _cfn; void _ffl; void _cfl;
-
-    if (financeSupplement.value.id) {
-      // 更新现有记录
-      await updateFinancialSupplement(financeSupplement.value.id, supplementPayload)
-      message.success('财务补充单证更新成功')
-    } else {
-      // 创建新记录
-      console.log('创建新的财务补充记录:', supplementPayload)
-      const res = await createFinancialSupplement(supplementPayload)
-      if (res.data && res.data.code === 200 && res.data.data) {
-        // 更新本地数据的ID
-        financeSupplement.value.id = res.data.data.id
-        message.success('财务补充单证创建成功')
-      } else {
-        throw new Error('创建失败')
-      }
-    }
-  } catch (error) {
-    console.error('财务补充保存失败:', error)
-    message.error('保存失败: ' + (error as Error).message)
-  } finally {
-    submittingSupplement.value = false
-  }
-}
-
-const beforeSupplementPhotoUpload = async (file: any, type: 'freight' | 'customs' | 'details' | 'customsReceipt') => {
-  try {
-    const res = await uploadFile(file, 'finance_supplement')
-    if (res.data && res.data.code === 200) {
-      const attachment = res.data.data
-      const fileUrl = getFilePreviewUrl(attachment.id)
-      
-      if (type === 'freight') {
-        financeSupplement.value.freightFileUrl = fileUrl
-        financeSupplement.value.freightFileName = file.name
-        financeSupplement.value.freightFileList = [{uid: String(attachment.id), name: file.name, status: 'done', url: fileUrl}]
-      } else if (type === 'customs') {
-        financeSupplement.value.customsFileUrl = fileUrl
-        financeSupplement.value.customsFileName = file.name
-        financeSupplement.value.customsFileList = [{uid: String(attachment.id), name: file.name, status: 'done', url: fileUrl}]
-      } else if (type === 'customsReceipt') {
-        financeSupplement.value.customsReceiptFileUrl = fileUrl
-        financeSupplement.value.customsReceiptFileName = file.name
-        financeSupplement.value.customsReceiptFileList = [{uid: String(attachment.id), name: file.name, status: 'done', url: fileUrl}]
-      } else if (type === 'details') {
-        financeSupplement.value.detailsFileUrl = fileUrl
-        financeSupplement.value.detailsFileName = file.name
-        financeSupplement.value.detailsFileList = [{uid: String(attachment.id), name: file.name, status: 'done', url: fileUrl}]
-      }
-      message.success('附件上传成功')
-    }
-  } catch (error) {
-    message.error('附件上传失败')
-  }
-  return false
-}
-
-const handleRemoveSupplementPhoto = (type: 'freight' | 'customs' | 'details' | 'customsReceipt') => {
-  if (type === 'freight') {
-    financeSupplement.value.freightFileUrl = ''
-    financeSupplement.value.freightFileName = ''
-    financeSupplement.value.freightFileList = []
-  } else if (type === 'customs') {
-    financeSupplement.value.customsFileUrl = ''
-    financeSupplement.value.customsFileName = ''
-    financeSupplement.value.customsFileList = []
-  } else if (type === 'customsReceipt') {
-    financeSupplement.value.customsReceiptFileUrl = ''
-    financeSupplement.value.customsReceiptFileName = ''
-    financeSupplement.value.customsReceiptFileList = []
-  } else if (type === 'details') {
-    financeSupplement.value.detailsFileUrl = ''
-    financeSupplement.value.detailsFileName = ''
-    financeSupplement.value.detailsFileList = []
-  }
-}
-
-
 
 // 审核通过
 const handleApprove = async () => {
@@ -1739,7 +1815,7 @@ const handleApprove = async () => {
   
   submitting.value = true
   try {
-    if (formStatus.value === 9) {
+    if (formStatus.value === 11) {
       // 退回申请审核通过
       console.log('执行退回申请审核通过:', { formId: formId.value, remark })
       await auditReturnToDraft(formId.value, { approved: true, remark })
@@ -1774,7 +1850,7 @@ const handleReject = async () => {
   
   submitting.value = true
   try {
-    if (formStatus.value === 9) {
+    if (formStatus.value === 11) {
       // 退回申请审核驳回
       console.log('执行退回申请审核驳回:', { formId: formId.value, remark })
       await auditReturnToDraft(formId.value, { approved: false, remark })
@@ -1795,163 +1871,6 @@ const handleReject = async () => {
     submitting.value = false
   }
 }
-
-
-const remittanceList = ref<any[]>([])
-
-// 从水单列表汇总金额（用于财务补充）- 使用关联到申报单的金额
-const totalRemittanceAmount = computed(() => {
-  return Number(remittanceList.value.reduce((sum, r) => {
-    // 优先使用关联金额，如果没有则使用水单全额
-    const amount = r.totalRelatedAmount || r.remittanceAmount || 0
-    return sum + amount
-  }, 0).toFixed(2))
-})
-
-// 从水单列表汇总手续费
-const totalBankFeeAmount = computed(() => {
-  return Number(remittanceList.value.reduce((sum, r) => sum + (r.bankFee || 0), 0).toFixed(2))
-})
-
-// 净收汇金额 = 收汇总计 - 手续费合计
-const netRemittanceAmount = computed(() => {
-  return Number((totalRemittanceAmount.value - totalBankFeeAmount.value).toFixed(2))
-})
-
-import { watch } from 'vue'
-
-const computedDetailsAmount = computed(() => {
-  // 使用从水单获取的数据
-  const receipt = totalRemittanceAmount.value
-  const taxRate = financeSupplement.value.taxRefundRate || 0
-  const freight = financeSupplement.value.freightAmount || 0
-  const customs = financeSupplement.value.customsAmount || 0
-  const bankFee = totalBankFeeAmount.value
-
-  // 开票金额 = 总金额 * (1 + 退税点%) - 货代 - 报关 - 手续费
-  return Number((receipt * (1 + taxRate / 100) - freight - customs - bankFee).toFixed(2))
-})
-
-watch(computedDetailsAmount, (newVal) => {
-  financeSupplement.value.detailsAmount = newVal
-}, { immediate: true })
-
-import { exportFinanceCalculation } from '@/api/business/declaration'
-import { getCitiesByCountry } from '@/api/system/city-info'
-
-const generatingDetails = ref(false)
-const handleGenerateFinanceDetails = async () => {
-  if (!formId.value) {
-    message.error('申报单ID不存在')
-    return
-  }
-
-  // 验证必填字段
-  if (!financeSupplement.value.taxRefundRate && financeSupplement.value.taxRefundRate !== 0) {
-    message.warning('请先设置退税点')
-    return
-  }
-
-  generatingDetails.value = true
-  try {
-    // 第一步：保存财务补充信息到数据库
-    message.loading({ content: '正在保存财务补充信息...', key: 'saveFinance', duration: 0 })
-    
-    // 构建完整的保存数据
-    const saveData = {
-      formId: formId.value,
-      freightAmount: financeSupplement.value.freightAmount,
-      freightInvoiceNo: financeSupplement.value.freightInvoiceNo,
-      freightFileName: financeSupplement.value.freightFileName,
-      freightFileUrl: financeSupplement.value.freightFileUrl,
-      customsAmount: financeSupplement.value.customsAmount,
-      customsInvoiceNo: financeSupplement.value.customsInvoiceNo,
-      customsFileName: financeSupplement.value.customsFileName,
-      customsFileUrl: financeSupplement.value.customsFileUrl,
-      customsReceiptFileName: financeSupplement.value.customsReceiptFileName,
-      customsReceiptFileUrl: financeSupplement.value.customsReceiptFileUrl,
-      detailsFileName: financeSupplement.value.detailsFileName,
-      detailsFileUrl: financeSupplement.value.detailsFileUrl,
-      taxRefundRate: financeSupplement.value.taxRefundRate,
-      currency: financeSupplement.value.currency || 'CNY',
-      foreignExchangeBank: financeSupplement.value.foreignExchangeBank,
-      bankFeeRate: financeSupplement.value.bankFeeRate
-    }
-
-    console.log('保存财务补充数据:', saveData)
-
-    if (financeSupplement.value.id) {
-      // 更新现有记录
-      await updateFinancialSupplement(financeSupplement.value.id, saveData)
-      message.success({ content: '财务补充信息保存成功', key: 'saveFinance', duration: 2 })
-    } else {
-      // 创建新记录
-      const res = await createFinancialSupplement(saveData)
-      if (res.data && res.data.code === 200 && res.data.data) {
-        financeSupplement.value.id = res.data.data.id
-        message.success({ content: '财务补充信息创建成功', key: 'saveFinance', duration: 2 })
-      } else {
-        throw new Error('创建失败')
-      }
-    }
-
-    // 第二步：生成并下载Excel
-    message.loading({ content: '正在生成开票明细...', key: 'generate', duration: 0 })
-    
-    const res = await exportFinanceCalculation(formId.value) as any
-    
-    // 后端返回的是下载URL，直接使用URL下载
-    const downloadUrl = res.data?.data || res.data
-    if (downloadUrl) {
-      // 使用隐藏的a标签触发下载
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = `开票明细单_${formId.value}_${dayjs().format('YYYYMMDDHHmmss')}.xlsx`
-      link.style.display = 'none'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-
-      message.success({ content: '开票明细生成成功，正在下载...', key: 'generate', duration: 3 })
-    } else {
-      throw new Error('未获取到下载链接')
-    }
-
-    // 第三步：重新加载财务补充数据（更新calculationDetail）
-    await loadFinancialSupplement()
-    
-  } catch (err: any) {
-    console.error('生成明细失败:', err)
-    message.error({ content: '生成明细失败: ' + (err.message || '未知错误'), key: 'generate', duration: 3 })
-  } finally {
-    generatingDetails.value = false
-  }
-}
-
-// 格式化金额显示
-const formatMoney = (amount: number | undefined) => {
-  if (amount === undefined || amount === null) return '0.00'
-  return amount.toFixed(2)
-}
-
-// 解析计算详情JSON
-const parsedCalculationDetail = computed(() => {
-  if (!financeSupplement.value.calculationDetail) return null
-  try {
-    return JSON.parse(financeSupplement.value.calculationDetail)
-  } catch (e) {
-    console.error('解析计算详情JSON失败:', e)
-    return null
-  }
-})
-
-// // 计算退税金额
-// const getTaxRefundAmount = () => {
-//   if (!parsedCalculationDetail.value) return 0
-//   const goodsAmount = parsedCalculationDetail.value.totalGoodsAmount || 0
-//   const taxRate = parsedCalculationDetail.value.taxRefundRate || 0
-//   return goodsAmount * (taxRate / 100)
-// }
 
 
 // ========================================
@@ -1984,42 +1903,54 @@ const materialRowForm = reactive<Partial<MaterialItem>>({
 const materialRowKey = (record: MaterialItem) => (record.id ?? `tpl-${record.templateId}`) as any
 
 // ---------- 发票 PDF 金额解析状态 ----------
-// 资料项 key -> 从 PDF 中解析出的金额（用于与手填金额对比）
-const materialParsedAmounts = reactive<Record<string, number | null>>({})
 // 资料项 key -> 解析提示信息（用于展示失败原因 / 跳过解析的原因）
 const materialPdfMessages = reactive<Record<string, { type: 'success' | 'warn' | 'info'; text: string }>>({})
 // 已解析过的文件指纹缓存，避免同一文件重复上传解析
-const parsedFileSignatures = new Map<string, { amount: number | null; message: { type: 'success' | 'warn' | 'info'; text: string } | null }>()
 
 /** 资料项是否为发票类（货代 / 报关代理） */
 const isInvoiceMaterial = (item: MaterialItem): boolean =>
-  item.code === 'FREIGHT_INVOICE' || item.code === 'CUSTOMS_AGENT_INVOICE'
+  item.code === 'FREIGHT_INVOICE' || item.code === 'CUSTOMS_AGENT_INVOICE' || item.stage === 'INVOICE'
+
+/** 附件文件名显示：UUID 类文件名截短展示 */
+const displayAttFileName = (att: MaterialAttachment): string => {
+  return att.fileName || '查看附件'
+}
 
 /** 生成文件指纹，用于去重解析 */
 const buildFileSignature = (file: File): string => `${file.name}|${file.size}|${file.lastModified}`
 
+interface ParsedCache {
+  amount: number | null
+  invoiceNo: string | null
+  invoiceDate: string | null
+  message: { type: 'success' | 'warn' | 'info'; text: string } | null
+}
+const parsedFileSignatures = new Map<string, ParsedCache>()
+
 /**
- * 尝试解析发票 PDF 的金额，并将结果缓存到 materialParsedAmounts / materialPdfMessages。
+ * 尝试解析发票 PDF 的金额，并自动回填到对应附件的结构化字段。
  * 非 PDF / 非发票类资料项，直接跳过。
- * 若用户尚未填写金额，则自动将 PDF 识别金额回填并持久化到服务端。
  */
 const tryParseInvoicePdf = async (file: File, record: MaterialItem) => {
-  const key = materialRowKey(record)
   // 非发票类资料项，不解析
   if (!isInvoiceMaterial(record)) return
   // 非 PDF：提示 + 跳过
   if (file.type !== 'application/pdf') {
+    const key = materialRowKey(record)
     materialPdfMessages[key] = { type: 'info', text: '图片类发票暂不支持自动识别金额，请手动核对' }
-    delete materialParsedAmounts[key]
     return
   }
   const signature = buildFileSignature(file)
   let parsedAmt: number | null = null
+  let parsedInvoiceNo: string | null = null
+  let parsedInvoiceDate: string | null = null
   let parsedMsg: { type: 'success' | 'warn' | 'info'; text: string } | null = null
 
   const cached = parsedFileSignatures.get(signature)
   if (cached) {
     parsedAmt = cached.amount
+    parsedInvoiceNo = cached.invoiceNo
+    parsedInvoiceDate = cached.invoiceDate
     parsedMsg = cached.message
   } else {
     try {
@@ -2032,67 +1963,119 @@ const tryParseInvoicePdf = async (file: File, record: MaterialItem) => {
         const errText = data?.errorMsg || 'PDF 金额识别失败，请确保手动填写金额正确'
         parsedMsg = { type: 'warn', text: errText }
       }
+      // 提取发票号和开票日期（无论金额是否成功都尝试）
+      if (data?.invoiceNo) parsedInvoiceNo = data.invoiceNo
+      if (data?.invoiceDate) parsedInvoiceDate = data.invoiceDate
     } catch (e) {
       parsedMsg = { type: 'warn', text: 'PDF 解析请求失败，请手动核对金额' }
     }
-    parsedFileSignatures.set(signature, { amount: parsedAmt, message: parsedMsg })
+    parsedFileSignatures.set(signature, { amount: parsedAmt, invoiceNo: parsedInvoiceNo, invoiceDate: parsedInvoiceDate, message: parsedMsg })
   }
 
-  // 写入响应式状态
-  if (parsedAmt != null) {
-    materialParsedAmounts[key] = parsedAmt
-    delete materialPdfMessages[key]
-  } else {
-    delete materialParsedAmounts[key]
+  // ---------- 自动回填发票号和开票日期（如果空就回填）----------
+  if (parsedInvoiceNo || parsedInvoiceDate) {
+    const currentRecord2 = materialItems.value.find((i) => materialRowKey(i) === materialRowKey(record))
+    if (currentRecord2?.attachments?.length) {
+      const latestAtt2 = currentRecord2.attachments[0]
+      const patchNoDate: Partial<import('@/api/business/materialItem').MaterialAttachment> = {}
+      if (parsedInvoiceNo && !latestAtt2.invoiceNo) {
+        latestAtt2.invoiceNo = parsedInvoiceNo
+        patchNoDate.invoiceNo = parsedInvoiceNo
+      }
+      if (parsedInvoiceDate && !latestAtt2.invoiceDate) {
+        latestAtt2.invoiceDate = parsedInvoiceDate
+        patchNoDate.invoiceDate = parsedInvoiceDate
+      }
+      if (Object.keys(patchNoDate).length > 0 && currentRecord2.id && latestAtt2.id) {
+        updateMaterialAttachment(currentRecord2.id!, latestAtt2.id, patchNoDate).catch(() => {})
+      }
+    }
   }
-  if (parsedMsg) materialPdfMessages[key] = parsedMsg
 
-  // ---------- 自动回填 / 实时对比 ----------
+  // ---------- 自动回填金额到对应附件 ----------
   if (parsedAmt == null || parsedAmt <= 0) return
-  // 重新获取最新资料项列表中的记录（loadMaterialItems 后会替换数组）
-  const currentRecord = materialItems.value.find((i) => materialRowKey(i) === key)
-  if (!currentRecord) return
-  const currentAmt = Number(currentRecord.amount ?? 0)
+  // 重新获取最新资料项（loadMaterialItems 后数组已刷新）
+  const currentRecord = materialItems.value.find((i) => materialRowKey(i) === materialRowKey(record))
+  if (!currentRecord || !currentRecord.attachments?.length) return
+  // 找到最新上传的附件（后端按 createTime DESC 排序，第一个是最新的）
+  const latestAtt = currentRecord.attachments[0]
+  if (!latestAtt) return
 
-  if (currentAmt <= 0) {
-    // 用户尚未填写金额（null / 0 / 0.0000 都归到未填写）→ 自动回填并持久化
-    currentRecord.amount = parsedAmt
+  const currentAttAmt = Number(latestAtt.amount ?? 0)
+  if (currentAttAmt <= 0) {
+    // 用户尚未填写金额 → 自动回填并持久化
+    latestAtt.amount = parsedAmt
     try {
-      await saveMaterialRowFields(currentRecord)
+      await updateMaterialAttachment(currentRecord.id!, latestAtt.id, { amount: parsedAmt })
       message.success(`已自动填入 PDF 识别金额 ¥${parsedAmt.toFixed(2)}`)
     } catch (e) {
-      // 保存失败时仅保留解析提示，不阻断上传主流程
+      // 保存失败时仅保留解析提示
     }
-  } else if (Math.abs(currentAmt - parsedAmt) > 0.009) {
-    // 用户已填且与 PDF 不一致 → 橙色对比提示（提交时还会再确认）
-    materialPdfMessages[key] = {
+  } else if (Math.abs(currentAttAmt - parsedAmt) > 0.009) {
+    // 用户已填且与 PDF 不一致 → 提示
+    materialPdfMessages[materialRowKey(record)] = {
       type: 'warn',
-      text: `PDF 识别 ¥${parsedAmt.toFixed(2)}，与填写 ¥${currentAmt.toFixed(2)} 不一致`
+      text: `PDF 识别 ¥${parsedAmt.toFixed(2)}，与填写 ¥${currentAttAmt.toFixed(2)} 不一致`
     }
   } else {
-    // 一致 → 绿色提示
-    materialPdfMessages[key] = {
+    materialPdfMessages[materialRowKey(record)] = {
       type: 'success',
       text: `PDF 识别 ¥${parsedAmt.toFixed(2)}，与填写一致`
     }
   }
+  if (parsedMsg) materialPdfMessages[materialRowKey(record)] = parsedMsg
 }
 
 const materialColumns = [
-  { title: '资料项', key: 'name', dataIndex: 'name' },
-  { title: '附件', key: 'file', dataIndex: 'fileName', width: 260 },
-  { title: '创建人', key: 'createByName', dataIndex: 'createByName', width: 100 },
-  { title: '更新人', key: 'updateByName', dataIndex: 'updateByName', width: 100 },
-  { title: '操作', key: 'action', width: 220 }
+  { title: '资料项', key: 'name', dataIndex: 'name' }
 ]
 
-const materialRequiredCount = computed(() => materialItems.value.filter((i) => i.required === 1).length)
+/** 核心资料项（排除补充资料和发票环节） */
+const coreMaterialItems = computed(() =>
+  materialItems.value.filter(i => {
+    const stage = getItemStage(i)
+    return stage !== 'SUPPLEMENT' && stage !== 'INVOICE'
+  })
+)
+const materialRequiredCount = computed(() => coreMaterialItems.value.filter((i) => i.required === 1).length)
 const materialUploadedCount = computed(() =>
-  materialItems.value.filter((i) => i.required === 1 && i.status === 1).length
+  coreMaterialItems.value.filter((i) => i.required === 1 && i.status === 1).length
 )
 const materialProgressPercent = computed(() => {
-  if (materialRequiredCount.value === 0) return materialItems.value.length === 0 ? 0 : 100
+  if (materialRequiredCount.value === 0) return coreMaterialItems.value.length === 0 ? 0 : 100
   return Math.round((materialUploadedCount.value / materialRequiredCount.value) * 100)
+})
+
+// ---------- 按环节（stage）分组资料项 ----------
+const DEFAULT_STAGE: MaterialStage = 'MATERIAL_SUBMIT'
+const getItemStage = (item: MaterialItem): MaterialStage =>
+  (item.stage as MaterialStage) || DEFAULT_STAGE
+
+const getStageItems = (stage: MaterialStage) =>
+  materialItems.value.filter((i) => getItemStage(i) === stage)
+
+const activeStageTab = ref<string>(DEFAULT_STAGE)
+
+/** 当前激活环节对应的资料项 */
+const activeStageItems = computed(() =>
+  getStageItems(activeStageTab.value as MaterialStage)
+)
+
+/** 有资料项的环节列表（控制 tab 显示） */
+const availableStages = computed(() =>
+  MATERIAL_STAGES.filter((s) => s.value !== 'SUPPLEMENT' && s.value !== 'INVOICE' && getStageItems(s.value as MaterialStage).length > 0)
+)
+
+/** 每个环节的进度统计 */
+const stageStats = computed(() => {
+  const map: Record<string, { total: number; required: number; uploaded: number }> = {}
+  for (const s of MATERIAL_STAGES) {
+    const items = getStageItems(s.value as MaterialStage)
+    const req = items.filter((i) => i.required === 1).length
+    const upl = items.filter((i) => i.required === 1 && i.status === 1).length
+    map[s.value] = { total: items.length, required: req, uploaded: upl }
+  }
+  return map
 })
 
 // 资料模式下只读：URL readonly=true 或 状态大于 2 (资料提交后)
@@ -2101,10 +2084,179 @@ const isMaterialReadonly = computed(() => {
   if (formStatus.value != null && formStatus.value > 2) return true
   return false
 })
-// 资料模块在仅当资料模式 + 状态=2 + 非只读时可编辑
-const isMaterialEditable = computed(() =>
-  isMaterialMode.value && formStatus.value === 2 && !isMaterialReadonly.value
+// 资料模块可编辑条件：
+// 1. 资料提交模式 + 状态=2 + 非只读 → MATERIAL_SUBMIT 环节可编辑
+// 2. 发票上传模式 + 状态=4 + 非只读 + INVOICE 环节标签页 → 业务发票可编辑
+const isMaterialEditable = computed(() => {
+  if (isMaterialReadonly.value) return false
+  if (isMaterialMode.value && formStatus.value === 2) return true
+  return false
+})
+
+
+/** 补充资料环节资料项 */
+const supplementItems = computed(() => getStageItems('SUPPLEMENT'))
+
+/** 业务发票环节资料项 */
+const invoiceStageItems = computed(() => getStageItems('INVOICE'))
+
+/** 补充资料审核通过之后（业务 status > 5，即进入开票金额及后续环节） */
+const isAfterSupplementStage = computed(() => {
+  const s = formStatus.value
+  return s != null && s > 5
+})
+
+/** 已进入补充资料之后的只读查阅模式（开票金额、发票提交等） */
+const isPostSupplementReadonlyMode = computed(() =>
+  isAfterSupplementStage.value
+  || isInvoiceAmountMode.value
+  || isInvoiceAmountAuditMode.value
+  || isInvoiceUploadMode.value
+  || isInvoiceAuditMode.value
 )
+
+/** 补充资料区域是否显示（补充资料流程时显示） */
+const showSupplementSection = computed(() => {
+  if (supplementItems.value.length === 0) return false
+  if (isSupplementMode.value && formStatus.value === 4) return true
+  if (isSupplementAuditMode.value && formStatus.value === 5) return true
+  if (isMaterialMode.value && formStatus.value != null && formStatus.value >= 4) return true
+  if (isMaterialAuditMode.value && formStatus.value != null && formStatus.value >= 5) return true
+  if (isPostSupplementReadonlyMode.value && formStatus.value != null && formStatus.value >= 4) {
+    return true
+  }
+  return false
+})
+
+/** 业务发票区域是否显示（发票环节进行中、已完成查阅均展示） */
+const showInvoiceSection = computed(() => {
+  if (invoiceStageItems.value.length === 0) return false
+  const s = formStatus.value
+  if (s == null) return false
+  // 发票上传/审核入口
+  if (isInvoiceUploadMode.value && (s === 8 || s === 9)) return true
+  if (isInvoiceAuditMode.value && s === 9) return true
+  // 待提交/待审核（不限 mode，与 canSubmitInvoice / canAuditInvoice 一致）
+  if (canSubmitInvoice.value || canAuditInvoice.value) return true
+  // 已进入发票环节及之后：只读查阅（含 status=10 已完成）
+  if (s >= 8 && isPostSupplementReadonlyMode.value) return true
+  if (s >= 8 && route.query.readonly === 'true') return true
+  if (s >= 10) return true
+  return false
+})
+
+/** 补充资料进度统计 */
+const supplementStats = computed(() => {
+  const items = supplementItems.value
+  const required = items.filter(i => i.required === 1).length
+  const uploaded = items.filter(i => i.required === 1 && i.status === 1).length
+  return { total: items.length, required, uploaded }
+})
+
+/** 业务发票进度统计 */
+const invoiceStats = computed(() => {
+  const items = invoiceStageItems.value
+  const required = items.filter(i => i.required === 1).length
+  const uploaded = items.filter(i => i.required === 1 && i.status === 1).length
+  return { total: items.length, required, uploaded }
+})
+
+/** 状态=4 时可提交补充资料（非审核/只读场景） */
+const canSubmitSupplement = computed(() => {
+  if (formStatus.value !== 4) return false
+  if (route.query.readonly === 'true') return false
+  if (isSupplementAuditMode.value || isMaterialAuditMode.value || isAudit.value) return false
+  return true
+})
+
+/** 状态=5 时可审核补充资料 */
+const canAuditSupplement = computed(() => {
+  if (formStatus.value !== 5) return false
+  if (route.query.readonly === 'true') return false
+  if (isMaterialMode.value) return false
+  return true
+})
+
+/** 补充资料可编辑条件：与可提交一致 */
+const isSupplementEditable = computed(() => canSubmitSupplement.value)
+
+/** 状态=6 时可提交开票金额（不限 mode，与补充资料提交逻辑一致） */
+const canSubmitInvoiceAmount = computed(() => {
+  if (formStatus.value !== 6) return false
+  if (route.query.readonly === 'true') return false
+  if (isInvoiceAmountAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value) return false
+  if (isMaterialAuditMode.value || isSupplementAuditMode.value || isAudit.value) return false
+  // 仅资料/补充/开票金额等业务入口，不因 URL 上残留的 mode 拦截
+  return true
+})
+
+/** 状态=7 时可审核开票金额 */
+const canAuditInvoiceAmount = computed(() => {
+  if (formStatus.value !== 7) return false
+  if (route.query.readonly === 'true') return false
+  if (isMaterialMode.value || isSupplementMode.value) return false
+  return true
+})
+
+/** 申请开票金额区域：补充资料审过后（status > 5）一律展示，不限 URL mode / 发票提交菜单 */
+const showInvoiceAmountSection = computed(() => isAfterSupplementStage.value)
+
+/** 申请开票金额可编辑（刷新计算、提交前确认） */
+const isInvoiceAmountEditable = computed(() => canSubmitInvoiceAmount.value)
+
+/** 开票金额计算详情数据 */
+const invoiceAmountCalcDetail = ref<Record<string, any> | null>(null)
+const invoiceAmountLoading = ref(false)
+
+/** 金额格式化 */
+const fmtAmt = (v: any) => {
+  if (v == null || v === '') return '-'
+  return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+/** 支出合计 */
+const calcExpenseTotal = computed(() => {
+  const d = invoiceAmountCalcDetail.value
+  if (!d) return 0
+  return Number(d.freightInvoiceAmount || 0) + Number(d.customsInvoiceAmount || 0) + Number(d.bankFeeAmount || 0)
+})
+/** 关联水单列表 */
+const invoiceAmountRemittances = ref<any[]>([])
+const remittanceColumns = [
+  { title: '水单编号', dataIndex: 'remittanceNo', key: 'remittanceNo', width: 140 },
+  { title: '收汇名称', dataIndex: 'remittanceName', key: 'remittanceName', width: 120, ellipsis: true },
+  { title: '收汇金额', key: 'remittanceAmount', width: 130, customRender: ({ record }: any) => {
+    const c = record.currency || 'USD'
+    const sym = c === 'CNY' ? '¥' : c === 'USD' ? '$' : c
+    return `${sym}${Number(record.remittanceAmount || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
+  }},
+  { title: '关联金额', key: 'relationAmount', width: 130, customRender: ({ record }: any) => {
+    const c = record.currency || 'USD'
+    const sym = c === 'CNY' ? '¥' : c === 'USD' ? '$' : c
+    return `${sym}${Number(record.relationAmount || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
+  }},
+  { title: '汇率', dataIndex: 'taxRate', key: 'taxRate', width: 80, customRender: ({ text }: any) => text != null ? Number(text).toFixed(4) : '-' },
+  { title: '收汇日期', dataIndex: 'remittanceDate', key: 'remittanceDate', width: 110 },
+  { title: '状态', key: 'status', width: 80, customRender: ({ text }: any) => text === 0 ? '草稿' : text === 1 ? '待审核' : '已审核' }
+]
+
+/** 状态=8 时可提交业务发票（不限 mode） */
+const canSubmitInvoice = computed(() => {
+  if (formStatus.value !== 8) return false
+  if (route.query.readonly === 'true') return false
+  if (isInvoiceAuditMode.value || isMaterialAuditMode.value || isSupplementAuditMode.value || isAudit.value) return false
+  return true
+})
+
+/** 状态=9 时可审核业务发票 */
+const canAuditInvoice = computed(() => {
+  if (formStatus.value !== 9) return false
+  if (route.query.readonly === 'true') return false
+  if (isMaterialMode.value || isSupplementMode.value) return false
+  return true
+})
+
+/** 业务发票可编辑条件：状态=8 且可提交 */
+const isInvoiceEditable = computed(() => canSubmitInvoice.value)
 
 const parseMaterialSchema = (schema?: string | null): MaterialSchemaField[] => {
   if (!schema) return []
@@ -2262,6 +2414,37 @@ const handleClearMaterialFile = async (record: MaterialItem) => {
   }
 }
 
+/** 删除单个附件 */
+const handleDeleteAttachment = async (record: MaterialItem, att: MaterialAttachment) => {
+  try {
+    const res = await deleteMaterialAttachment(record.id!, att.id)
+    if (res.data?.code === 200) {
+      message.success('已删除')
+      await loadMaterialItems()
+    } else {
+      message.error(res.data?.message || '删除失败')
+    }
+  } catch (e) {
+    message.error('删除失败')
+  }
+}
+
+/** 保存附件的结构化字段（金额/发票号/开票日期） */
+const saveAttachmentField = async (record: MaterialItem, att: MaterialAttachment, field: string, value: any) => {
+  if (!record.id || !att.id) return
+  // 先更新本地数据
+  ;(att as any)[field] = value ?? null
+  try {
+    const payload: Partial<MaterialAttachment> = { [field]: value ?? null }
+    const res = await updateMaterialAttachment(record.id, att.id, payload)
+    if (res.data?.code !== 200) {
+      message.error(res.data?.message || '保存失败')
+    }
+  } catch (e) {
+    message.error('保存失败')
+  }
+}
+
 const confirmClearMaterialFile = (record: MaterialItem) => {
   Modal.confirm({
     title: '确定清除此附件吗？',
@@ -2352,17 +2535,18 @@ const handleSaveMaterialRow = async () => {
   }
 }
 
-const formatMaterialDateTime = (s?: string) => {
-  if (!s) return ''
-  return new Date(s).toLocaleString('zh-CN')
-}
-
 const validateMaterialSchemaFields = (): string | null => {
   for (const item of materialItems.value) {
+    // 跳过补充资料和发票阶段
+    const stage = getItemStage(item)
+    if (stage === 'SUPPLEMENT' || stage === 'INVOICE') continue
     const schema = parseMaterialSchema(item.formSchema)
     if (!schema.length) continue
+    const isInvoice = isInvoiceMaterial(item)
     for (const f of schema) {
       if (!f.required) continue
+      // 发票类资料项的固定字段已移至附件级别，跳过
+      if (isInvoice && MATERIAL_FIXED_KEYS.includes(f.key)) continue
       const v = getMaterialFieldValue(item, f.key)
       if (v == null || v === '') {
         return `资料「${item.name}」的「${f.label}」为必填项`
@@ -2374,7 +2558,12 @@ const validateMaterialSchemaFields = (): string | null => {
 
 const handleSubmitMaterial = async () => {
   if (!formId.value) return
-  const missing = materialItems.value.filter((i) => i.required === 1 && i.status !== 1)
+  // 只校验资料提交阶段的项，不包含补充资料和发票阶段
+  const submitItems = materialItems.value.filter((i) => {
+    const stage = getItemStage(i)
+    return stage !== 'SUPPLEMENT' && stage !== 'INVOICE'
+  })
+  const missing = submitItems.filter((i) => i.required === 1 && i.status !== 1)
   if (missing.length > 0) {
     message.warning(`还有 ${missing.length} 项必填资料未上传：${missing.map((m) => m.name).join('、')}`)
     return
@@ -2385,18 +2574,24 @@ const handleSubmitMaterial = async () => {
     return
   }
 
-  // 检查发票类资料项的金额差异（PDF 识别金额 vs 手填金额）
-  const diffs: Array<{ name: string; inputAmount: number; pdfAmount: number }> = []
-  for (const item of materialItems.value) {
+  // 检查发票类资料项每个附件是否填写了金额和发票号
+  const invoiceFieldMissing: string[] = []
+  for (const item of submitItems) {
     if (!isInvoiceMaterial(item)) continue
-    const key = materialRowKey(item)
-    const pdfAmt = materialParsedAmounts[key]
-    if (pdfAmt == null) continue
-    const inputAmt = Number(item.amount ?? 0)
-    if (inputAmt <= 0) continue
-    if (Math.abs(inputAmt - pdfAmt) > 0.009) {
-      diffs.push({ name: item.name, inputAmount: inputAmt, pdfAmount: pdfAmt })
+    if (!item.attachments?.length) continue
+    for (let i = 0; i < item.attachments.length; i++) {
+      const att = item.attachments[i]
+      if (!att.amount || Number(att.amount) <= 0) {
+        invoiceFieldMissing.push(`「${item.name}」第${i + 1}份附件未填写金额`)
+      }
+      if (!att.invoiceNo) {
+        invoiceFieldMissing.push(`「${item.name}」第${i + 1}份附件未填写发票号`)
+      }
     }
+  }
+  if (invoiceFieldMissing.length > 0) {
+    message.warning(invoiceFieldMissing.join('、'))
+    return
   }
 
   const doSubmit = async () => {
@@ -2417,26 +2612,6 @@ const handleSubmitMaterial = async () => {
   }
 
   const confirmText = '提交后将进入资料审核流程，无法修改。'
-  if (diffs.length > 0) {
-    const diffList = diffs
-      .map((d) => `· 资料「${d.name}」：填写 ¥${d.inputAmount.toFixed(2)}，PDF 识别 ¥${d.pdfAmount.toFixed(2)}`)
-      .join('\n')
-    Modal.confirm({
-      title: '发票金额不一致，是否继续提交？',
-      content: () =>
-        h('div', { style: 'white-space: pre-wrap; line-height: 1.7; margin-top: 8px;' }, [
-          h('div', { style: 'color: #d46b08; font-weight: 500; margin-bottom: 4px;' },
-            '以下发票的填写金额与 PDF 识别金额存在差异：'),
-          h('div', { style: 'padding: 8px; background: #fff7e6; border-radius: 4px;' }, diffList),
-          h('div', { style: 'color: #888; font-size: 12px; margin-top: 8px;' },
-            `点击“确认提交”将按当前填写金额提交。\n${confirmText}`)
-        ]),
-      okText: '确认提交',
-      cancelText: '返回修改',
-      onOk: doSubmit
-    })
-    return
-  }
 
   Modal.confirm({
     title: '确认提交资料审核？',
@@ -2453,7 +2628,7 @@ const handleMaterialAuditApprove = () => {
   Modal.confirm({
     title: '确认通过资料审核？',
     content: () => h('div', [
-      h('div', { style: 'margin-bottom:8px;color:#666;' }, '通过后流程将进入业务发票提交阶段。'),
+      h('div', { style: 'margin-bottom:8px;color:#666;' }, '通过后流程将进入补充资料提交阶段。'),
       h(Textarea, {
         rows: 3,
         maxlength: 500,
@@ -2508,6 +2683,258 @@ const handleMaterialAuditReject = () => {
         const res = await auditMaterial({ formId: formId.value!, result: 2, remark })
         if (res.data?.code === 200) {
           message.success('已驳回，申报人需重新提交资料')
+          goBack()
+        } else {
+          message.error(res.data?.message || '操作失败')
+        }
+      } catch (e) {
+        message.error('操作失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
+
+// ========================================
+// 补充资料提交/审核逻辑
+// ========================================
+
+const handleSubmitSupplement = async () => {
+  if (!formId.value) return
+  const missing = supplementItems.value.filter((i) => i.required === 1 && i.status !== 1)
+  if (missing.length > 0) {
+    message.warning(`还有 ${missing.length} 项必填补充资料未上传：${missing.map((m) => m.name).join('、')}`)
+    return
+  }
+  Modal.confirm({
+    title: '确认提交补充资料审核？',
+    content: '提交后将进入补充资料审核流程，无法修改。',
+    okText: '确认提交',
+    onOk: async () => {
+      try {
+        submitting.value = true
+        const res = await submitSupplement(formId.value!)
+        if (res.data?.code === 200) {
+          message.success('补充资料提交成功，等待审核')
+          goBack()
+        } else {
+          message.error(res.data?.message || '提交失败')
+        }
+      } catch (e) {
+        message.error('提交失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
+
+const handleSupplementAuditApprove = () => {
+  if (!formId.value) return
+  let remark = ''
+  Modal.confirm({
+    title: '确认通过补充资料审核？',
+    content: () => h('div', [
+      h('div', { style: 'margin-bottom:8px;color:#666;' }, '通过后流程将进入申请开票金额阶段。'),
+      h(Textarea, {
+        rows: 3,
+        maxlength: 500,
+        placeholder: '请输入审核意见（可选）',
+        'onUpdate:value': (v: string) => { remark = v }
+      })
+    ]),
+    okText: '确认通过',
+    onOk: async () => {
+      try {
+        submitting.value = true
+        const res = await auditSupplement({ formId: formId.value!, result: 1, remark })
+        if (res.data?.code === 200) {
+          message.success('补充资料审核已通过')
+          goBack()
+        } else {
+          message.error(res.data?.message || '操作失败')
+        }
+      } catch (e) {
+        message.error('操作失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
+
+const handleSupplementAuditReject = () => {
+  if (!formId.value) return
+  let remark = ''
+  Modal.confirm({
+    title: '确认驳回补充资料？',
+    content: () => h('div', [
+      h('div', { style: 'margin-bottom:8px;color:#d46b08;' }, '驳回后申报人将重新提交补充资料。请填写驳回原因。'),
+      h(Textarea, {
+        rows: 3,
+        maxlength: 500,
+        placeholder: '请输入驳回原因（必填）',
+        'onUpdate:value': (v: string) => { remark = v }
+      })
+    ]),
+    okText: '确认驳回',
+    okButtonProps: { danger: true },
+    onOk: async () => {
+      if (!remark.trim()) {
+        message.warning('驳回请填写审核意见')
+        return Promise.reject()
+      }
+      try {
+        submitting.value = true
+        const res = await auditSupplement({ formId: formId.value!, result: 2, remark })
+        if (res.data?.code === 200) {
+          message.success('已驳回，申报人需重新提交补充资料')
+          goBack()
+        } else {
+          message.error(res.data?.message || '操作失败')
+        }
+      } catch (e) {
+        message.error('操作失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
+
+// ========================================
+// 申请开票金额提交/审核逻辑
+// ========================================
+
+const loadInvoiceAmountDetail = async () => {
+  if (!formId.value) return
+  invoiceAmountLoading.value = true
+  try {
+    // 并发加载计算详情和水单列表
+    const [calcRes, remRes] = await Promise.all([
+      getInvoiceAmountDetail(formId.value!),
+      getRemittancesByFormId(formId.value!)
+    ])
+    if (calcRes.data?.code === 200) {
+      invoiceAmountCalcDetail.value = calcRes.data.data
+    } else {
+      invoiceAmountCalcDetail.value = null
+    }
+    if (remRes.data?.code === 200) {
+      invoiceAmountRemittances.value = remRes.data.data || []
+    } else {
+      invoiceAmountRemittances.value = []
+    }
+  } catch (e) {
+    message.error('加载开票金额详情失败')
+  } finally {
+    invoiceAmountLoading.value = false
+  }
+}
+
+/** 下载开票计算明细单 */
+const handleDownloadCalcFile = async () => {
+  if (!formId.value) return
+  try {
+    const res = await exportFinanceCalculation(formId.value!)
+    const downloadUrl = res.data?.data
+    if (downloadUrl) {
+      window.location.href = downloadUrl
+      message.success('计算明细文件下载中...')
+    } else {
+      message.warning('暂无计算数据')
+    }
+  } catch (e: any) {
+    message.error('下载失败: ' + (e.message || '未知错误'))
+  }
+}
+
+const handleSubmitInvoiceAmount = async () => {
+  if (!formId.value) return
+  Modal.confirm({
+    title: '确认提交开票金额申请？',
+    content: '提交后系统将自动计算开票金额并进入审核流程。请确保：1) 外汇水单已关联 2) 退税率已在财务单证页面设置。',
+    okText: '确认提交',
+    onOk: async () => {
+      try {
+        submitting.value = true
+        const res = await submitInvoiceAmount(formId.value!)
+        if (res.data?.code === 200) {
+          message.success('开票金额申请已提交，等待审核')
+          goBack()
+        } else {
+          message.error(res.data?.message || '提交失败')
+        }
+      } catch (e: any) {
+        message.error(e?.message || '提交失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
+
+const handleInvoiceAmountAuditApprove = () => {
+  if (!formId.value) return
+  let remark = ''
+  Modal.confirm({
+    title: '确认通过开票金额审核？',
+    content: () => h('div', [
+      h('div', { style: 'margin-bottom:8px;color:#666;' }, '通过后流程将进入业务发票提交阶段。'),
+      h(Textarea, {
+        rows: 3,
+        maxlength: 500,
+        placeholder: '请输入审核意见（可选）',
+        'onUpdate:value': (v: string) => { remark = v }
+      })
+    ]),
+    okText: '确认通过',
+    onOk: async () => {
+      try {
+        submitting.value = true
+        const res = await auditInvoiceAmount({ formId: formId.value!, result: 1, remark })
+        if (res.data?.code === 200) {
+          message.success('开票金额审核已通过')
+          goBack()
+        } else {
+          message.error(res.data?.message || '操作失败')
+        }
+      } catch (e) {
+        message.error('操作失败')
+      } finally {
+        submitting.value = false
+      }
+    }
+  })
+}
+
+const handleInvoiceAmountAuditReject = () => {
+  if (!formId.value) return
+  let remark = ''
+  Modal.confirm({
+    title: '确认驳回开票金额？',
+    content: () => h('div', [
+      h('div', { style: 'margin-bottom:8px;color:#d46b08;' }, '驳回后申报人将重新提交开票金额申请。请填写驳回原因。'),
+      h(Textarea, {
+        rows: 3,
+        maxlength: 500,
+        placeholder: '请输入驳回原因（必填）',
+        'onUpdate:value': (v: string) => { remark = v }
+      })
+    ]),
+    okText: '确认驳回',
+    okButtonProps: { danger: true },
+    onOk: async () => {
+      if (!remark.trim()) {
+        message.warning('驳回请填写审核意见')
+        return Promise.reject()
+      }
+      try {
+        submitting.value = true
+        const res = await auditInvoiceAmount({ formId: formId.value!, result: 2, remark })
+        if (res.data?.code === 200) {
+          message.success('已驳回，申报人需重新提交开票金额申请')
           goBack()
         } else {
           message.error(res.data?.message || '操作失败')
@@ -2602,8 +3029,11 @@ const handleInvoiceAuditReject = () => {
 
 const handleSubmitInvoice = async () => {
   if (!formId.value) return
-  if (!businessInvoiceList.value || businessInvoiceList.value.length === 0) {
-    message.warning('请至少上传一张业务发票后再提交')
+  // 检查 INVOICE 阶段的资料项是否已上传附件
+  const invoiceItems = getStageItems('INVOICE')
+  const hasAttachment = invoiceItems.some(item => item.attachments && item.attachments.length > 0)
+  if (invoiceItems.length === 0 || !hasAttachment) {
+    message.warning('请至少上传一份业务发票附件后再提交')
     return
   }
   Modal.confirm({
@@ -2629,28 +3059,7 @@ const handleSubmitInvoice = async () => {
   })
 }
 
-const loadBusinessInvoices = async () => {
-  if (!formId.value) return
-  try {
-    const res = await getBusinessInvoices(formId.value)
-    if (res.data && res.data.code === 200) {
-      businessInvoiceList.value = res.data.data || []
-    }
-  } catch (error) {
-    console.error('加载业务发票失败:', error)
-  }
-}
-
-const showInvoiceModal = () => {
-  invoiceModalVisible.value = true
-  invoiceForm.invoiceType = 1
-  invoiceForm.invoiceName = ''
-  invoiceForm.invoiceNo = ''
-  invoiceForm.amount = undefined
-  invoiceForm.taxAmount = undefined
-  invoiceFileList.value = []
-  tempInvoiceFile.value = null
-}
+// 业务发票相关函数已废弃，统一使用资料项 INVOICE 环节
 
 // 金额手动输入后，标记为用户修改
 const handleAmountChange = (record: any) => {
@@ -2667,84 +3076,8 @@ const handleQuantityOrPriceChange = (record: any) => {
   }
 }
 
-// 获取发票文件URL
-const getInvoiceFileUrl = (fileUrl: string) => {
-  // fileUrl 已经是完整的下载链接，直接返回
-  return fileUrl || ''
-}
+// 发票上传/删除/提交函数已废弃，统一使用资料项 INVOICE 环节
 
-const beforeInvoiceUpload = (file: any) => {
-  tempInvoiceFile.value = file
-  invoiceFileList.value = [{ uid: '-1', name: file.name, status: 'done' }]
-  return false
-}
-
-const handleInvoiceSubmit = async () => {
-  if (!tempInvoiceFile.value) return message.warning('请选择发票文件')
-  if (!invoiceForm.invoiceNo) return message.warning('请填写发票号码')
-
-  const formData = new FormData()
-  formData.append('file', tempInvoiceFile.value)
-  formData.append('invoiceType', '1') // 业务发票默认进项
-  formData.append('invoiceName', invoiceForm.invoiceName)
-  formData.append('invoiceNo', invoiceForm.invoiceNo)
-  if (invoiceForm.amount) formData.append('amount', String(invoiceForm.amount))
-  if (invoiceForm.taxAmount) formData.append('taxAmount', String(invoiceForm.taxAmount))
-
-  try {
-    if (!formId.value) return message.warning('申报单ID不存在')
-    await uploadBusinessInvoice(formId.value, formData)
-    message.success('发票上传成功')
-    invoiceModalVisible.value = false
-    loadBusinessInvoices()
-  } catch (error) {
-    message.error('发票上传失败')
-  }
-}
-
-const handleDeleteInvoice = async (id: number) => {
-  try {
-    await deleteBusinessInvoice(id)
-    message.success('发票删除成功')
-    loadBusinessInvoices()
-  } catch (error) {
-    message.error('发票删除失败')
-  }
-}
-
-// 财务补充-水单汇总表格列
-const remittanceSummaryColumns = [
-  { title: '水单名称', key: 'remittanceName', width: 120 },
-  { title: '银行账户', key: 'bankAccount', width: 160 },
-  { title: '水单金额', key: 'amount', width: 110 },
-  { title: '申报单关联金额', key: 'relationAmount', width: 130 },
-  { title: '手续费率', key: 'bankFeeRate', width: 100 },
-  { title: '手续费', key: 'bankFee', width: 100 },
-  { title: '水单日期', key: 'date', width: 110 },
-  { title: '状态', key: 'status', width: 90 }
-]
-
-// 获取水单状态颜色
-const getStatusColor = (status: number) => {
-  const colorMap: Record<number, string> = {
-    0: 'default',
-    1: 'blue',
-    2: 'green',
-    3: 'red'
-  }
-  return colorMap[status] || 'default'
-}
-
-// 获取水单状态文本
-const getRemittanceStatusText = (status: number) => {
-  const textMap: Record<number, string> = {
-    0: '草稿',
-    1: '待审核',
-    2: '已审核',
-    3: '已驳回'
-  }
-  return textMap[status] || '未知'
-}
 
 
 const formData = reactive({
@@ -3143,29 +3476,7 @@ const cartonColumns = [
   { title: '操作', key: 'action', width: 80 }
 ]
 
-// 业务发票表格列配置
-const businessInvoiceColumns = [
-  { title: '发票名称', dataIndex: 'invoiceName', key: 'invoiceName', width: 150 },
-  { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo', width: 150 },
-  { title: '金额', dataIndex: 'amount', key: 'amount', width: 120 },
-  { title: '附件', key: 'fileName', width: 150 },
-  { title: '操作', key: 'action', width: 80 }
-]
-
-// 业务发票数据
-const businessInvoiceList = ref<any[]>([])
-
-// 发票上传相关
-const invoiceModalVisible = ref(false)
-const invoiceFileList = ref<any[]>([])
-const tempInvoiceFile = ref<any>(null)
-const invoiceForm = reactive({
-  invoiceType: 1,
-  invoiceName: '',
-  invoiceNo: '',
-  amount: undefined as number | undefined,
-  taxAmount: undefined as number | undefined
-})
+// 业务发票已合并至资料模块 INVOICE 环节，以下变量已废弃
 
 // 计算总计
 const totals = computed(() => {
@@ -3503,7 +3814,12 @@ const onDepartureCityChange = (value: SelectValue) => {
 
 // 返回列表
 const goBack = () => {
-  router.push('/declaration/manage')
+  // 智能返回：优先返回上一页，无历史时返回申报录入
+  if (window.history.length > 1) {
+    router.back()
+  } else {
+    router.push('/declaration/entry')
+  }
 }
 
 // 保存草稿
@@ -3834,15 +4150,17 @@ const loadData = async () => {
         console.log('🔄 更新 formStatus 为:', submittedStatus)
         
         // 如果申报单已提交（status >= 1），查询活跃任务
-        if (submittedStatus >= 1 && formId.value) {
+        if (submittedStatus >= 1 && submittedStatus <= 9 && formId.value) {
           try {
             const taskRes = await getActiveTasks(formId.value)
-            activeTasks.value = taskRes.data || []
+            activeTasks.value = taskRes.data?.data || []
             console.log('📋 活跃任务:', activeTasks.value)
           } catch (e) {
             console.warn('获取活跃任务失败', e)
             activeTasks.value = []
           }
+        } else {
+          activeTasks.value = []
         }
         
         // 只读状态判断：
@@ -3973,41 +4291,26 @@ const loadData = async () => {
           console.warn('箱子列表为空或不是数组:', detailData.cartons)
         }
         
-        // 填充水单列表
-        const remittancesRaw = detailData.remittances
-        console.log('💰 水单原始数据:', remittancesRaw)
-        console.log('💰 水单数据类型:', typeof remittancesRaw, Array.isArray(remittancesRaw))
-        
-        if (Array.isArray(remittancesRaw)) {
-          remittanceList.value = remittancesRaw.map((rem: any) => ({
-            ...rem,
-            remittanceDate: dayjs(rem.remittanceDate),
-            tempId: rem.id,
-            photoFileList: rem.photoUrl ? [{
-              uid: '-1',
-              name: 'waterbill.jpg',
-              status: 'done',
-              url: rem.photoUrl,
-            }] : []
-          }))
-          console.log('✅ 加载水单列表成功:', remittanceList.value.length + ' 条记录')
-          console.log('💰 水单列表详情:', remittanceList.value)
-        } else {
-          console.warn('⚠️ 水单数据不是数组格式:', remittancesRaw)
-          remittanceList.value = []
-        }
-
-        // 加载财务补充记录
-        if (formId.value && (submittedStatus > 1 || isFinanceUploadMode.value)) {
-          loadFinancialSupplement()
-        }
-        
-        // 加载业务发票
-        loadBusinessInvoices()
 
         // 加载申报资料（状态 >=2 资料模块即可浏览/操作）
         if (formId.value && submittedStatus >= 2) {
-          loadMaterialItems()
+          await loadMaterialItems()
+          // 申报资料区仅展示「资料上传」环节；业务发票在下方独立区域编辑
+          const stages = availableStages.value
+          if (stages.length > 0) {
+            activeStageTab.value = stages[0].value
+          } else {
+            activeStageTab.value = DEFAULT_STAGE
+          }
+          scrollToQuerySection()
+        }
+
+        // 补充资料审过后（status>5）：任意入口进入都加载开票金额详情
+        if (formId.value && submittedStatus > 5) {
+          await loadInvoiceAmountDetail()
+          if (route.query.scrollTo === 'invoice-amount') {
+            scrollToQuerySection()
+          }
         }
                 
         // 如果是退回待审状态（status=9），加载最新的退回申请原因
@@ -4069,6 +4372,20 @@ const showAuditHistory = async () => {
     auditHistoryLoading.value = false
   }
 }
+//
+// // 加载活跃任务
+// const loadActiveTasks = async () => {
+//   if (!formId.value) return
+//   try {
+//     const res = await getActiveTasks(formId.value)
+//     if (res.data && res.data.code === 200) {
+//       activeTasks.value = res.data.data || []
+//     }
+//   } catch (error) {
+//     console.warn('加载活跃任务失败:', error)
+//     activeTasks.value = []
+//   }
+// }
 
 // 显示审核意见弹窗
 const showRemarkModal = (action: string, defaultRemark: string): Promise<string> => {
@@ -4108,6 +4425,30 @@ const testDataStructure = (elements: any[]) => {
       defaultValue: element.defaultValue,
       currentValue: element.value
     })
+  })
+}
+
+watch(
+  () => [showInvoiceAmountSection.value, formId.value] as const,
+  ([show, id]) => {
+    if (show && id) {
+      loadInvoiceAmountDetail()
+    }
+  },
+  { immediate: true }
+)
+
+/** 根据 URL ?scrollTo= 滚动到对应区块（material / supplement / invoice / invoice-amount） */
+const scrollToQuerySection = () => {
+  const scrollToSection = route.query.scrollTo as string
+  if (!scrollToSection) return
+  nextTick(() => {
+    setTimeout(() => {
+      const element = document.getElementById(`section-${scrollToSection}`)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }, 150)
   })
 }
 
@@ -4497,6 +4838,14 @@ onMounted(() => {
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+  min-height: 28px;
+}
+.name-cell .name-upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 .name-cell .name-text {
   font-weight: 500;
@@ -4602,5 +4951,237 @@ onMounted(() => {
   color: #0958d9;
   background: #e6f4ff;
   border-left-color: #1677ff;
+}
+
+/* 多附件展示 */
+.file-cell-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.file-item-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+.file-icon-sm {
+  color: #4f6ef7;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.file-name-sm {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #1677ff;
+  font-weight: 500;
+}
+.file-name-sm:hover {
+  color: #4096ff;
+  text-decoration: underline;
+}
+.file-delete-btn {
+  color: #ff4d4f;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.file-delete-btn:hover {
+  opacity: 1;
+}
+.file-count-hint {
+  font-size: 11px;
+  color: #8c8c8c;
+  margin-top: 2px;
+}
+
+/* 发票类附件卡片 */
+.att-invoice-card {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 10px 14px 8px;
+  margin-bottom: 8px;
+}
+.att-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.att-file-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.att-divider-v {
+  width: 1px;
+  height: 20px;
+  background: #e5e7eb;
+  flex-shrink: 0;
+}
+.att-field-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.att-field-label {
+  font-size: 12px;
+  color: #8c8c8c;
+  white-space: nowrap;
+}
+.att-val-tag {
+  display: inline-block;
+  background: #f5f5f5;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #333;
+}
+.file-delete-btn {
+  color: #ff4d4f;
+  cursor: pointer;
+  font-size: 13px;
+  opacity: 0.45;
+  transition: opacity 0.15s;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.file-delete-btn:hover {
+  opacity: 1;
+}
+.att-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #f0f0f0;
+}
+.att-row-meta .anticon {
+  font-size: 12px;
+  margin-right: 2px;
+}
+.att-meta-dot {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  background: #d9d9d9;
+  border-radius: 50%;
+  margin: 0 4px;
+}
+.file-meta-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #8c8c8c;
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+.meta-icon {
+  font-size: 11px;
+  color: #bfbfbf;
+}
+
+/* 开票金额计算详情 */
+.calc-detail-wrap {
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.calc-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.calc-section:last-of-type {
+  border-bottom: none;
+}
+.calc-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+}
+.calc-income .calc-section-title {
+  color: #16a34a;
+}
+.calc-expense .calc-section-title {
+  color: #dc2626;
+}
+.calc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0 4px 16px;
+  font-size: 13px;
+  line-height: 24px;
+}
+.calc-row.calc-subtotal {
+  border-top: 1px dashed #e8e8e8;
+  margin-top: 6px;
+  padding-top: 8px;
+  font-weight: 600;
+}
+.calc-row.calc-highlight {
+  background: #fffbe6;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin: 4px 0;
+}
+.calc-label {
+  color: #4b5563;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+.calc-value {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  color: #1f2937;
+  text-align: right;
+}
+.calc-result {
+  background: linear-gradient(135deg, #f0f7ff 0%, #fafcff 100%);
+  padding: 14px 16px;
+}
+.calc-result .calc-row {
+  padding-left: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.calc-steps {
+  padding: 4px 0;
+}
+.calc-step-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 20px;
+}
+.calc-step-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  color: #9ca3af;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.calc-step-text {
+  font-family: 'SFMono-Regular', Consolas, monospace;
 }
 </style>

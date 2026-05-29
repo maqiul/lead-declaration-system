@@ -249,10 +249,46 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '出口申报', icon: 'FileProtectOutlined' },
     children: [
       {
+        path: 'entry',
+        name: 'DeclarationEntry',
+        component: () => import('@/views/declaration/entry/index.vue'),
+        meta: { title: '申报录入', icon: 'EditOutlined' }
+      },
+      {
+        path: 'material',
+        name: 'DeclarationMaterial',
+        component: () => import('@/views/declaration/material/index.vue'),
+        meta: { title: '资料提交', icon: 'UploadOutlined' }
+      },
+      {
+        path: 'supplement',
+        name: 'DeclarationSupplement',
+        component: () => import('@/views/declaration/supplement/index.vue'),
+        meta: { title: '补充资料', icon: 'FileAddOutlined' }
+      },
+      {
+        path: 'invoice-amount',
+        name: 'DeclarationInvoiceAmount',
+        component: () => import('@/views/declaration/invoice-amount/index.vue'),
+        meta: { title: '开票金额', icon: 'AccountBookOutlined' }
+      },
+      {
+        path: 'invoice',
+        name: 'DeclarationInvoice',
+        component: () => import('@/views/declaration/invoice/index.vue'),
+        meta: { title: '发票提交', icon: 'FileTextOutlined' }
+      },
+      {
+        path: 'archive',
+        name: 'DeclarationArchive',
+        component: () => import('@/views/declaration/archive/index.vue'),
+        meta: { title: '归档查询', icon: 'FolderOpenOutlined' }
+      },
+      {
         path: 'manage',
         name: 'DeclarationManage',
         component: () => import('@/views/declaration/manage/index.vue'),
-        meta: { title: '申报管理', icon: 'ContainerOutlined' }
+        meta: { title: '申报管理', icon: 'ContainerOutlined', hidden: true }
       },
       {
         path: 'finance',
@@ -264,7 +300,7 @@ export const asyncRoutes: RouteRecordRaw[] = [
         path: 'form',
         name: 'DeclarationForm',
         component: () => import('@/views/declaration/form/index.vue'),
-        meta: { title: '申报表单', icon: 'FileTextOutlined' }
+        meta: { title: '申报表单', icon: 'FileTextOutlined', hidden: true }
       },
       {
         path: 'payment',

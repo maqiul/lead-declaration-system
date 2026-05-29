@@ -11,6 +11,7 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 申报资料项实例（每申报单一组）
@@ -28,6 +29,9 @@ public class DeclarationMaterialItem implements Serializable {
 
     /** 来源模板ID（NULL 表示单据内手动新增） */
     private Long templateId;
+
+    /** 所属环节：MATERIAL_SUBMIT / INVOICE / FINANCE_SUPPLEMENT（从模板克隆时同步） */
+    private String stage;
 
     /** 资料编码 */
     private String code;
@@ -95,4 +99,8 @@ public class DeclarationMaterialItem implements Serializable {
     /** 更新人昵称（非持久化，Service 层回填） */
     @TableField(exist = false)
     private String updateByName;
+
+    /** 附件列表（非持久化，Service 层批量加载） */
+    @TableField(exist = false)
+    private List<MaterialAttachment> attachments;
 }

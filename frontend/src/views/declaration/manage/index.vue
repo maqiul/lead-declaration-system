@@ -22,10 +22,14 @@
             <a-select-option :value="1">待初审</a-select-option>
             <a-select-option :value="2">待资料提交</a-select-option>
             <a-select-option :value="3">待资料审核</a-select-option>
-            <a-select-option :value="4">待发票提交</a-select-option>
-            <a-select-option :value="5">待发票审核</a-select-option>
-            <a-select-option :value="6">已完成</a-select-option>
-            <a-select-option :value="9">退回待审</a-select-option>
+            <a-select-option :value="4">待补充资料提交</a-select-option>
+            <a-select-option :value="5">待补充资料审核</a-select-option>
+            <a-select-option :value="6">待开票金额提交</a-select-option>
+            <a-select-option :value="7">待开票金额审核</a-select-option>
+            <a-select-option :value="8">待发票提交</a-select-option>
+            <a-select-option :value="9">待发票审核</a-select-option>
+            <a-select-option :value="10">已完成</a-select-option>
+            <a-select-option :value="11">退回待审</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="日期">
@@ -129,8 +133,40 @@
                 </a-button>
               </template>
 
-              <!-- 待发票提交状态: 提交发票按钮 -->
+              <!-- 待补充资料提交状态: 提交补充资料按钮 -->
               <template v-if="record.status === 4">
+                <a-button type="link" size="small" style="color: #13c2c2;" @click="handleSupplementSubmit(record as any)" v-permission="['business:declaration:supplement:submit']">
+                  <template #icon><UploadOutlined /></template>
+                  补充资料
+                </a-button>
+              </template>
+
+              <!-- 待补充资料审核状态: 补充资料审核按钮 -->
+              <template v-if="record.status === 5">
+                <a-button type="link" size="small" style="color: #2f54eb;" @click="handleSupplementAudit(record as any)" v-permission="['business:declaration:audit:supplement']">
+                  <template #icon><CheckCircleOutlined /></template>
+                  补充审核
+                </a-button>
+              </template>
+
+              <!-- 待开票金额提交状态: 申请开票金额按钮 -->
+              <template v-if="record.status === 6">
+                <a-button type="link" size="small" style="color: #a0d911;" @click="handleInvoiceAmountSubmit(record as any)" v-permission="['business:declaration:invoice-amount:submit']">
+                  <template #icon><UploadOutlined /></template>
+                  开票金额
+                </a-button>
+              </template>
+
+              <!-- 待开票金额审核状态: 开票金额审核按钮 -->
+              <template v-if="record.status === 7">
+                <a-button type="link" size="small" style="color: #fa8c16;" @click="handleInvoiceAmountAudit(record as any)" v-permission="['business:declaration:audit:invoice-amount']">
+                  <template #icon><CheckCircleOutlined /></template>
+                  金额审核
+                </a-button>
+              </template>
+
+              <!-- 待发票提交状态: 提交发票按钮 -->
+              <template v-if="record.status === 8">
                 <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoSubmitInvoice(record as any)" v-permission="['business:declaration:invoice:submit']">
                   <template #icon><UploadOutlined /></template>
                   提交发票
@@ -138,12 +174,23 @@
               </template>
 
               <!-- 待发票审核状态: 发票审核按钮 -->
-              <template v-if="record.status === 5">
+              <template v-if="record.status === 9">
                 <a-button type="link" size="small" style="color: #52c41a;" @click="handleInvoiceAudit(record as any)" v-permission="['business:declaration:audit:invoice']">
                   <template #icon><CheckCircleOutlined /></template>
                   发票审核
                 </a-button>
               </template>
+
+              <a-button
+                v-if="canShowFlowMigration(record as any)"
+                type="link"
+                size="small"
+                danger
+                @click="handleResumeFlow(record as any)"
+              >
+                <template #icon><ReloadOutlined /></template>
+                迁移新版流程
+              </a-button>
 
               <!-- 更多操作菜单 -->
               <a-dropdown>
@@ -185,9 +232,9 @@
                       <DownloadOutlined /> 单证下载
                     </a-menu-item>
 
-                    <!-- 恢复老流程：仅当 status 在 2~5 且无活跃任务时显示（老数据修复，需专用权限） -->
+                    <!-- 恢复老流程：仅当 status 在 1~9 且无活跃任务时显示（老数据修复，需专用权限） -->
                     <a-menu-item
-                      v-if="record.status >= 2 && record.status <= 5 && (!record.activeTasks || record.activeTasks.length === 0) && checkPermission(['business:declaration:resume:flow'])"
+                      v-if="canShowResumeFlow(record as any)"
                       key="resumeFlow"
                       @click="handleResumeFlow(record as any)"
                     >
@@ -205,7 +252,7 @@
 
                     <!-- 申请退回草稿 (已提交状态，不包括退回待审) -->
                     <a-menu-item
-                      v-if="record.status >= 2 && record.status !== 9 && checkPermission(['business:declaration:return:apply'])"
+                      v-if="record.status >= 2 && record.status !== 11 && checkPermission(['business:declaration:return:apply'])"
                       key="returnApply"
                       @click="handleReturnApply(record as any)"
                     >
@@ -214,7 +261,7 @@
 
                     <!-- 退回审核 (仅退回待审状态) -->
                     <a-menu-item
-                      v-if="record.status === 9 && checkPermission(['business:declaration:return:audit'])"
+                      v-if="record.status === 11 && checkPermission(['business:declaration:return:audit'])"
                       key="returnAudit"
                       @click="handleReturnAudit(record as any)"
                     >
@@ -652,6 +699,7 @@ import {
   regenerateAllDocuments,
   regenerateRemittanceReport,
   getBatchActiveTasks,
+  getActiveTasks,
   resumeDeclarationFlow,
   applyReturnToDraft,
   auditReturnToDraft,
@@ -694,6 +742,7 @@ interface DeclarationRecord {
   hasContract?: boolean
   regenerateButtons?: any[]
   activeTasks?: string[]
+  needsFlowMigration?: boolean
 }
 
 const dataSource = ref<DeclarationRecord[]>([])
@@ -883,7 +932,7 @@ const loadData = async () => {
       
       // 批量获取需要显示审核按钮的记录的活跃任务（状态2,3,4,5,7）
       const processingIds = dataSource.value
-        .filter((r: any) => [2, 3, 4, 5, 7].includes(r.status))
+        .filter((r: any) => r.status >= 1 && r.status <= 9)
         .map((r: any) => r.id)
       
       if (processingIds.length > 0) {
@@ -892,8 +941,12 @@ const loadData = async () => {
           const taskRes = await getBatchActiveTasks(processingIds.join(','))
           console.log('批量任务响应:', taskRes)
           if (taskRes.data && taskRes.data.code === 200 && taskRes.data.data) {
+            const payload = taskRes.data.data
+            const taskMap = payload.tasks ?? payload
+            const migrationMap = payload.migration ?? {}
             dataSource.value.forEach((r: any) => {
-              r.activeTasks = taskRes.data.data[String(r.id)] || []
+              r.activeTasks = taskMap[String(r.id)] || []
+              r.needsFlowMigration = migrationMap[String(r.id)] === true
             })
           } else {
             console.warn('批量任务API返回异常:', taskRes.data)
@@ -927,18 +980,23 @@ const startAutoRefresh = () => {
   refreshTimer = window.setInterval(() => {
     // 只刷新需要显示审核按钮的记录的活跃任务（状态2,3,4,5,7）
     const processingIds = dataSource.value
-      .filter((r: any) => [2, 3, 4, 5, 7].includes(r.status))
+      .filter((r: any) => r.status >= 1 && r.status <= 9)
       .map((r: any) => r.id)
     
     if (processingIds.length > 0) {
       getBatchActiveTasks(processingIds.join(','))
         .then(taskRes => {
           if (taskRes.data && taskRes.data.code === 200 && taskRes.data.data) {
+            const payload = taskRes.data.data
+            const taskMap = payload.tasks ?? payload
+            const migrationMap = payload.migration ?? {}
             dataSource.value.forEach((r: any) => {
-              const newTasks = taskRes.data.data[String(r.id)] || []
-              // 只有当任务列表发生变化时才更新，避免不必要的重新渲染
-              if (JSON.stringify(r.activeTasks || []) !== JSON.stringify(newTasks)) {
+              const newTasks = taskMap[String(r.id)] || []
+              const newMigration = migrationMap[String(r.id)] === true
+              if (JSON.stringify(r.activeTasks || []) !== JSON.stringify(newTasks)
+                  || r.needsFlowMigration !== newMigration) {
                 r.activeTasks = newTasks
+                r.needsFlowMigration = newMigration
               }
             })
           }
@@ -1049,20 +1107,71 @@ const handleMaterialAudit = (record: DeclarationRecord) => {
 
 // 提交业务发票——跳转到主表单 mode=invoiceUpload
 const handleGoSubmitInvoice = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceUpload`)
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceUpload&scrollTo=invoice`)
 }
 
 // 发票审核（跳转到详情页审核）
 const handleInvoiceAudit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceAudit`)
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceAudit&scrollTo=invoice`)
 }
 
-// 恢复老流程：老流程在 status=2 就结束，使用本功能一键启动新版流程并跳至对应节点
-const handleResumeFlow = (record: DeclarationRecord) => {
+// 补充资料提交（跳转到详情页）
+const handleSupplementSubmit = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=supplement&scrollTo=supplement`)
+}
+
+// 补充资料审核（跳转到详情页审核）
+const handleSupplementAudit = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=supplementAudit`)
+}
+
+// 申请开票金额提交（跳转到详情页）
+const handleInvoiceAmountSubmit = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceAmount`)
+}
+
+// 开票金额审核（跳转到详情页审核）
+const handleInvoiceAmountAudit = (record: DeclarationRecord) => {
+  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceAmountAudit`)
+}
+
+const canShowFlowMigration = (record: DeclarationRecord) => {
+  if (!record.needsFlowMigration) return false
+  if (record.status == null || record.status < 1 || record.status > 9) return false
+  return checkPermission(['business:declaration:resume:flow'])
+}
+
+const canShowResumeFlow = (record: DeclarationRecord) => {
+  if (record.needsFlowMigration) return false
+  if (record.status == null || record.status < 1 || record.status > 9) return false
+  if (!checkPermission(['business:declaration:resume:flow'])) return false
+  const tasks = record.activeTasks || []
+  return tasks.length === 0
+}
+
+const handleResumeFlow = async (record: DeclarationRecord) => {
+  if (!record.needsFlowMigration) {
+    try {
+      const taskRes = await getActiveTasks(record.id)
+      const raw = taskRes.data?.data
+      const tasks = Array.isArray(raw) ? raw : (raw?.tasks ?? [])
+      if (tasks && tasks.length > 0) {
+        message.warning('该申报单已有活跃流程，无需恢复')
+        return
+      }
+    } catch (e) {
+      console.warn('查询活跃任务失败，继续恢复流程', e)
+    }
+  }
+
   Modal.confirm({
-    title: '确认恢复流程？',
-    content: `申报单 ${record.formNo || record.id} 当前状态=${record.status}，将迁移到新版流程对应节点。`,
-    okText: '确认恢复',
+    title: record.needsFlowMigration ? '确认迁移到新版流程？' : '确认恢复流程？',
+    content: record.needsFlowMigration
+      ? (record.status === 2 || record.status === 3
+          ? `申报单 ${record.formNo || record.id} 当前为旧版流程（资料提交/审核），迁移后挂到新版对应节点。`
+          : `申报单 ${record.formNo || record.id} 当前为旧版流程，将在列表直接迁移到新版对应节点。`)
+      : `申报单 ${record.formNo || record.id} 当前状态=${record.status}，将迁移到新版流程对应节点。`,
+    okText: '确认',
     onOk: async () => {
       try {
         const res: any = await resumeDeclarationFlow(record.id)
@@ -1382,10 +1491,14 @@ const getStatusText = (status: number) => {
     1: '待初审',
     2: '待资料提交',
     3: '待资料审核',
-    4: '待发票提交',
-    5: '待发票审核',
-    6: '已完成',
-    9: '退回待审'
+    4: '待补充资料提交',
+    5: '待补充资料审核',
+    6: '待开票金额提交',
+    7: '待开票金额审核',
+    8: '待发票提交',
+    9: '待发票审核',
+    10: '已完成',
+    11: '退回待审'
   }
   return statusMap[status] || '未知'
 }
@@ -1397,10 +1510,14 @@ const getStatusColor = (status: number) => {
     1: 'processing',   // 待初审
     2: 'blue',         // 待资料提交
     3: 'purple',       // 待资料审核
-    4: 'geekblue',     // 待发票提交
-    5: 'magenta',      // 待发票审核
-    6: 'success',      // 已完成
-    9: 'warning'       // 退回待审
+    4: 'cyan',         // 待补充资料提交
+    5: 'geekblue',     // 待补充资料审核
+    6: 'lime',         // 待开票金额提交
+    7: 'orange',       // 待开票金额审核
+    8: 'geekblue',     // 待发票提交
+    9: 'magenta',      // 待发票审核
+    10: 'success',     // 已完成
+    11: 'warning'      // 退回待审
   }
   return colorMap[status] || 'default'
 }
@@ -1579,11 +1696,8 @@ const doRegenerateByFileType = async (declaration: any, fileType: string) => {
       case 'FullDocuments':
         response = await regenerateDocuments(declaration.id)
         break
-      case 'Remittance_Deposit':
-        response = await regenerateRemittanceReport(declaration.id, 1)
-        break
-      case 'Remittance_Balance':
-        response = await regenerateRemittanceReport(declaration.id, 2)
+      case 'Remittance':
+        response = await regenerateRemittanceReport(declaration.id)
         break
       default:
         message.warning('不支持的文件类型')
@@ -1812,6 +1926,8 @@ const getBusinessTypeText = (type: string) => {
     'DECLARATION_AUDIT': '申报审核',
     'DECLARATION_SUBMIT': '申报提交',
     'DECLARATION_MATERIAL_AUDIT': '资料审核',
+    'DECLARATION_SUPPLEMENT_AUDIT': '补充资料审核',
+    'DECLARATION_INVOICE_AMOUNT_AUDIT': '开票金额审核',
     'DECLARATION_INVOICE_AUDIT': '业务发票审核',
     'REMITTANCE_AUDIT': '水单审核',
     'DELIVERY_ORDER_AUDIT': '提货单审核',

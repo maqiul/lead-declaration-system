@@ -5,8 +5,11 @@ import com.declaration.annotation.RequiresPermissions;
 import com.declaration.common.Result;
 import com.declaration.entity.DeclarationAttachment;
 import com.declaration.entity.DeclarationMaterialItem;
+import com.declaration.entity.MaterialAttachment;
 import com.declaration.service.DeclarationAttachmentService;
 import com.declaration.service.DeclarationMaterialItemService;
+import com.declaration.service.FinancialSupplementService;
+import com.declaration.service.MaterialAttachmentService;
 import com.declaration.service.PdfInvoiceAmountParser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,6 +34,8 @@ public class DeclarationMaterialItemController {
 
     private final DeclarationMaterialItemService itemService;
     private final DeclarationAttachmentService attachmentService;
+    private final MaterialAttachmentService materialAttachmentService;
+    private final FinancialSupplementService financialSupplementService;
     private final PdfInvoiceAmountParser pdfInvoiceAmountParser;
 
     /** 获取某申报单的资料项视图（懒创建：未操作过的资料项以虚拟项 id=null 返回，不落库） */
@@ -123,7 +128,7 @@ public class DeclarationMaterialItemController {
      *  兼容懒创建：如果 id 查不到但带了 formId+templateId，则先按模板 ensure 一条实例再上传
      */
     @PostMapping("/{id}/upload")
-    @Operation(summary = "上传资料项附件")
+    @Operation(summary = "上传资料项附件（追加模式，支持多文件）")
     public Result<DeclarationMaterialItem> upload(@PathVariable Long id,
                                                   @RequestParam("file") MultipartFile file,
                                                   @RequestParam(value = "formId", required = false) Long formId,
@@ -143,14 +148,15 @@ public class DeclarationMaterialItemController {
         }
         if (item == null) return Result.fail("资料项不存在");
         try {
-            DeclarationAttachment att = attachmentService.uploadFile(file, "MaterialItem");
+            // 上传文件并保存到附件子表
+            MaterialAttachment att = materialAttachmentService.uploadForItem(item.getId(), file);
+            // 同步主表冗余字段（指向最新文件）
             item.setFileName(att.getFileName());
             item.setFileUrl(att.getFileUrl());
             item.setStatus(1);
             if (StpUtil.isLogin()) {
                 Long uid = StpUtil.getLoginIdAsLong();
                 item.setUploadBy(uid);
-                // 显式刷新更新人，避免旧值被 strictUpdateFill 跳过
                 item.setUpdateBy(uid);
             }
             item.setUploadTime(LocalDateTime.now());
@@ -163,12 +169,15 @@ public class DeclarationMaterialItemController {
         }
     }
 
-    /** 删除已上传的附件（保留资料项） */
+    /** 删除已上传的附件（保留资料项，清空所有附件） */
     @DeleteMapping("/{id}/file")
-    @Operation(summary = "清除资料项附件")
+    @Operation(summary = "清除资料项所有附件")
     public Result<Boolean> clearFile(@PathVariable Long id) {
         DeclarationMaterialItem item = itemService.getById(id);
         if (item == null) return Result.fail("资料项不存在");
+        // 删除子表所有附件
+        materialAttachmentService.removeAllByItemId(id);
+        // 清空主表冗余字段
         item.setFileName(null);
         item.setFileUrl(null);
         item.setStatus(0);
@@ -179,6 +188,75 @@ public class DeclarationMaterialItemController {
         }
         item.setUpdateTime(LocalDateTime.now());
         return Result.success(itemService.updateById(item));
+    }
+
+    /** 删除单个附件 */
+    @DeleteMapping("/{id}/file/{attachmentId}")
+    @Operation(summary = "删除资料项的单个附件")
+    public Result<Boolean> deleteAttachment(@PathVariable Long id,
+                                            @PathVariable Long attachmentId) {
+        DeclarationMaterialItem item = itemService.getById(id);
+        if (item == null) return Result.fail("资料项不存在");
+        materialAttachmentService.removeAttachment(attachmentId);
+        // 检查是否还有附件
+        long remaining = materialAttachmentService.countByItemId(id);
+        if (remaining == 0) {
+            // 清空主表冗余字段
+            item.setFileName(null);
+            item.setFileUrl(null);
+            item.setStatus(0);
+            item.setUploadBy(null);
+            item.setUploadTime(null);
+            if (StpUtil.isLogin()) {
+                item.setUpdateBy(StpUtil.getLoginIdAsLong());
+            }
+            item.setUpdateTime(LocalDateTime.now());
+            itemService.updateById(item);
+        } else {
+            // 更新主表冗余字段为最新附件
+            List<MaterialAttachment> atts = materialAttachmentService.listByItemId(id);
+            if (!atts.isEmpty()) {
+                MaterialAttachment latest = atts.get(0);
+                item.setFileName(latest.getFileName());
+                item.setFileUrl(latest.getFileUrl());
+                if (StpUtil.isLogin()) {
+                    item.setUpdateBy(StpUtil.getLoginIdAsLong());
+                }
+                item.setUpdateTime(LocalDateTime.now());
+                itemService.updateById(item);
+            }
+        }
+        return Result.success(true);
+    }
+
+    /** 获取某资料项的附件列表 */
+    @GetMapping("/{id}/files")
+    @Operation(summary = "获取资料项附件列表")
+    public Result<List<MaterialAttachment>> listAttachments(@PathVariable Long id) {
+        return Result.success(materialAttachmentService.listByItemId(id));
+    }
+
+    /** 更新附件的结构化字段（金额/发票号/开票日期等） */
+    @PutMapping("/{id}/file/{attachmentId}")
+    @Operation(summary = "更新附件结构化字段")
+    public Result<MaterialAttachment> updateAttachmentFields(
+            @PathVariable Long id,
+            @PathVariable Long attachmentId,
+            @RequestBody MaterialAttachment body) {
+        MaterialAttachment att = materialAttachmentService.getById(attachmentId);
+        if (att == null || !att.getItemId().equals(id)) {
+            return Result.fail("附件不存在");
+        }
+        // 允许更新结构化字段（包括设置为 null 以清空字段）
+        att.setAmount(body.getAmount());
+        att.setCurrency(body.getCurrency());
+        att.setInvoiceNo(body.getInvoiceNo());
+        att.setInvoiceDate(body.getInvoiceDate());
+        att.setExtraData(body.getExtraData());
+        materialAttachmentService.updateById(att);
+        // 同步主表冗余字段（取第一个附件的值，保持兼容）
+        syncItemFromFirstAttachment(id);
+        return Result.success(att);
     }
 
     /** 提交资料（完成 materialSubmit 任务） */
@@ -213,6 +291,91 @@ public class DeclarationMaterialItemController {
             return Result.success("资料审核" + (approved ? "通过" : "驳回") + "成功");
         } catch (Exception e) {
             log.warn("资料审核失败 formId={} : {}", formId, e.getMessage());
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /** 提交补充资料（完成 supplementSubmit 任务） */
+    @PostMapping("/supplement/submit")
+    @Operation(summary = "提交补充资料")
+    @RequiresPermissions("business:declaration:supplement:submit")
+    public Result<String> submitSupplement(@RequestParam Long formId) {
+        Long userId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
+        try {
+            itemService.submitSupplement(formId, userId);
+            return Result.success("补充资料提交成功");
+        } catch (Exception e) {
+            log.warn("补充资料提交失败 formId={} : {}", formId, e.getMessage());
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /** 补充资料审核（完成 supplementAudit 任务） */
+    @PostMapping("/supplement/audit")
+    @Operation(summary = "补充资料审核")
+    @RequiresPermissions("business:declaration:audit:supplement")
+    public Result<String> auditSupplement(@RequestBody Map<String, Object> body) {
+        Object formIdObj = body.get("formId");
+        if (formIdObj == null) return Result.fail("formId 不能为空");
+        Long formId = Long.valueOf(formIdObj.toString());
+        Object resultObj = body.get("result"); // 1=通过 2=驳回
+        boolean approved = resultObj != null && "1".equals(resultObj.toString());
+        String remark = body.get("remark") == null ? "" : body.get("remark").toString();
+        Long auditorId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
+        try {
+            itemService.auditSupplement(formId, approved, remark, auditorId);
+            return Result.success("补充资料审核" + (approved ? "通过" : "驳回") + "成功");
+        } catch (Exception e) {
+            log.warn("补充资料审核失败 formId={} : {}", formId, e.getMessage());
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /** 提交申请开票金额（完成 invoiceAmountSubmit 任务） */
+    @PostMapping("/invoice-amount/submit")
+    @Operation(summary = "提交申请开票金额")
+    @RequiresPermissions("business:declaration:invoice-amount:submit")
+    public Result<String> submitInvoiceAmount(@RequestParam Long formId) {
+        Long userId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
+        try {
+            itemService.submitInvoiceAmount(formId, userId);
+            return Result.success("申请开票金额提交成功");
+        } catch (Exception e) {
+            log.warn("申请开票金额失败 formId={} : {}", formId, e.getMessage());
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /** 开票金额审核（完成 invoiceAmountAudit 任务） */
+    @PostMapping("/invoice-amount/audit")
+    @Operation(summary = "开票金额审核")
+    @RequiresPermissions("business:declaration:audit:invoice-amount")
+    public Result<String> auditInvoiceAmount(@RequestBody Map<String, Object> body) {
+        Object formIdObj = body.get("formId");
+        if (formIdObj == null) return Result.fail("formId 不能为空");
+        Long formId = Long.valueOf(formIdObj.toString());
+        Object resultObj = body.get("result"); // 1=通过 2=驳回
+        boolean approved = resultObj != null && "1".equals(resultObj.toString());
+        String remark = body.get("remark") == null ? "" : body.get("remark").toString();
+        Long auditorId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
+        try {
+            itemService.auditInvoiceAmount(formId, approved, remark, auditorId);
+            return Result.success("开票金额审核" + (approved ? "通过" : "驳回") + "成功");
+        } catch (Exception e) {
+            log.warn("开票金额审核失败 formId={} : {}", formId, e.getMessage());
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /** 获取开票金额计算详情 */
+    @GetMapping("/invoice-amount/calculate")
+    @Operation(summary = "获取开票金额计算详情")
+    public Result<Map<String, Object>> getInvoiceAmountDetail(@RequestParam Long formId) {
+        try {
+            Map<String, Object> detail = financialSupplementService.getCalculationDetail(formId);
+            return Result.success(detail);
+        } catch (Exception e) {
+            log.warn("获取开票金额计算详情失败 formId={} : {}", formId, e.getMessage());
             return Result.fail(e.getMessage());
         }
     }
@@ -254,6 +417,19 @@ public class DeclarationMaterialItemController {
     }
 
     /**
+     * OCR 状态诊断接口（查看 OCR 引擎是否就绪）。
+     */
+    @GetMapping("/ocr-status")
+    @Operation(summary = "OCR 状态诊断")
+    public Result<Map<String, Object>> ocrStatus() {
+        Map<String, Object> status = new java.util.LinkedHashMap<>();
+        status.put("ocrReady", pdfInvoiceAmountParser.isOcrReady());
+        status.put("timestamp", java.time.LocalDateTime.now().toString());
+        log.info("[OCR] 状态检查请求, ocrReady={}", pdfInvoiceAmountParser.isOcrReady());
+        return Result.success(status);
+    }
+
+    /**
      * 解析发票 PDF 中的金额（仅解析返回，不保存任何数据）。
      * 前端在用户上传货代/报关代理发票 PDF 时调用，用于与手填金额进行比对校验。
      */
@@ -277,6 +453,29 @@ public class DeclarationMaterialItemController {
             r.setSuccess(false);
             r.setErrorMsg("读取 PDF 文件失败");
             return Result.success(r);
+        }
+    }
+
+    /**
+     * 同步主表冗余字段（取最新附件的值），保持与单文件模式的兼容性。
+     * 当附件全部删除后主表 status 已由其他逻辑处理，此处仅同步结构化字段。
+     */
+    private void syncItemFromFirstAttachment(Long itemId) {
+        DeclarationMaterialItem item = itemService.getById(itemId);
+        if (item == null) return;
+        List<MaterialAttachment> atts = materialAttachmentService.listByItemId(itemId);
+        if (!atts.isEmpty()) {
+            MaterialAttachment latest = atts.get(0);
+            item.setAmount(latest.getAmount());
+            item.setCurrency(latest.getCurrency());
+            item.setInvoiceNo(latest.getInvoiceNo());
+            item.setInvoiceDate(latest.getInvoiceDate());
+            item.setExtraData(latest.getExtraData());
+            if (StpUtil.isLogin()) {
+                item.setUpdateBy(StpUtil.getLoginIdAsLong());
+            }
+            item.setUpdateTime(LocalDateTime.now());
+            itemService.updateById(item);
         }
     }
 }

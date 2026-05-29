@@ -41,6 +41,28 @@ public interface DeclarationMaterialItemService extends IService<DeclarationMate
     void audit(Long formId, boolean approved, String remark, Long auditorId);
 
     /**
+     * 补充资料提交：完成 supplementSubmit 任务
+     * 校验：SUPPLEMENT 阶段所有 required=1 的项都必须已上传附件
+     */
+    void submitSupplement(Long formId, Long currentUserId);
+
+    /**
+     * 补充资料审核：完成 supplementAudit 任务
+     */
+    void auditSupplement(Long formId, boolean approved, String remark, Long auditorId);
+
+    /**
+     * 申请开票金额提交：完成 invoiceAmountSubmit 任务
+     * 前置校验：外汇水单已关联；自动计算开票金额并保存到 declaration_form.requested_invoice_amount
+     */
+    void submitInvoiceAmount(Long formId, Long currentUserId);
+
+    /**
+     * 开票金额审核：完成 invoiceAmountAudit 任务
+     */
+    void auditInvoiceAmount(Long formId, boolean approved, String remark, Long auditorId);
+
+    /**
      * 业务发票提交：完成 invoiceSubmit 任务
      * 校验：至少已上传一张业务发票（declaration_invoice.category=1）
      */
