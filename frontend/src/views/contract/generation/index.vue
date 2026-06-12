@@ -57,6 +57,10 @@
 
           <template v-else-if="column.key === 'action'">
             <a-space>
+              <a-button v-permission="['business:contract:download']" type="link" size="small" @click="handlePreview(record.id)">
+                <template #icon><EyeOutlined /></template>
+                预览
+              </a-button>
               <a-button v-permission="['business:contract:download']" type="primary" size="small" @click="handleDownload(record.id)">
                 <template #icon><DownloadOutlined /></template>
                 下载
@@ -75,18 +79,26 @@
         </template>
       </a-table>
     </a-card>
+
+    <!-- 文件预览弹窗 -->
+    <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { SearchOutlined, ReloadOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, ReloadOutlined, DownloadOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
-import { getGenerations, downloadContract, deleteContract } from '@/api/business/contract'
+import { getGenerations, downloadContract, deleteContract, getContractDownloadUrl } from '@/api/business/contract'
 import { useRouter } from 'vue-router'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
 
 const router = useRouter()
+
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
 
 // 搜索表单
 const searchForm = reactive({
@@ -149,6 +161,11 @@ const handleTableChange = (pag: TablePaginationConfig) => {
   pagination.current = pag.current || 1
   pagination.pageSize = pag.pageSize || 10
   loadGenerationList()
+}
+
+const handlePreview = (id: number) => {
+  previewUrl.value = getContractDownloadUrl(id)
+  previewVisible.value = true
 }
 
 const handleDownload = (id: number) => {

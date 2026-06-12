@@ -25,7 +25,8 @@ public class WebConfig implements WebMvcConfigurer {
         // 权限拦截器
         registry.addInterceptor(permissionInterceptor)
                 .addPathPatterns("/**")
-                .excludePathPatterns("/user/login", "/user/logout", "/captcha", "/error");
+                .excludePathPatterns("/user/login", "/user/logout", "/captcha", "/error",
+                        "/system/config/basic-info", "/system/config/ui-config");
 
         // 操作日志拦截器
         registry.addInterceptor(operationLogInterceptor)

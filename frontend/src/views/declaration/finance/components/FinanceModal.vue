@@ -32,7 +32,7 @@
               </a-form-item>
               <a-form-item label="附件">
                 <div v-if="formData.freightFileUrl">
-                  <a :href="formData.freightFileUrl" target="_blank">
+                  <a @click.prevent="previewFile(formData.freightFileUrl)" style="cursor:pointer">
                     <DownloadOutlined /> {{ formData.freightFileName || '查看附件' }}
                   </a>
                 </div>
@@ -52,7 +52,7 @@
               </a-form-item>
               <a-form-item label="附件">
                 <div v-if="formData.customsFileUrl">
-                  <a :href="formData.customsFileUrl" target="_blank">
+                  <a @click.prevent="previewFile(formData.customsFileUrl)" style="cursor:pointer">
                     <DownloadOutlined /> {{ formData.customsFileName || '查看附件' }}
                   </a>
                 </div>
@@ -66,7 +66,7 @@
             <a-card size="small" title="海关回执文件">
               <a-form-item label="附件">
                 <div v-if="formData.customsReceiptFileUrl" class="mb-2">
-                  <a :href="formData.customsReceiptFileUrl" target="_blank">
+                  <a @click.prevent="previewFile(formData.customsReceiptFileUrl)" style="cursor:pointer">
                     <DownloadOutlined /> {{ formData.customsReceiptFileName }}
                   </a>
                 </div>
@@ -211,6 +211,9 @@
 
     </a-spin>
   </a-modal>
+
+  <!-- 文件预览弹窗 -->
+  <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
 </template>
 
 <script setup lang="ts">
@@ -219,6 +222,12 @@ import { message } from 'ant-design-vue'
 import { DownloadOutlined } from '@ant-design/icons-vue'
 import { getFinancialSupplement, createFinancialSupplement, updateFinancialSupplement, exportFinanceCalculation, uploadFile, getDeclarationDetail, getCalculationDetail } from '@/api/business/declaration'
 import { getMaterialItems } from '@/api/business/materialItem'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
+
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
+const previewFile = (url: string) => { if (url) { previewUrl.value = url; previewVisible.value = true } }
 
 // 货代/报关代理发票的资料项 code
 const MATERIAL_CODE_FREIGHT = 'FREIGHT_INVOICE'

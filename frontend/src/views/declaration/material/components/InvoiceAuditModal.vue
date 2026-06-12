@@ -24,7 +24,7 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'fileName'">
-            <a v-if="record.fileUrl" :href="getFileUrl(record.fileUrl)" target="_blank">
+            <a v-if="record.fileUrl" @click.prevent="previewFile(getFileUrl(record.fileUrl))" style="cursor:pointer">
               {{ record.fileName || '查看附件' }}
             </a>
             <span v-else class="text-red-500">无附件</span>
@@ -60,6 +60,9 @@
       </div>
     </a-spin>
   </a-modal>
+
+  <!-- 文件预览弹窗 -->
+  <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
 </template>
 
 <script setup lang="ts">
@@ -67,6 +70,12 @@ import { ref, reactive, watch } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { getBusinessInvoices } from '@/api/business/declaration'
 import { auditInvoice } from '@/api/business/materialItem'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
+
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
+const previewFile = (url: string) => { if (url) { previewUrl.value = url; previewVisible.value = true } }
 
 const props = defineProps<{
   open: boolean

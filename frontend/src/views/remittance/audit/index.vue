@@ -9,6 +9,12 @@
           <a-form-item label="水单编号">
             <a-input v-model:value="searchForm.remittanceNo" placeholder="请输入水单编号" allow-clear style="width: 180px" />
           </a-form-item>
+          <a-form-item label="状态">
+            <a-select v-model:value="searchForm.status" placeholder="请选择" allow-clear style="width: 120px">
+              <a-select-option :value="1">待审核</a-select-option>
+              <a-select-option :value="2">已审核</a-select-option>
+            </a-select>
+          </a-form-item>
           <a-form-item class="button-item">
             <a-space>
               <a-button type="primary" @click="handleSearch">
@@ -38,15 +44,25 @@
             <span>{{ record.remittanceAmount?.toFixed(2) }} {{ record.currency || 'USD' }}</span>
           </template>
 
+          <template v-if="column.key === 'status'">
+            <a-tag :color="record.status === 1 ? 'processing' : 'success'">
+              {{ record.status === 1 ? '待审核' : '已审核' }}
+            </a-tag>
+          </template>
+
           <template v-if="column.key === 'action'">
             <a-space>
               <a-button type="link" size="small" @click="handleView(record as Remittance)">
                 <template #icon><EyeOutlined /></template>
                 查看
               </a-button>
-              <a-button type="primary" size="small" @click="handleAudit(record as Remittance)">
+              <a-button type="primary" size="small" @click="handleAudit(record as Remittance)" v-if="record.status === 1">
                 <template #icon><AuditOutlined /></template>
                 审核
+              </a-button>
+              <a-button type="link" size="small" @click="handleRevokeAudit(record as Remittance)" v-if="record.status === 2" style="color: #fa541c">
+                <template #icon><RollbackOutlined /></template>
+                反审核
               </a-button>
             </a-space>
           </template>
@@ -99,7 +115,7 @@
                     :src="currentRemittance.photoUrl"
                     style="width: 100px; height: 60px"
                   />
-                  <a-button v-else type="link" size="small" @click="openFile(currentRemittance.photoUrl)">
+                  <a-button v-else type="link" size="small" @click="previewFile(currentRemittance.photoUrl)">
                     <FilePdfOutlined /> 查看文件
                   </a-button>
                 </template>
@@ -146,19 +162,24 @@
             <a-col :span="12">
               <a-form-item label="银行手续费率">
                 <a-input-number
-                  :value="auditForm.bankFeeRate"
-                  disabled
+                  v-model:value="auditForm.bankFeeRate"
+                  :min="0"
+                  :max="100"
+                  :precision="4"
                   style="width: 100%"
                   addon-after="%"
+                  @change="recalcCreditedAmount"
                 />
               </a-form-item>
             </a-col>
             <a-col :span="12">
               <a-form-item label="银行手续费">
                 <a-input-number
-                  :value="auditForm.bankFee"
-                  disabled
+                  v-model:value="auditForm.bankFee"
+                  :min="0"
+                  :precision="2"
                   style="width: 100%"
+                  @change="recalcCreditedAmount"
                 />
               </a-form-item>
             </a-col>
@@ -211,7 +232,7 @@
         <a-descriptions-item label="水单文件" :span="3">
           <template v-if="currentRemittance.photoUrl">
             <a-image v-if="isImage(currentRemittance.photoUrl)" :src="currentRemittance.photoUrl" style="max-width: 300px" />
-            <a-button v-else type="link" @click="openFile(currentRemittance.photoUrl)">
+            <a-button v-else type="link" @click="previewFile(currentRemittance.photoUrl)">
               <FilePdfOutlined /> 查看文件
             </a-button>
           </template>
@@ -219,26 +240,33 @@
         </a-descriptions-item>
       </a-descriptions>
     </a-modal>
+
+    <!-- 文件预览弹窗 -->
+    <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
-import { SearchOutlined, ReloadOutlined, EyeOutlined, AuditOutlined, FilePdfOutlined } from '@ant-design/icons-vue'
-import { getRemittanceList, auditRemittance } from '@/api/business/remittance'
+import { message, Modal } from 'ant-design-vue'
+import { SearchOutlined, ReloadOutlined, EyeOutlined, AuditOutlined, FilePdfOutlined, RollbackOutlined } from '@ant-design/icons-vue'
+import { getRemittanceList, auditRemittance, getRelatedForms, revokeRemittanceAudit } from '@/api/business/remittance'
 import { getEnabledBankAccounts } from '@/api/business/declaration'
 import type { Remittance, RemittanceQueryParams } from '@/api/business/remittance'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
 
-// 文件类型判断
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
 const isImage = (url: string) => /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url || '')
-const openFile = (url: string) => { if (url) window.open(url, '_blank') }
+const previewFile = (url: string) => { if (url) { previewUrl.value = url; previewVisible.value = true } }
 
 // 数据定义
 const remittanceList = ref<Remittance[]>([])
 const loading = ref(false)
 const searchForm = reactive({
-  remittanceNo: undefined as string | undefined
+  remittanceNo: undefined as string | undefined,
+  status: 1 as number | undefined
 })
 
 const pagination = reactive({
@@ -301,9 +329,15 @@ const columns = [
     width: 180
   },
   {
+    title: '状态',
+    dataIndex: 'status',
+    key: 'status',
+    width: 100
+  },
+  {
     title: '操作',
     key: 'action',
-    width: 150,
+    width: 200,
     fixed: 'right' as const
   }
 ]
@@ -315,7 +349,6 @@ const loadRemittanceList = async () => {
     const params: RemittanceQueryParams = {
       current: pagination.current,
       size: pagination.pageSize,
-      status: 1, // 只查询待审核的
       ...searchForm
     }
     const response = await getRemittanceList(params)
@@ -335,10 +368,10 @@ const loadRemittanceList = async () => {
   }
 }
 
-// 加载银行列表
-const loadBankList = async () => {
+// 加载银行列表（按主体过滤）
+const loadBankList = async (entityId?: number) => {
   try {
-    const response = await getEnabledBankAccounts()
+    const response = await getEnabledBankAccounts(undefined, entityId)
     let data = response.data
     if (data?.code === 200) {
       bankList.value = data.data || []
@@ -357,6 +390,7 @@ const handleSearch = () => {
 // 重置
 const handleReset = () => {
   searchForm.remittanceNo = undefined
+  searchForm.status = 1
   handleSearch()
 }
 
@@ -374,7 +408,7 @@ const handleView = (record: Remittance) => {
 }
 
 // 审核水单
-const handleAudit = (record: Remittance) => {
+const handleAudit = async (record: Remittance) => {
   currentRemittance.value = record
   auditForm.taxRate = undefined
   auditForm.bankAccountId = undefined
@@ -383,6 +417,29 @@ const handleAudit = (record: Remittance) => {
   auditForm.creditedAmount = undefined
   auditForm.auditRemark = undefined
   auditVisible.value = true
+
+  // 根据水单关联的申报单获取主体ID，按主体过滤银行
+  if (record.id) {
+    try {
+      const res = await getRelatedForms(record.id)
+      const forms = res.data?.data || []
+      const entityId = forms.length > 0 ? forms[0].entityId : undefined
+      await loadBankList(entityId || undefined)
+    } catch {
+      await loadBankList()
+    }
+  } else {
+    await loadBankList()
+  }
+}
+
+// 重新计算入账金额
+const recalcCreditedAmount = () => {
+  if (currentRemittance.value) {
+    const amount = currentRemittance.value.remittanceAmount || 0
+    const fee = auditForm.bankFee || 0
+    auditForm.creditedAmount = parseFloat((amount - fee).toFixed(2))
+  }
 }
 
 // 银行选择变更
@@ -397,7 +454,7 @@ const handleBankChange = (value: any) => {
     auditForm.bankFee = parseFloat((amount * bank.serviceFeeRate).toFixed(2))
     
     // 计算入账金额
-    auditForm.creditedAmount = parseFloat((amount - auditForm.bankFee).toFixed(2))
+    recalcCreditedAmount()
   }
 }
 
@@ -423,6 +480,7 @@ const handleAuditSubmit = async () => {
       approved: true,
       bankAccountId: auditForm.bankAccountId,
       taxRate: auditForm.taxRate,
+      bankFee: auditForm.bankFee,
       auditRemark: auditForm.auditRemark
     })
     message.success('审核成功')
@@ -433,6 +491,26 @@ const handleAuditSubmit = async () => {
   } finally {
     submitLoading.value = false
   }
+}
+
+// 反审核水单
+const handleRevokeAudit = (record: Remittance) => {
+  Modal.confirm({
+    title: '确认反审核',
+    content: `确定要对水单 ${record.remittanceNo} 执行反审核吗？反审核后水单将恢复为草稿状态，需要重新编辑并提交审核。`,
+    okText: '确认反审核',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await revokeRemittanceAudit(record.id!)
+        message.success('反审核成功，水单已恢复为草稿状态')
+        loadRemittanceList()
+      } catch (error) {
+        message.error('反审核失败')
+      }
+    }
+  })
 }
 
 // 获取状态文本
@@ -449,7 +527,6 @@ const getStatusText = (status: number | undefined) => {
 // 初始化
 onMounted(() => {
   loadRemittanceList()
-  loadBankList()
 })
 </script>
 

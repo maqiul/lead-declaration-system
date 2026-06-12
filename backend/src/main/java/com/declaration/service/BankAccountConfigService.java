@@ -19,4 +19,12 @@ public interface BankAccountConfigService extends IService<BankAccountConfig> {
      * @return 银行账户列表
      */
     List<BankAccountConfig> getEnabledList(String currency);
+
+    /**
+     * 根据主体ID和币种获取启用状态的银行账户列表
+     * @param entityId 主体ID (可选)
+     * @param currency 币种 (可选)
+     * @return 银行账户列表
+     */
+    List<BankAccountConfig> getEnabledList(Long entityId, String currency);
 }

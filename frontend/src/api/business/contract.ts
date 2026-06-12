@@ -70,14 +70,17 @@ export function getContractsByDeclaration(declarationFormId: number) {
 }
 
 /**
+ * 获取合同下载URL
+ */
+export function getContractDownloadUrl(id: number): string {
+  return `/api/v1/contract/download/${id}`
+}
+
+/**
  * 下载合同文件
  */
 export function downloadContract(id: number) {
-  // 使用完整的API基础路径构造下载URL
-  const downloadUrl = `/api/v1/contract/download/${id}`;
-  
-  // 直接跳转下载
-  window.open(downloadUrl, '_blank');
+  window.open(getContractDownloadUrl(id), '_blank')
 }
 
 /**

@@ -221,11 +221,24 @@
             </a-form-item>
           </a-col>
         </a-row>
-        
+
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="发货人公司名">
-              <a-input v-model:value="formData.shipperCompany" placeholder="发货人公司名" :readonly="isFormReadonly" />
+              <a-select
+                v-model:value="formData.shipperCompany"
+                show-search
+                allow-clear
+                placeholder="请选择或输入发货人公司名"
+                :disabled="isFormReadonly"
+                :filter-option="filterCompanyOption"
+                @change="handleCompanyChange"
+              >
+                <a-select-option v-for="entity in entityList" :key="entity.id" :value="entity.entityName">
+                  {{ entity.entityName }}
+                  <span v-if="entity.entityNameCn" style="color: #999; font-size: 12px; margin-left: 8px">{{ entity.entityNameCn }}</span>
+                </a-select-option>
+              </a-select>
             </a-form-item>
           </a-col>
           <a-col :span="12">
@@ -1009,7 +1022,7 @@
                         <div class="att-row-main">
                           <div class="att-file-name">
                             <FileTextOutlined class="file-icon-sm" />
-                            <a :href="att.fileUrl" target="_blank" class="file-name-sm" :title="att.fileName">{{ displayAttFileName(att) }}</a>
+                            <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ displayAttFileName(att) }}</a>
                           </div>
                           <div class="att-divider-v"></div>
                           <template v-if="isMaterialEditable">
@@ -1051,7 +1064,7 @@
                         <div class="att-row-main">
                           <div class="att-file-name">
                             <FileTextOutlined class="file-icon-sm" />
-                            <a :href="att.fileUrl" target="_blank" class="file-name-sm" :title="att.fileName">{{ displayAttFileName(att) }}</a>
+                            <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ displayAttFileName(att) }}</a>
                           </div>
                           <a-popconfirm v-if="isMaterialEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
                             <DeleteOutlined class="file-delete-btn" />
@@ -1072,7 +1085,7 @@
                   <template v-else-if="record.status === 1 && record.fileUrl">
                     <div class="file-item-row">
                       <FileTextOutlined class="file-icon-sm" />
-                      <a :href="record.fileUrl" target="_blank" class="file-name-sm">{{ record.fileName || '查看附件' }}</a>
+                      <a @click.prevent="previewFile(record.fileUrl)" class="file-name-sm" style="cursor:pointer">{{ record.fileName || '查看附件' }}</a>
                     </div>
                   </template>
                   <!-- 未上传 -->
@@ -1212,7 +1225,7 @@
                       <div class="att-row-main">
                         <div class="att-file-name">
                           <FileTextOutlined class="file-icon-sm" />
-                          <a :href="att.fileUrl" target="_blank" class="file-name-sm" :title="att.fileName">{{ displayAttFileName(att) }}</a>
+                          <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ displayAttFileName(att) }}</a>
                         </div>
                         <a-popconfirm v-if="isSupplementEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
                           <DeleteOutlined class="file-delete-btn" />
@@ -1514,7 +1527,7 @@
                       <div class="att-row-main">
                         <div class="att-file-name">
                           <FileTextOutlined class="file-icon-sm" />
-                          <a :href="att.fileUrl" target="_blank" class="file-name-sm" :title="att.fileName">{{ displayAttFileName(att) }}</a>
+                          <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ displayAttFileName(att) }}</a>
                         </div>
                         <div class="att-divider-v"></div>
                         <template v-if="isInvoiceEditable">
@@ -1611,6 +1624,9 @@
   </a-form>
 </a-modal>
 
+    <!-- 文件预览弹窗 -->
+    <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
+
   </div>
 </template>
 
@@ -1701,6 +1717,13 @@ import { getEnabledCurrencies } from '@/api/system/currency'
 import { getActiveMeasurementUnits, type MeasurementUnit } from '@/api/system/measurement-unit'
 import { getCitiesByCountry } from '@/api/system/city-info'
 import {  findUnitByCode } from '@/utils/measurement-unit'
+import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityConfig'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
+
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
+const previewFile = (url: string) => { if (url) { previewUrl.value = url; previewVisible.value = true } }
 
 // 文件预览 URL 生成函数
 const FILE_DOWNLOAD_URL = '/api/v1/files/download'
@@ -1724,6 +1747,46 @@ const isReadonly = ref(route.query.readonly === 'true' || isAudit.value)
 const formId = ref(route.query.id ? Number(route.query.id) : null)
 const formStatus = ref<number | null>(route.query.status ? Number(route.query.status) : null)
 const submitting = ref(false)
+
+// 主体配置
+const entityList = ref<EntityConfig[]>([])
+const loadEntityList = async () => {
+  try {
+    const response = await getEnabledEntityConfigs()
+    if (response.data?.code === 200) {
+      entityList.value = response.data.data || []
+    }
+  } catch (error) {
+    // ignore
+  }
+}
+
+// 选择主体后自动填充发货人信息
+const handleCompanyChange = (companyName: any) => {
+  if (!companyName) {
+    formData.entityId = undefined
+    formData.shipperAddress = ''
+    return
+  }
+  const entity = entityList.value.find(e => e.entityName === companyName)
+  if (entity) {
+    formData.entityId = entity.id
+    formData.shipperAddress = entity.entityAddress || ''
+  } else {
+    formData.entityId = undefined
+  }
+}
+
+// 过滤公司选项（支持英文名和中文名搜索）
+const filterCompanyOption = (input: string, option: any) => {
+  const label = option.children?.()[0]?.children || ''
+  const lowerInput = input.toLowerCase()
+  // 通过 value (entityName) 匹配
+  if (option.value && String(option.value).toLowerCase().includes(lowerInput)) return true
+  // 通过 label 文本匹配
+  if (typeof label === 'string' && label.toLowerCase().includes(lowerInput)) return true
+  return false
+}
 const returnReason = ref('')
 const auditHistoryVisible = ref(false)
 const auditHistoryList = ref<any[]>([])
@@ -3082,6 +3145,7 @@ const handleQuantityOrPriceChange = (record: any) => {
 
 const formData = reactive({
   formNo: '',
+  entityId: undefined as number | undefined,
   shipperCompany: 'NINGBO ZIYI TECHNOLOGY CO.,LTD',
   shipperAddress: 'XIUFENG, GAOQIAO TOWN, HAISHU DISTRICT, NINGBO, ZHEJIANG, CHINA',
   consigneeCompany: '',
@@ -3756,7 +3820,7 @@ const addCarton = () => {
     quantity: 1,
     volume: 0,
     typeChinese: '纸箱', // 默认类型
-    typeEnglish: 'CARTRONS', // 默认类型
+    typeEnglish: 'CARTONS', // 默认类型
     selectedProducts: []
   })
   
@@ -4196,6 +4260,7 @@ const loadData = async () => {
         
         // 填充基本表单数据
         formData.formNo = detailData.formNo || ''
+        formData.entityId = detailData.entityId || undefined
         formData.shipperCompany = detailData.shipperCompany || 'NINGBO ZIYI TECHNOLOGY CO.,LTD'
         formData.shipperAddress = detailData.shipperAddress || 'XIUFENG, GAOQIAO TOWN, HAISHU DISTRICT, NINGBO, ZHEJIANG, CHINA'
         formData.consigneeCompany = detailData.consigneeCompany || ''
@@ -4313,8 +4378,8 @@ const loadData = async () => {
           }
         }
                 
-        // 如果是退回待审状态（status=9），加载最新的退回申请原因
-        if (formId.value && submittedStatus === 9) {
+        // 如果是退回待审状态（status=11），加载最新的退回申请原因
+        if (formId.value && submittedStatus === 11) {
           try {
             const historyRes = await getReturnAuditHistory(formId.value)
             if (historyRes.data && historyRes.data.code === 200) {
@@ -4456,6 +4521,7 @@ onMounted(() => {
   loadData()
   loadCountries()
   loadMeasurementUnits()
+  loadEntityList()
 })
 </script>
 

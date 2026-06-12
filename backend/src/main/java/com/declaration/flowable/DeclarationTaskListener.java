@@ -266,6 +266,14 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
             return true;
         }
 
+        // 退回上一步：下一阶段 → 上一审核节点（数值减小，但不是驳回）
+        // 4→3(supplementSubmit→materialAudit)
+        // 6→5(invoiceAmountSubmit→supplementAudit)
+        // 8→7(invoiceSubmit→invoiceAmountAudit)
+        if (newStatus == 3 && currentStatus == 4) return true;
+        if (newStatus == 5 && currentStatus == 6) return true;
+        if (newStatus == 7 && currentStatus == 8) return true;
+
         // 正常推进: 0→1→2→3→4→5→6
         if (newStatus > currentStatus) {
             return true;

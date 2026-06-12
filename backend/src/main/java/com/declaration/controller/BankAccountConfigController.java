@@ -38,7 +38,8 @@ public class BankAccountConfigController {
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
             @Parameter(description = "关键词") @RequestParam(required = false) String keyword,
             @Parameter(description = "币种") @RequestParam(required = false) String currency,
-            @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
+            @Parameter(description = "状态") @RequestParam(required = false) Integer status,
+            @Parameter(description = "主体ID") @RequestParam(required = false) Long entityId) {
         
         Page<BankAccountConfig> page = new Page<>(current, size);
         LambdaQueryWrapper<BankAccountConfig> wrapper = new LambdaQueryWrapper<>();
@@ -60,6 +61,10 @@ public class BankAccountConfigController {
         if (status != null) {
             wrapper.eq(BankAccountConfig::getStatus, status);
         }
+
+        if (entityId != null) {
+            wrapper.eq(BankAccountConfig::getEntityId, entityId);
+        }
         
         wrapper.orderByAsc(BankAccountConfig::getSort)
                .orderByDesc(BankAccountConfig::getCreateTime);
@@ -75,8 +80,14 @@ public class BankAccountConfigController {
     @Operation(summary = "获取所有启用的银行账户")
     @RequiresPermissions("system:bank-account:view")
     public Result<List<BankAccountConfig>> getEnabledBankAccounts(
-            @Parameter(description = "币种") @RequestParam(required = false) String currency) {
-        List<BankAccountConfig> accounts = bankAccountConfigService.getEnabledList(currency);
+            @Parameter(description = "币种") @RequestParam(required = false) String currency,
+            @Parameter(description = "主体ID") @RequestParam(required = false) Long entityId) {
+        List<BankAccountConfig> accounts;
+        if (entityId != null) {
+            accounts = bankAccountConfigService.getEnabledList(entityId, currency);
+        } else {
+            accounts = bankAccountConfigService.getEnabledList(currency);
+        }
         return Result.success(accounts);
     }
 

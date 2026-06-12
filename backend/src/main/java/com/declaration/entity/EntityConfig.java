@@ -2,18 +2,18 @@ package com.declaration.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
-import java.math.BigDecimal;
+
 import java.time.LocalDateTime;
 
 /**
- * 银行账户配置实体
+ * 主体配置实体
  *
  * @author Administrator
- * @since 2026-03-17
+ * @since 2026-04-28
  */
 @Data
-@TableName("bank_account_config")
-public class BankAccountConfig {
+@TableName("entity_config")
+public class EntityConfig {
 
     /**
      * 主键ID
@@ -22,62 +22,52 @@ public class BankAccountConfig {
     private Long id;
 
     /**
-     * 所属主体ID（关联 entity_config.id）
+     * 公司英文名（如 NINGBO ZIYI TECHNOLOGY CO.,LTD）
      */
-    private Long entityId;
+    private String entityName;
 
     /**
-     * 账户名称
+     * 英文地址
      */
-    private String accountName;
+    private String entityAddress;
 
     /**
-     * 银行名称
+     * 公司中文名
      */
-    private String bankName;
+    private String entityNameCn;
 
     /**
-     * 银行代码
+     * 中文地址
      */
-    private String bankCode;
+    private String entityAddressCn;
 
     /**
-     * 银行账号
+     * 发票模板文件名（空=用系统默认）
      */
-    private String accountNumber;
+    private String invoiceTemplate;
 
     /**
-     * SWIFT代码
+     * 装箱单模板文件名
      */
-    private String swiftCode;
+    private String packingListTemplate;
 
     /**
-     * IBAN号码
+     * 海关附件模板文件名
      */
-    private String iban;
+    private String fullDocumentsTemplate;
 
     /**
-     * 账户持有人
+     * 提货单模板文件名
      */
-    private String accountHolder;
+    private String pickupListTemplate;
 
     /**
-     * 账户币种
+     * 水单模板文件名
      */
-    private String currency;
+    private String remittanceTemplate;
 
     /**
-     * 支行名称
-     */
-    private String branchName;
-
-    /**
-     * 支行地址
-     */
-    private String branchAddress;
-
-    /**
-     * 是否默认账户 0-否 1-是
+     * 是否默认主体 0-否 1-是
      */
     private Integer isDefault;
 
@@ -90,16 +80,6 @@ public class BankAccountConfig {
      * 排序
      */
     private Integer sort;
-
-    /**
-     * 备注
-     */
-    private String remarks;
-
-    /**
-     * 手续费率（如 0.001 表示千分之一）
-     */
-    private BigDecimal serviceFeeRate;
 
     /**
      * 创建时间

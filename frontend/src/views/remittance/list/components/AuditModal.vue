@@ -22,7 +22,7 @@
           <a-descriptions-item label="水单文件">
             <template v-if="remittance.photoUrl">
               <a-image v-if="isImage(remittance.photoUrl)" :src="remittance.photoUrl" style="width: 100px; height: 60px" />
-              <a-button v-else type="link" size="small" @click="openFile(remittance.photoUrl)">
+              <a-button v-else type="link" size="small" @click="previewFile(remittance.photoUrl)">
                 <FilePdfOutlined /> 查看文件
               </a-button>
             </template>
@@ -69,19 +69,24 @@
             <a-col :span="12">
               <a-form-item label="银行手续费率">
                 <a-input-number
-                  :value="auditForm.bankFeeRate"
-                  disabled
+                  v-model:value="auditForm.bankFeeRate"
+                  :min="0"
+                  :max="100"
+                  :precision="4"
                   style="width: 100%"
                   addon-after="%"
+                  @change="recalcCreditedAmount"
                 />
               </a-form-item>
             </a-col>
             <a-col :span="12">
               <a-form-item label="银行手续费">
                 <a-input-number
-                  :value="auditForm.bankFee"
-                  disabled
+                  v-model:value="auditForm.bankFee"
+                  :min="0"
+                  :precision="2"
                   style="width: 100%"
+                  @change="recalcCreditedAmount"
                 />
               </a-form-item>
             </a-col>
@@ -110,19 +115,25 @@
       </a-card>
     </div>
   </a-modal>
+
+  <!-- 文件预览弹窗 -->
+  <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { FilePdfOutlined } from '@ant-design/icons-vue'
-import { auditRemittance } from '@/api/business/remittance'
+import { auditRemittance, getRelatedForms } from '@/api/business/remittance'
 import { getEnabledBankAccounts } from '@/api/business/declaration'
 import { getRemittanceDetail } from '@/api/business/remittance'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
 
-// 文件类型判断
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
 const isImage = (url: string) => /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url || '')
-const openFile = (url: string) => { if (url) window.open(url, '_blank') }
+const previewFile = (url: string) => { if (url) { previewUrl.value = url; previewVisible.value = true } }
 
 interface Props {
   visible: boolean
@@ -171,9 +182,21 @@ const init = async () => {
     }
   }
 
+  // 根据水单关联的申报单获取主体ID，按主体过滤银行
+  let entityId: number | undefined
+  if (props.remittanceId) {
+    try {
+      const res = await getRelatedForms(props.remittanceId)
+      const forms = res.data?.data || []
+      entityId = forms.length > 0 ? forms[0].entityId : undefined
+    } catch {
+      // ignore
+    }
+  }
+
   // 加载银行列表
   try {
-    const response = await getEnabledBankAccounts()
+    const response = await getEnabledBankAccounts(undefined, entityId || undefined)
     let data = response.data
     if (data?.code === 200) {
       bankList.value = data.data || []
@@ -196,6 +219,15 @@ watch(() => props.visible, (val) => {
   }
 })
 
+// 重新计算入账金额
+const recalcCreditedAmount = () => {
+  if (remittance.value) {
+    const amount = remittance.value.remittanceAmount || 0
+    const fee = auditForm.bankFee || 0
+    auditForm.creditedAmount = parseFloat((amount - fee).toFixed(2))
+  }
+}
+
 // 银行选择变更
 const handleBankChange = (value: any) => {
   const bank = bankList.value.find(b => b.id === value)
@@ -203,7 +235,7 @@ const handleBankChange = (value: any) => {
     auditForm.bankFeeRate = bank.serviceFeeRate * 100
     const amount = remittance.value.remittanceAmount || 0
     auditForm.bankFee = parseFloat((amount * bank.serviceFeeRate).toFixed(2))
-    auditForm.creditedAmount = parseFloat((amount - auditForm.bankFee).toFixed(2))
+    recalcCreditedAmount()
   }
 }
 
@@ -229,6 +261,7 @@ const handleAuditSubmit = async () => {
       approved: true,
       bankAccountId: auditForm.bankAccountId,
       taxRate: auditForm.taxRate,
+      bankFee: auditForm.bankFee,
       auditRemark: auditForm.auditRemark
     })
     message.success('审核成功')

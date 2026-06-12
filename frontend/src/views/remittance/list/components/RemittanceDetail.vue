@@ -33,7 +33,7 @@
         <a-descriptions-item label="水单文件" :span="2">
           <template v-if="remittance.photoUrl">
             <a-image v-if="isImage(remittance.photoUrl)" :src="remittance.photoUrl" style="max-width: 400px" />
-            <a-button v-else type="link" @click="openFile(remittance.photoUrl)">
+            <a-button v-else type="link" @click="previewFile(remittance.photoUrl)">
               <FilePdfOutlined /> 查看文件
             </a-button>
           </template>
@@ -42,16 +42,22 @@
       </a-descriptions>
     </a-spin>
   </a-modal>
+
+  <!-- 文件预览弹窗 -->
+  <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { FilePdfOutlined } from '@ant-design/icons-vue'
 import { getRemittanceDetail } from '@/api/business/remittance'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
 
-// 文件类型判断
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
 const isImage = (url: string) => /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url || '')
-const openFile = (url: string) => { if (url) window.open(url, '_blank') }
+const previewFile = (url: string) => { if (url) { previewUrl.value = url; previewVisible.value = true } }
 
 interface Props {
   visible: boolean

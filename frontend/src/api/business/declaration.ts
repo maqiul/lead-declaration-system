@@ -17,6 +17,7 @@ export interface DeclarationQueryParams {
 export interface DeclarationForm {
   id?: number
   formNo: string
+  entityId?: number
   shipperCompany: string
   shipperAddress: string
   consigneeCompany: string
@@ -230,6 +231,33 @@ export function resumeDeclarationFlow(id: number | string) {
   return request({
     url: `/v1/declarations/${id}/resume-flow`,
     method: 'post'
+  })
+}
+
+// 退回上一步（审核通过进入下一阶段后，申请退回到上一个审核节点重新审核）
+export function rollbackDeclaration(id: number | string, reason?: string) {
+  return request({
+    url: `/v1/declarations/${id}/rollback`,
+    method: 'post',
+    params: { reason }
+  })
+}
+
+// 审核退回上一步申请
+export function rollbackAuditDeclaration(id: number | string, approved: boolean, remark?: string) {
+  return request({
+    url: `/v1/declarations/${id}/rollback-audit`,
+    method: 'post',
+    params: { approved, remark }
+  })
+}
+
+// 批量查询待审核的退回上一步申请
+export function getBatchRollbackPending(ids: string) {
+  return request({
+    url: '/v1/declarations/batch-rollback-pending',
+    method: 'get',
+    params: { ids }
   })
 }
 
@@ -585,11 +613,14 @@ export function auditDeliveryOrder(id: number, data: { approved: boolean; remark
 }
 
 // 获取启用的银行账户列表（用于外汇银行选择）
-export function getEnabledBankAccounts(currency?: string) {
+export function getEnabledBankAccounts(currency?: string, entityId?: number) {
   return request({
     url: '/v1/bank-accounts/enabled',
     method: 'get',
-    params: currency ? { currency } : undefined
+    params: {
+      ...(currency ? { currency } : {}),
+      ...(entityId ? { entityId } : {})
+    }
   })
 }
 

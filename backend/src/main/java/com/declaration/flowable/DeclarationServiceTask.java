@@ -161,7 +161,7 @@ public class DeclarationServiceTask implements JavaDelegate {
         data.put("paymentPercent", "100");
         data.put("paymentDays", "3");
         
-        BankAccountConfig bankAccount = getDefaultBankAccount(currency);
+        BankAccountConfig bankAccount = getDefaultBankAccount(currency, form.getEntityId());
         data.put("bankAccountName", bankAccount != null ? nullSafe(bankAccount.getAccountHolder(), nullSafe(form.getShipperCompany())) : nullSafe(form.getShipperCompany()));
         data.put("bankAccount", bankAccount != null ? nullSafe(bankAccount.getAccountNumber()) : "");
         data.put("bankName", bankAccount != null ? nullSafe(bankAccount.getBankName()) : "");
@@ -194,11 +194,24 @@ public class DeclarationServiceTask implements JavaDelegate {
         return "";
     }
     
-    private BankAccountConfig getDefaultBankAccount(String currency) {
+    /**
+     * 获取默认银行账户信息
+     * @param currency 币种
+     * @param entityId 主体ID（可选）
+     */
+    private BankAccountConfig getDefaultBankAccount(String currency, Long entityId) {
         try {
             LambdaQueryWrapper<BankAccountConfig> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(BankAccountConfig::getStatus, 1)
-                   .eq(BankAccountConfig::getIsDefault, 1);
+            wrapper.eq(BankAccountConfig::getStatus, 1);
+            
+            // 优先查找指定主体的默认账户
+            if (entityId != null) {
+                wrapper.and(w -> w.eq(BankAccountConfig::getEntityId, entityId)
+                                  .or()
+                                  .isNull(BankAccountConfig::getEntityId));
+            }
+            
+            wrapper.eq(BankAccountConfig::getIsDefault, 1);
             
             if (currency != null && !currency.isEmpty()) {
                 wrapper.eq(BankAccountConfig::getCurrency, currency);
@@ -208,6 +221,11 @@ public class DeclarationServiceTask implements JavaDelegate {
             if (account == null) {
                 LambdaQueryWrapper<BankAccountConfig> fallbackWrapper = new LambdaQueryWrapper<>();
                 fallbackWrapper.eq(BankAccountConfig::getStatus, 1);
+                if (entityId != null) {
+                    fallbackWrapper.and(w -> w.eq(BankAccountConfig::getEntityId, entityId)
+                                              .or()
+                                              .isNull(BankAccountConfig::getEntityId));
+                }
                 if (currency != null && !currency.isEmpty()) {
                     fallbackWrapper.eq(BankAccountConfig::getCurrency, currency);
                 }

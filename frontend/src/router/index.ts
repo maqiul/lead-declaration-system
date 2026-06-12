@@ -22,7 +22,8 @@ const preloadComponents = [
   () => import('@/views/system/role/index.vue'),
   () => import('@/views/system/bank-account/index.vue'),
   () => import('@/views/system/country/index.vue'),
-  () => import('@/views/system/measurement-unit/index.vue')
+  () => import('@/views/system/measurement-unit/index.vue'),
+  () => import('@/views/system/entity-config/index.vue')
 ]
 
 export const asyncRoutes: RouteRecordRaw[] = [
@@ -140,6 +141,12 @@ export const asyncRoutes: RouteRecordRaw[] = [
         name: 'MaterialTemplate',
         component: () => import('@/views/system/material-template/index.vue'),
         meta: { title: '资料项模板', icon: 'FileTextOutlined', permission: 'system:material:template:view' }
+      },
+      {
+        path: 'entity-config',
+        name: 'EntityConfig',
+        component: () => import('@/views/system/entity-config/index.vue'),
+        meta: { title: '主体配置', icon: 'ShopOutlined', permission: 'system:entity-config:view' }
       }
     ]
   },

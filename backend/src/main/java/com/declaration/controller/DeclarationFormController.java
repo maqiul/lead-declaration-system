@@ -737,6 +737,85 @@ public class DeclarationFormController {
     }
 
     /**
+     * 申请退回上一步 - 创建审核记录，等待审核
+     * 支持状态：4→3、6→5、8→7
+     */
+    @PostMapping("/{id}/rollback")
+    @Operation(summary = "申请退回上一步")
+    @RequiresPermissions("business:declaration:rollback")
+    public Result<?> rollback(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @Parameter(description = "退回原因") @RequestParam(required = false) String reason) {
+        try {
+            declarationFormService.rollbackToPrevious(id, reason);
+            return Result.success("退回申请已提交，等待审核");
+        } catch (RuntimeException e) {
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /**
+     * 审核退回上一步申请
+     */
+    @PostMapping("/{id}/rollback-audit")
+    @Operation(summary = "审核退回上一步申请")
+    @RequiresPermissions("business:declaration:rollback:audit")
+    public Result<?> rollbackAudit(
+            @Parameter(description = "申报单ID") @PathVariable Long id,
+            @Parameter(description = "是否通过") @RequestParam boolean approved,
+            @Parameter(description = "审核备注") @RequestParam(required = false) String remark) {
+        try {
+            declarationFormService.auditRollbackToPrevious(id, approved, remark);
+            return Result.success(approved ? "已审核通过，流程已退回" : "已驳回退回申请");
+        } catch (RuntimeException e) {
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /**
+     * 批量查询待审核的退回上一步申请
+     * 返回 { "1": true, "2": false, ... } 标识哪些申报单有待审核的退回申请
+     */
+    @GetMapping("/batch-rollback-pending")
+    @Operation(summary = "批量查询待审核退回申请")
+    @RequiresPermissions("business:declaration:view")
+    public Result<Map<String, Boolean>> batchRollbackPending(
+            @Parameter(description = "申报单ID列表，逗号分隔") @RequestParam String ids) {
+        if (ids == null || ids.trim().isEmpty()) {
+            return Result.success(new HashMap<>());
+        }
+        try {
+            List<Long> idList = Arrays.stream(ids.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .map(Long::parseLong)
+                    .collect(Collectors.toList());
+
+            // 批量查询所有待审核的 DECLARATION_ROLLBACK 记录
+            List<BusinessAuditRecord> pendingRecords = auditRecordDao.selectList(
+                    new LambdaQueryWrapper<BusinessAuditRecord>()
+                            .in(BusinessAuditRecord::getBusinessId, idList)
+                            .eq(BusinessAuditRecord::getBusinessType, "DECLARATION_ROLLBACK")
+                            .eq(BusinessAuditRecord::getAuditStatus, 0));
+
+            // 构建 id -> true 映射
+            Set<String> pendingIds = pendingRecords.stream()
+                    .map(r -> String.valueOf(r.getBusinessId()))
+                    .collect(Collectors.toSet());
+
+            // 对每个请求的 id 返回是否有待审核
+            Map<String, Boolean> result = new HashMap<>();
+            for (Long id : idList) {
+                result.put(String.valueOf(id), pendingIds.contains(String.valueOf(id)));
+            }
+            return Result.success(result);
+        } catch (Exception e) {
+            log.error("批量查询待审核退回申请失败", e);
+            return Result.fail("查询失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 批量恢复老流程（建议先 dryRun=true 预览，再正式执行）。
      */
     @PostMapping("/migrate-flow/batch")
@@ -1748,7 +1827,7 @@ public class DeclarationFormController {
         try {
             java.math.BigDecimal taxRate = null;
             Long bankAccountId = null;
-            boolean result = remittanceService.auditRemittance(remittanceId, approved, bankAccountId, taxRate, remark);
+            boolean result = remittanceService.auditRemittance(remittanceId, approved, bankAccountId, taxRate, null, remark);
             if (result) {
                 return Result.success();
             }

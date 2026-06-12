@@ -36,7 +36,9 @@ public class SaTokenConfig implements WebMvcConfigurer {
                 "/user/login",
                 "/user/register",
                 "/login",
-                "/register"
+                "/register",
+                "/system/config/basic-info",
+                "/system/config/ui-config"
             );
         
         // 注册权限拦截器
@@ -53,7 +55,9 @@ public class SaTokenConfig implements WebMvcConfigurer {
                 "/user/login",
                 "/user/register",
                 "/login",
-                "/register"
+                "/register",
+                "/system/config/basic-info",
+                "/system/config/ui-config"
             );
     }
 }

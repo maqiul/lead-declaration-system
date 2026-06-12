@@ -265,6 +265,11 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
 
     /** status=3：区分「待审资料」与「资料已审过应进补充资料」 */
     private MigrationTarget resolveStatus3(Long formId) {
+        // 检查是否有已审核通过的「退回上一步」记录（从 status=4 退回到 status=3）
+        // 如果有，说明是故意退回到资料审核节点重新审核，不需要迁移
+        if (hasApprovedRollback(formId, 4)) {
+            return target("materialAudit", 3, false, "退回上一步重新审核");
+        }
         BusinessAuditRecord approved = latestMaterialAudit(formId, 1);
         if (approved != null) {
             return target("supplementSubmit", 4, true,
@@ -448,6 +453,17 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
 
     private boolean hasApprovedMaterialAudit(Long formId) {
         return latestMaterialAudit(formId, 1) != null;
+    }
+
+    /** 检查是否有已审核通过的「退回上一步」记录（从指定 preStatus 退回） */
+    private boolean hasApprovedRollback(Long formId, int preStatus) {
+        return auditRecordDao.selectCount(
+                new LambdaQueryWrapper<BusinessAuditRecord>()
+                        .eq(BusinessAuditRecord::getBusinessId, formId)
+                        .eq(BusinessAuditRecord::getBusinessType, "DECLARATION_ROLLBACK")
+                        .eq(BusinessAuditRecord::getAuditStatus, 1)
+                        .eq(BusinessAuditRecord::getPreStatus, preStatus)
+        ) > 0;
     }
 
     private boolean hasUploadedMaterialItems(Long formId) {

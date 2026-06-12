@@ -169,6 +169,9 @@
       </a-form>
     </a-modal>
     </a-card>
+
+    <!-- 文件预览弹窗 -->
+    <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
   </div>
 </template>
 
@@ -181,9 +184,14 @@ import {
   FileOutlined 
 } from '@ant-design/icons-vue'
 import { getTaxRefundDetail, auditTaxRefund, getTaxRefundAttachments, submitInvoice } from '@/api/tax-refund'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
 
 const router = useRouter()
 const route = useRoute()
+
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
 
 // 页面状态
 const loading = ref(false)
@@ -425,34 +433,20 @@ const downloadAttachment = (attachment: any) => {
 // 预览附件
 const previewAttachment = (attachment: any) => {
   try {
-    // 构造预览URL
-    let previewUrl = ''
+    let url = ''
     
     if (attachment.filePath) {
-      // 如果有filePath，直接使用（已包含完整路径）
       const baseUrl = window.location.origin
-      previewUrl = `${baseUrl}${attachment.filePath}`
+      url = `${baseUrl}${attachment.filePath}`
     } else if (attachment.fileUrl) {
-      // 如果有fileUrl，直接使用
-      previewUrl = attachment.fileUrl
+      url = attachment.fileUrl
     } else {
       message.error('附件信息不完整，无法预览')
       return
     }
     
-    // 对于图片类型，在新窗口打开
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
-    const fileExt = attachment.fileName ? attachment.fileName.toLowerCase().substring(attachment.fileName.lastIndexOf('.')) : ''
-    
-    if (imageExtensions.includes(fileExt)) {
-      // 图片在新窗口预览
-      window.open(previewUrl, '_blank')
-    } else {
-      // 其他文件类型也用新窗口打开（浏览器会决定是预览还是下载）
-      window.open(previewUrl, '_blank')
-    }
-    
-    message.success(`正在预览: ${attachment.fileName}`)
+    previewUrl.value = url
+    previewVisible.value = true
   } catch (error) {
     message.error('预览失败，请稍后重试')
   }

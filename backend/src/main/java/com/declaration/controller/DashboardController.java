@@ -102,9 +102,9 @@ public class DashboardController {
         // --- 待办任务分布 - 根据权限过滤 ---
         Map<String, Object> pieChart = new HashMap<>();
 
-        // 待审核 - 根据权限过滤（待初审 1 + 待资料审核 3 + 退回待审 9）
+        // 待审核 - 根据权限过滤（待初审 1 + 待资料审核 3 + 退回待审 11）
         LambdaQueryWrapper<DeclarationForm> pendingWrapper = new LambdaQueryWrapper<>();
-        pendingWrapper.in(DeclarationForm::getStatus, Arrays.asList(1, 3, 9));
+        pendingWrapper.in(DeclarationForm::getStatus, Arrays.asList(1, 3, 11));
         applyDeclarationDataPermission(pendingWrapper);
         long pendingAudit = declarationFormService.count(pendingWrapper);
         

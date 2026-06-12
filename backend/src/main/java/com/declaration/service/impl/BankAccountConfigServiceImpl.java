@@ -39,6 +39,28 @@ public class BankAccountConfigServiceImpl extends ServiceImpl<BankAccountConfigD
     }
 
     @Override
+    public List<BankAccountConfig> getEnabledList(Long entityId, String currency) {
+        LambdaQueryWrapper<BankAccountConfig> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(BankAccountConfig::getStatus, 1);
+
+        if (entityId != null) {
+            wrapper.and(w -> w.eq(BankAccountConfig::getEntityId, entityId)
+                              .or()
+                              .isNull(BankAccountConfig::getEntityId));
+        }
+
+        if (currency != null && !currency.isEmpty()) {
+            wrapper.eq(BankAccountConfig::getCurrency, currency);
+        }
+
+        wrapper.orderByDesc(BankAccountConfig::getIsDefault)
+               .orderByAsc(BankAccountConfig::getSort)
+               .orderByAsc(BankAccountConfig::getAccountName);
+
+        return this.list(wrapper);
+    }
+
+    @Override
     @CacheEvict(value = "sys:dict:bank-accounts", allEntries = true)
     public boolean save(BankAccountConfig entity) {
         return super.save(entity);

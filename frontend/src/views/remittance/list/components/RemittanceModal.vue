@@ -144,6 +144,9 @@
       </a-form-item>
     </a-form>
   </a-modal>
+
+  <!-- 文件预览弹窗 -->
+  <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
 </template>
 
 <script setup lang="ts">
@@ -153,6 +156,7 @@ import { UploadOutlined, FileOutlined } from '@ant-design/icons-vue'
 import { createRemittance, updateRemittance, submitRemittanceAudit, relateToForm, unrelateFromForm, getRelatedForms } from '@/api/business/remittance'
 import { uploadFile, getDeclarationList } from '@/api/business/declaration'
 import type { Remittance } from '@/api/business/remittance'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
 
@@ -418,9 +422,12 @@ const getFileExtension = (url: any) => {
 }
 
 // 预览文件
+const previewVisible = ref(false)
+const previewUrl = ref('')
 const previewFile = () => {
   if (formData.photoUrl) {
-    window.open(formData.photoUrl, '_blank')
+    previewUrl.value = formData.photoUrl
+    previewVisible.value = true
   }
 }
 

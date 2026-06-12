@@ -92,7 +92,7 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean auditRemittance(Long remittanceId, boolean approved, Long bankAccountId, BigDecimal taxRate, String auditRemark) {
+    public boolean auditRemittance(Long remittanceId, boolean approved, Long bankAccountId, BigDecimal taxRate, BigDecimal manualBankFee, String auditRemark) {
         DeclarationRemittance remittance = getById(remittanceId);
         if (remittance == null) {
             throw new RuntimeException("水单不存在");
@@ -125,7 +125,8 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
                 throw new RuntimeException("银行账户不存在");
             }
 
-            BigDecimal bankFee = calculateBankFee(bankAccountId, remittance.getRemittanceAmount());
+            // 优先使用手动输入的手续费，否则自动计算
+            BigDecimal bankFee = (manualBankFee != null) ? manualBankFee : calculateBankFee(bankAccountId, remittance.getRemittanceAmount());
             BigDecimal creditedAmount = remittance.getRemittanceAmount().subtract(bankFee)
                     .setScale(4, RoundingMode.HALF_UP);
 
@@ -154,6 +155,39 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
         taskService.complete(task.getId(), variables);
         
         log.info("水单审核{}, 水单ID: {}, 任务ID: {}, 备注: {}", approved ? "通过" : "驳回", remittanceId, task.getId(), auditRemark);
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean revokeAudit(Long remittanceId) {
+        DeclarationRemittance remittance = getById(remittanceId);
+        if (remittance == null) {
+            throw new RuntimeException("水单不存在");
+        }
+        if (remittance.getStatus() != 2) {
+            throw new RuntimeException("只有已审核状态的水单可以反审核");
+        }
+
+        // 重置状态为草稿
+        remittance.setStatus(0);
+        // 清除审核相关数据
+        remittance.setTaxRate(null);
+        remittance.setBankAccountId(null);
+        remittance.setBankAccountName(null);
+        remittance.setBankFeeRate(null);
+        remittance.setBankFee(null);
+        remittance.setCreditedAmount(null);
+        remittance.setAuditBy(null);
+        remittance.setAuditByName(null);
+        remittance.setAuditTime(null);
+        remittance.setAuditRemark(null);
+        remittance.setSubmitTime(null);
+        remittance.setProcessInstanceId(null);
+        remittance.setUpdateBy(StpUtil.getLoginIdAsLong());
+
+        boolean result = updateById(remittance);
+        log.info("水单反审核成功, 水单ID: {}", remittanceId);
         return result;
     }
 
@@ -243,6 +277,7 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
                 map.put("formDate", form.getDeclarationDate());
                 map.put("totalAmount", form.getTotalAmount());
                 map.put("currency", form.getCurrency());
+                map.put("entityId", form.getEntityId());
                 // 使用shipperCompany替代不存在的customerName
                 map.put("customerName", form.getShipperCompany());
             }

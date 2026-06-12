@@ -137,6 +137,17 @@
               <a-button
                 type="link"
                 size="small"
+                @click="handleRevokeAudit(record as Remittance)"
+                v-if="record.status === 2"
+                v-permission="['business:remittance:audit']"
+                style="color: #fa541c"
+              >
+                <template #icon><RollbackOutlined /></template>
+                反审核
+              </a-button>
+              <a-button
+                type="link"
+                size="small"
                 @click="handleDelete(record as Remittance)"
                 v-if="record.status === 0"
                 danger
@@ -193,8 +204,8 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import { SearchOutlined, PlusOutlined, ReloadOutlined, EyeOutlined, EditOutlined, SendOutlined, AuditOutlined, ThunderboltOutlined, DeleteOutlined, LinkOutlined } from '@ant-design/icons-vue'
-import { getRemittanceList, deleteRemittance, submitRemittanceAudit } from '@/api/business/remittance'
+import { SearchOutlined, PlusOutlined, ReloadOutlined, EyeOutlined, EditOutlined, SendOutlined, AuditOutlined, ThunderboltOutlined, DeleteOutlined, LinkOutlined, RollbackOutlined } from '@ant-design/icons-vue'
+import { getRemittanceList, deleteRemittance, submitRemittanceAudit, revokeRemittanceAudit } from '@/api/business/remittance'
 import type { Remittance, RemittanceQueryParams } from '@/api/business/remittance'
 import RemittanceModal from './components/RemittanceModal.vue'
 import RemittanceDetail from './components/RemittanceDetail.vue'
@@ -405,6 +416,26 @@ const handleDirectAudit = async (record: Remittance) => {
 const handleAudit = (record: Remittance) => {
   currentRemittanceId.value = record.id || 0
   auditVisible.value = true
+}
+
+// 反审核水单
+const handleRevokeAudit = (record: Remittance) => {
+  Modal.confirm({
+    title: '确认反审核',
+    content: `确定要对水单 ${record.remittanceNo} 执行反审核吗？反审核后水单将恢复为草稿状态，需要重新编辑并提交审核。`,
+    okText: '确认反审核',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await revokeRemittanceAudit(record.id!)
+        message.success('反审核成功，水单已恢复为草稿状态')
+        loadRemittanceList()
+      } catch (error) {
+        message.error('反审核失败')
+      }
+    }
+  })
 }
 
 // 删除水单

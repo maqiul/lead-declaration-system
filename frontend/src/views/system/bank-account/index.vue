@@ -21,6 +21,13 @@
             <a-select-option :value="0">禁用</a-select-option>
           </a-select>
         </a-form-item>
+        <a-form-item label="所属主体">
+          <a-select v-model:value="searchForm.entityId" placeholder="请选择主体" allowClear style="width: 200px" class="ui-select">
+            <a-select-option v-for="entity in entityList" :key="entity.id" :value="entity.id">
+              {{ entity.entityName }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
         <a-form-item>
           <a-space>
             <a-button type="primary" @click="handleSearch" class="ui-btn-primary">
@@ -143,6 +150,14 @@
         :label-col="{ span: 6 }"
         :wrapper-col="{ span: 16 }"
       >
+        <a-form-item label="所属主体" name="entityId">
+          <a-select v-model:value="formData.entityId" placeholder="请选择所属主体（可选）" allowClear>
+            <a-select-option v-for="entity in entityList" :key="entity.id" :value="entity.id">
+              {{ entity.entityName }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+
         <a-form-item label="账户名称" name="accountName">
           <a-input
             v-model:value="formData.accountName"
@@ -275,10 +290,12 @@ import { message } from 'ant-design-vue'
 import { PlusOutlined, ReloadOutlined, SearchOutlined, EditOutlined, StarOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
 import request from '@/utils/request'
+import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityConfig'
 
 // API接口定义
 interface BankAccountConfig {
   id?: number
+  entityId?: number | null
   accountName: string
   bankName: string
   bankCode: string
@@ -348,8 +365,31 @@ const setDefaultBankAccount = (id: number) => {
 const searchForm = reactive({
   keyword: '',
   currency: undefined as string | undefined,
-  status: undefined as number | undefined
+  status: undefined as number | undefined,
+  entityId: undefined as number | undefined
 })
+
+// 主体列表
+const entityList = ref<EntityConfig[]>([])
+
+// 加载主体列表
+const loadEntityList = async () => {
+  try {
+    const response = await getEnabledEntityConfigs()
+    if (response.data?.code === 200) {
+      entityList.value = response.data.data || []
+    }
+  } catch (error) {
+    // ignore
+  }
+}
+
+// 根据entityId获取主体名称
+const getEntityName = (entityId: number | null | undefined) => {
+  if (!entityId) return '-'
+  const entity = entityList.value.find(e => e.id === entityId)
+  return entity?.entityName || '-'
+}
 
 // 表格数据
 const bankAccountList = ref<BankAccountConfig[]>([])
@@ -378,6 +418,13 @@ const columns = [
     dataIndex: 'accountName',
     key: 'accountName',
     width: 150
+  },
+  {
+    title: '所属主体',
+    key: 'entityName',
+    width: 200,
+    ellipsis: true,
+    customRender: ({ record }: any) => getEntityName(record.entityId)
   },
   {
     title: '银行名称',
@@ -453,6 +500,7 @@ const formRef = ref()
 
 // 表单数据
 const formData = reactive({
+  entityId: undefined as number | undefined,
   accountName: '',
   bankName: '',
   bankCode: '',
@@ -504,7 +552,8 @@ const loadBankAccountList = async () => {
       size: pagination.pageSize,
       keyword: searchForm.keyword,
       currency: searchForm.currency,
-      status: searchForm.status
+      status: searchForm.status,
+      entityId: searchForm.entityId
     })
     
     if (response.data?.code === 200) {
@@ -531,6 +580,7 @@ const handleReset = () => {
   searchForm.keyword = ''
   searchForm.currency = undefined
   searchForm.status = undefined
+  searchForm.entityId = undefined
   pagination.current = 1
   loadBankAccountList()
 }
@@ -552,6 +602,7 @@ const openAddModal = () => {
 // 打开编辑弹窗
 const openEditModal = (record: BankAccountConfig) => {
   editingId.value = record.id || null
+  formData.entityId = record.entityId || undefined
   formData.accountName = record.accountName
   formData.bankName = record.bankName
   formData.bankCode = record.bankCode
@@ -578,6 +629,7 @@ const closeModal = () => {
 
 // 重置表单
 const resetForm = () => {
+  formData.entityId = undefined
   formData.accountName = ''
   formData.bankName = ''
   formData.bankCode = ''
@@ -604,6 +656,7 @@ const handleSave = async () => {
     saving.value = true
     
     const data = {
+      entityId: formData.entityId || null,
       accountName: formData.accountName,
       bankName: formData.bankName,
       bankCode: formData.bankCode,
@@ -689,6 +742,7 @@ const setDefault = async (record: BankAccountConfig) => {
 }
 
 onMounted(() => {
+  loadEntityList()
   loadBankAccountList()
 })
 </script>

@@ -83,6 +83,10 @@
                   上传文件
                 </a-button>
               </a-upload>
+              <a-button v-permission="['business:contract:download']" v-if="record.filePath" type="link" size="small" @click="handlePreview(record)">
+                <template #icon><EyeOutlined /></template>
+                预览
+              </a-button>
               <a-button v-permission="['business:contract:download']" v-if="record.filePath" type="link" size="small" @click="handleDownload(record)">
                 <template #icon><DownloadOutlined /></template>
                 下载
@@ -148,16 +152,24 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 文件预览弹窗 -->
+    <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, ReloadOutlined, SearchOutlined, EditOutlined, UploadOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined, SearchOutlined, EditOutlined, UploadOutlined, DownloadOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
 import { getTemplates, uploadTemplate } from '@/api/business/contract'
 import request from '@/utils/request'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
+
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
 
 // 搜索表单
 const searchForm = reactive({
@@ -337,14 +349,19 @@ const handleUpload = async (options: any, templateId: number) => {
   }
 }
 
+// 预览文件
+const handlePreview = (record: any) => {
+  if (record.filePath) {
+    previewUrl.value = `/api/v1/files/download?path=${record.filePath}`
+    previewVisible.value = true
+  }
+}
+
 const handleDownload = (record: any) => {
-  // 使用统一的下载方式
   if (record.id) {
-    // 如果是合同生成记录，使用合同下载接口
-    window.open(`${(import.meta as any).env.VITE_APP_BASE_API}/v1/contract/download/${record.id}`, '_blank')
+    window.open(`/api/v1/contract/download/${record.id}`, '_blank')
   } else if (record.filePath) {
-    // 如果是模板文件，使用文件下载接口
-    window.open(`${(import.meta as any).env.VITE_APP_BASE_API}/v1/files/download?path=${record.filePath}`, '_blank')
+    window.open(`/api/v1/files/download?path=${record.filePath}`, '_blank')
   }
 }
 

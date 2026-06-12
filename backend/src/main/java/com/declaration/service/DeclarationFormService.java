@@ -129,6 +129,24 @@ public interface DeclarationFormService extends IService<DeclarationForm> {
      * @return 审核记录列表（包含用户名）
      */
     List<AuditHistoryDTO> getReturnAuditHistory(Long id);
+
+    /**
+     * 退回上一步 - 审核通过进入下一阶段后，退回到上一个审核节点
+     * 支持状态：4→3、6→5、8→7
+     * @param id 申报单ID
+     * @param reason 退回原因
+     * @return 是否成功
+     */
+    boolean rollbackToPrevious(Long id, String reason);
+
+    /**
+     * 审核退回上一步申请
+     * @param id 申报单ID
+     * @param approved 是否通过
+     * @param remark 审核备注
+     * @return 是否成功
+     */
+    boolean auditRollbackToPrevious(Long id, boolean approved, String remark);
     
     /**
      * 保存审核历史记录

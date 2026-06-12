@@ -78,6 +78,9 @@
             <a-tag :color="getStatusColor(record.status)">
               {{ getStatusText(record.status) }}
             </a-tag>
+            <a-tag v-if="record.pendingRollback" color="orange" style="margin-top: 2px;">
+              退回待审
+            </a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
@@ -165,6 +168,14 @@
                 </a-button>
               </template>
 
+              <!-- 退回待审: 退回审核（与「更多」内入口一致，便于发现） -->
+              <template v-if="record.status === 11">
+                <a-button type="link" size="small" style="color: #fa8c16;" @click="handleReturnAudit(record as any)" v-permission="['business:declaration:return:audit']">
+                  <template #icon><AuditOutlined /></template>
+                  退回审核
+                </a-button>
+              </template>
+
               <!-- 旧版流程：列表直接迁移（不进详情各模块） -->
               <a-button
                 v-if="canShowFlowMigration(record as any)"
@@ -195,10 +206,19 @@
                     >
                       <ReloadOutlined /> 恢复流程
                     </a-menu-item>
-                    
-                    <!-- 调试：显示activeTasks状态 -->
-                    <a-menu-item v-if="false" disabled key="debug">
-                      状态:{{ record.status }} | 任务:{{ JSON.stringify(record.activeTasks) }} | 权限:{{ checkPermission(['business:declaration:resume:flow']) }}
+                    <a-menu-item
+                      v-if="[4,6,8].includes(record.status) && !record.pendingRollback && checkPermission(['business:declaration:rollback'])"
+                      key="rollback"
+                      @click="handleRollback(record as any)"
+                    >
+                      <UndoOutlined /> 退回上一步
+                    </a-menu-item>
+                    <a-menu-item
+                      v-if="[4,6,8].includes(record.status) && record.pendingRollback && checkPermission(['business:declaration:rollback:audit'])"
+                      key="rollbackAudit"
+                      @click="handleRollbackAudit(record as any)"
+                    >
+                      <AuditOutlined /> 退回审核
                     </a-menu-item>
                     <a-menu-item
                       v-if="!record.hasContract && checkPermission(['business:declaration:contract'])"
@@ -308,6 +328,9 @@
               </a-list-item-meta>
               <template #actions>
                 <a-space>
+                  <a-button type="link" size="small" @click="handlePreviewContract(item.id)" v-permission="['business:contract:download']">
+                    <template #icon><EyeOutlined /></template>预览
+                  </a-button>
                   <a-button type="link" size="small" @click="downloadContract(item.id)" v-permission="['business:contract:download']">
                     <template #icon><DownloadOutlined /></template>下载
                   </a-button>
@@ -394,6 +417,21 @@
       </a-form>
     </a-modal>
 
+    <!-- 退回上一步审核弹窗 -->
+    <a-modal v-model:open="rollbackAuditVisible" title="审核退回上一步申请" @ok="submitRollbackAudit" :confirmLoading="rollbackAuditLoading">
+      <a-form layout="vertical">
+        <a-form-item label="审核结果" required>
+          <a-radio-group v-model:value="rollbackAuditForm.approved">
+            <a-radio :value="true">通过 (退回到上一审核节点)</a-radio>
+            <a-radio :value="false">驳回 (保持当前状态)</a-radio>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item label="审核备注" required>
+          <a-textarea v-model:value="rollbackAuditForm.remark" placeholder="请输入审核备注" :rows="4" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
     <!-- 审核历史弹窗 -->
     <a-modal v-model:open="returnHistoryVisible" title="审核历史详情" width="1200px" :footer="null">
       <a-table :dataSource="returnHistoryList" :columns="returnHistoryColumns" :loading="returnHistoryLoading" rowKey="id" size="small" :scroll="{ x: 1100 }">
@@ -412,6 +450,9 @@
         </template>
       </a-table>
     </a-modal>
+
+    <!-- 文件预览弹窗 -->
+    <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
   </div>
 </template>
 
@@ -419,18 +460,19 @@
 import { ref, reactive, onMounted, onUnmounted, watch, h } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRouter, useRoute } from 'vue-router'
-import { DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, SearchOutlined, CloseOutlined, AuditOutlined } from '@ant-design/icons-vue'
+import { DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, SearchOutlined, CloseOutlined, AuditOutlined, UndoOutlined, EyeOutlined } from '@ant-design/icons-vue'
 import { checkPermission } from '@/directives/permission'
 import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList, deleteDeclaration as deleteDeclarationApi, getDeclarationDetail,
   submitDeclaration, getDeclarationAttachments, regenerateDocuments, regenerateAllDocuments,
-  regenerateRemittanceReport, getBatchActiveTasks, getActiveTasks, resumeDeclarationFlow,
+  regenerateRemittanceReport, getBatchActiveTasks, getActiveTasks, resumeDeclarationFlow, rollbackDeclaration, rollbackAuditDeclaration, getBatchRollbackPending,
   applyReturnToDraft, auditReturnToDraft, getReturnAuditHistory
 } from '@/api/business/declaration'
-import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile } from '@/api/business/contract'
+import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile, getContractDownloadUrl } from '@/api/business/contract'
 import MaterialAuditModal from '../material/components/MaterialAuditModal.vue'
 import InvoiceAuditModal from '../material/components/InvoiceAuditModal.vue'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
 
 // Props
 const props = withDefaults(defineProps<{
@@ -461,7 +503,7 @@ interface DeclarationRecord {
   declarationDate?: string; totalAmount?: number; totalCartons?: number; status: number
   createTime?: string; financeUploadPending?: boolean; attachments?: any[]
   hasContract?: boolean; regenerateButtons?: any[]; activeTasks?: string[]
-  needsFlowMigration?: boolean
+  needsFlowMigration?: boolean; pendingRollback?: boolean
 }
 
 const dataSource = ref<DeclarationRecord[]>([])
@@ -508,10 +550,17 @@ const returnAuditForm = reactive({ id: 0, approved: true, remark: '已核对数�
 const returnHistoryVisible = ref(false)
 const returnHistoryLoading = ref(false)
 const returnHistoryList = ref<any[]>([])
+const rollbackAuditVisible = ref(false)
+const rollbackAuditLoading = ref(false)
+const rollbackAuditForm = reactive({ id: 0, approved: true, remark: '已核对数据，通过' })
 const generateModalVisible = ref(false)
 const generateLoading = ref(false)
 const templateOptions = ref<any[]>([])
 const generateForm = reactive({ declarationFormId: undefined as number | undefined, templateId: undefined as number | undefined })
+
+watch(() => rollbackAuditForm.approved, (newVal) => {
+  rollbackAuditForm.remark = newVal ? '已核对数据，通过' : '不同意退回'
+})
 
 watch(() => returnAuditForm.approved, (newVal) => {
   returnAuditForm.remark = newVal ? '已核对数据，通过' : '数据填写错误'
@@ -575,18 +624,25 @@ const loadData = async () => {
           }
         } catch (e: any) { console.error('获取批量任务失败:', e) }
       }
+      // 查询状态 4/6/8 的申报单是否有待审核的退回上一步申请
+      const rollbackCheckIds = dataSource.value.filter((r: any) => [4, 6, 8].includes(r.status)).map((r: any) => r.id)
+      if (rollbackCheckIds.length > 0) {
+        try {
+          const rbRes = await getBatchRollbackPending(rollbackCheckIds.join(','))
+          if (rbRes.data?.code === 200 && rbRes.data.data) {
+            const pendingMap = rbRes.data.data
+            dataSource.value.forEach((r: any) => {
+              r.pendingRollback = pendingMap[String(r.id)] === true
+            })
+          }
+        } catch (e: any) { console.error('查询待审核退回申请失败:', e) }
+      }
     } else { dataSource.value = []; pagination.total = 0 }
   } catch (error: any) {
     console.error('加载数据失败:', error)
     message.error('加载数据失败: ' + (error.message || '未知错误'))
     dataSource.value = []; pagination.total = 0
   } finally { loading.value = false }
-  
-  // 调试：打印activeTasks信息
-  console.log('=== 列表页数据加载完成 ===')
-  dataSource.value.forEach((r: any) => {
-    console.log(`申报单 ${r.formNo}: 状态=${r.status}, activeTasks=${JSON.stringify(r.activeTasks)}, 长度=${r.activeTasks?.length}`)
-  })
 }
 
 let refreshTimer: number | null = null
@@ -691,6 +747,57 @@ const handleResumeFlow = async (record: DeclarationRecord) => {
     }
   })
 }
+
+const statusTextMap: Record<number, string> = {
+  4: '资料审核', 6: '补充资料审核', 8: '开票金额审核'
+}
+const handleRollback = (record: DeclarationRecord) => {
+  const targetText = statusTextMap[record.status] || '上一审核节点'
+  Modal.confirm({
+    title: '确认申请退回上一步？',
+    content: `申报单 ${record.formNo || record.id} 将申请退回到「${targetText}」节点，需审核通过后才会退回。`,
+    okText: '提交申请',
+    onOk: async () => {
+      try {
+        const res: any = await rollbackDeclaration(record.id)
+        if (res.data?.code === 200) {
+          message.success('退回申请已提交，等待审核')
+          loadData()
+        } else {
+          message.error(res.data?.message || '申请失败')
+        }
+      } catch (e: any) {
+        message.error('申请失败: ' + (e.response?.data?.message || e.message))
+      }
+    }
+  })
+}
+
+const handleRollbackAudit = (record: DeclarationRecord) => {
+  rollbackAuditForm.id = record.id
+  rollbackAuditForm.approved = true
+  rollbackAuditForm.remark = '已核对数据，通过'
+  rollbackAuditVisible.value = true
+}
+const submitRollbackAudit = async () => {
+  if (!rollbackAuditForm.remark?.trim()) { message.warning('请输入审核意见'); return }
+  rollbackAuditLoading.value = true
+  try {
+    const res: any = await rollbackAuditDeclaration(rollbackAuditForm.id, rollbackAuditForm.approved, rollbackAuditForm.remark.trim())
+    if (res.data?.code === 200) {
+      message.success(rollbackAuditForm.approved ? '已审核通过，流程已退回' : '已驳回退回申请')
+      rollbackAuditVisible.value = false
+      loadData()
+    } else {
+      message.error(res.data?.message || '操作失败')
+    }
+  } catch (e: any) {
+    message.error('操作失败: ' + (e.response?.data?.message || e.message))
+  } finally {
+    rollbackAuditLoading.value = false
+  }
+}
+
 const handleDownload = async (record: DeclarationRecord) => {
   try { loading.value = true; currentDeclaration.value = record; const r = await getDeclarationDetail(record.id, record.status)
     if (r.data?.code === 200) { currentAttachments.value = r.data.data.attachments || []
@@ -745,7 +852,10 @@ const doRegenerate = async (decl: any, merge: boolean) => {
 const loadAttachmentsForDeclaration = async (decl: any) => {
   try { const r = await getDeclarationAttachments(decl.id); if (r.data?.code === 200) { decl.attachments = r.data.data || []; if (currentDeclaration.value?.id === decl.id) currentAttachments.value = decl.attachments } } catch {}
 }
-const downloadAttachment = (att: any) => { if (att.fileUrl) window.open(att.fileUrl, '_blank') }
+const previewVisible = ref(false)
+const previewUrl = ref('')
+const handlePreviewContract = (id: number) => { previewUrl.value = getContractDownloadUrl(id); previewVisible.value = true }
+const downloadAttachment = (att: any) => { if (att.fileUrl) { previewUrl.value = att.fileUrl; previewVisible.value = true } }
 const showReplaceContractModal = (c: any) => { currentReplacingContract.value = c; replaceContractFileList.value = []; replaceContractModalVisible.value = true }
 const beforeReplaceContractUpload = (file: any) => { if (file.size / 1048576 > 10) { message.error('不超过10MB!'); return false }; if (!file.name.toLowerCase().endsWith('.docx')) { message.error('只支持.docx!'); return false }; replaceContractFileList.value = [file]; return false }
 const handleReplaceContract = async () => {
@@ -775,8 +885,8 @@ const returnHistoryColumns = [
   { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 },
   { title: '原状态', key: 'preStatus', width: 70 }
 ]
-const getBusinessTypeText = (t: string) => ({ DECLARATION_RETURN: '退回草稿', DECLARATION_AUDIT: '申报审核', DECLARATION_SUBMIT: '申报提交', DECLARATION_MATERIAL_AUDIT: '资料审核', DECLARATION_SUPPLEMENT_AUDIT: '补充资料审核', DECLARATION_INVOICE_AMOUNT_AUDIT: '开票金额审核', DECLARATION_INVOICE_AUDIT: '业务发票审核', REMITTANCE_AUDIT: '水单审核', DELIVERY_ORDER_AUDIT: '提货单审核' }[t] || t)
-const getBusinessTypeColor = (t: string) => ({ DECLARATION_RETURN: 'orange', DECLARATION_AUDIT: 'blue', DECLARATION_SUBMIT: 'cyan', DECLARATION_MATERIAL_AUDIT: 'purple', DECLARATION_INVOICE_AUDIT: 'magenta' }[t] || 'default')
+const getBusinessTypeText = (t: string) => ({ DECLARATION_RETURN: '退回草稿', DECLARATION_ROLLBACK: '退回上一步', DECLARATION_AUDIT: '申报审核', DECLARATION_SUBMIT: '申报提交', DECLARATION_MATERIAL_AUDIT: '资料审核', DECLARATION_SUPPLEMENT_AUDIT: '补充资料审核', DECLARATION_INVOICE_AMOUNT_AUDIT: '开票金额审核', DECLARATION_INVOICE_AUDIT: '业务发票审核', REMITTANCE_AUDIT: '水单审核', DELIVERY_ORDER_AUDIT: '提货单审核' }[t] || t)
+const getBusinessTypeColor = (t: string) => ({ DECLARATION_RETURN: 'orange', DECLARATION_ROLLBACK: 'volcano', DECLARATION_AUDIT: 'blue', DECLARATION_SUBMIT: 'cyan', DECLARATION_MATERIAL_AUDIT: 'purple', DECLARATION_INVOICE_AUDIT: 'magenta' }[t] || 'default')
 const handleReturnApply = (r: DeclarationRecord) => { returnApplyForm.id = r.id; returnApplyForm.reason = '申报错误'; returnApplyVisible.value = true }
 const handleReturnAudit = (r: DeclarationRecord) => { returnAuditForm.id = r.id; returnAuditForm.approved = true; returnAuditForm.remark = '已核对数据，通过'; returnAuditVisible.value = true }
 const submitReturnApply = async () => {

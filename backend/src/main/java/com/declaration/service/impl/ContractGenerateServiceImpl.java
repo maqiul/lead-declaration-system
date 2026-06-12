@@ -162,8 +162,8 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             templateData.put("paymentPercent", "100"); // 默认100%付款
             templateData.put("deliveryDays", "15"); // 默认15天交货期
             
-            // 银行账户信息
-            BankAccountConfig bankAccount = getDefaultBankAccount(currency);
+            // 银行账户信息（根据主体ID获取）
+            BankAccountConfig bankAccount = getDefaultBankAccount(currency, declarationForm.getEntityId());
             templateData.put("sellerName", bankAccount != null ? 
                 (bankAccount.getAccountHolder() != null ? bankAccount.getAccountHolder() : 
                  (declarationForm.getShipperCompany() != null ? declarationForm.getShipperCompany() : "")) : 
@@ -366,18 +366,42 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
     
     /**
      * 获取默认银行账户信息
+     * @param currency 币种
+     * @param entityId 主体ID（可选）
      */
-    private BankAccountConfig getDefaultBankAccount(String currency) {
+    private BankAccountConfig getDefaultBankAccount(String currency, Long entityId) {
         try {
             LambdaQueryWrapper<BankAccountConfig> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(BankAccountConfig::getStatus, 1)
-                   .eq(BankAccountConfig::getIsDefault, 1);
+            wrapper.eq(BankAccountConfig::getStatus, 1);
+            
+            // 优先查找指定主体的默认账户
+            if (entityId != null) {
+                wrapper.and(w -> w.eq(BankAccountConfig::getEntityId, entityId)
+                                  .or()
+                                  .isNull(BankAccountConfig::getEntityId));
+            }
+            
+            wrapper.eq(BankAccountConfig::getIsDefault, 1);
             
             if (currency != null && !currency.isEmpty()) {
                 wrapper.eq(BankAccountConfig::getCurrency, currency.toUpperCase());
             }
             
-            return bankAccountConfigService.getOne(wrapper);
+            BankAccountConfig account = bankAccountConfigService.getOne(wrapper);
+            if (account == null && entityId != null) {
+                // 回退到任意启用的账户
+                LambdaQueryWrapper<BankAccountConfig> fallbackWrapper = new LambdaQueryWrapper<>();
+                fallbackWrapper.eq(BankAccountConfig::getStatus, 1);
+                fallbackWrapper.and(w -> w.eq(BankAccountConfig::getEntityId, entityId)
+                                          .or()
+                                          .isNull(BankAccountConfig::getEntityId));
+                if (currency != null && !currency.isEmpty()) {
+                    fallbackWrapper.eq(BankAccountConfig::getCurrency, currency.toUpperCase());
+                }
+                fallbackWrapper.orderByAsc(BankAccountConfig::getSort).last("LIMIT 1");
+                account = bankAccountConfigService.getOne(fallbackWrapper);
+            }
+            return account;
         } catch (Exception e) {
             log.warn("获取默认银行账户失败: {}", e.getMessage());
             return null;

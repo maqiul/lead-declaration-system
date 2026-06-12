@@ -181,6 +181,14 @@
                 </a-button>
               </template>
 
+              <!-- 退回待审: 退回审核 -->
+              <template v-if="record.status === 11">
+                <a-button type="link" size="small" style="color: #fa8c16;" @click="handleReturnAudit(record as any)" v-permission="['business:declaration:return:audit']">
+                  <template #icon><AuditOutlined /></template>
+                  退回审核
+                </a-button>
+              </template>
+
               <a-button
                 v-if="canShowFlowMigration(record as any)"
                 type="link"
@@ -390,6 +398,10 @@
               </a-list-item-meta>
               <template #actions>
                 <a-space>
+                  <a-button type="link" size="small" @click="handlePreviewContract(item.id)" v-permission="['business:contract:download']">
+                    <template #icon><EyeOutlined /></template>
+                    预览
+                  </a-button>
                   <a-button type="link" size="small" @click="downloadContract(item.id)" v-permission="['business:contract:download']">
                     <template #icon><DownloadOutlined /></template>
                     下载
@@ -678,6 +690,9 @@
         </template>
       </a-table>
     </a-modal>
+
+    <!-- 文件预览弹窗 -->
+    <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
   </div>
 </template>
 
@@ -705,7 +720,7 @@ import {
   auditReturnToDraft,
   getReturnAuditHistory
 } from '@/api/business/declaration'
-import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile } from '@/api/business/contract'
+import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile, getContractDownloadUrl } from '@/api/business/contract'
 import { createRemittance, relateToForm, submitRemittanceAudit } from '@/api/business/remittance'
 import { uploadFile } from '@/api/business/declaration'
 import { h } from 'vue'
@@ -717,9 +732,16 @@ import FinanceModal from '../finance/components/FinanceModal.vue'
 import RemittanceRelationModal from './components/RemittanceRelationModal.vue'
 import MaterialAuditModal from '../material/components/MaterialAuditModal.vue'
 import InvoiceAuditModal from '../material/components/InvoiceAuditModal.vue'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
 
 const router = useRouter()
 const route = useRoute()
+
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
+const handlePreviewContract = (id: number) => { previewUrl.value = getContractDownloadUrl(id); previewVisible.value = true }
+
 const searchForm = reactive({
   formNo: '',
   status: '',
@@ -1304,7 +1326,8 @@ const getRemittanceFileExtension = () => {
 // 预览水单文件
 const previewRemittanceFile = () => {
   if (remittanceFormData.photoUrl) {
-    window.open(remittanceFormData.photoUrl, '_blank')
+    previewUrl.value = remittanceFormData.photoUrl
+    previewVisible.value = true
   }
 }
 
@@ -1761,7 +1784,8 @@ const loadAttachmentsForDeclaration = async (declaration: any) => {
 
 const downloadAttachment = (attachment: any) => {
   if (attachment.fileUrl) {
-    window.open(attachment.fileUrl, '_blank')
+    previewUrl.value = attachment.fileUrl
+    previewVisible.value = true
   }
 }
 

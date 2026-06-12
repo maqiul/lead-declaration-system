@@ -27,7 +27,12 @@ public interface DeclarationRemittanceService extends IService<DeclarationRemitt
     /**
      * 审核水单(完成Flowable任务)
      */
-    boolean auditRemittance(Long remittanceId, boolean approved, Long bankAccountId, BigDecimal taxRate, String auditRemark);
+    boolean auditRemittance(Long remittanceId, boolean approved, Long bankAccountId, BigDecimal taxRate, BigDecimal bankFee, String auditRemark);
+
+    /**
+     * 反审核水单（将已审核水单退回草稿，清除审核数据）
+     */
+    boolean revokeAudit(Long remittanceId);
 
     /**
      * 关联申报单

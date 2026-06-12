@@ -709,10 +709,11 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             throw new RuntimeException("申报单不存在");
         }
         
-        // 校验状态：仅限初审之后 (status >= 2) 且非已完成 (status != 8) 且非草稿 (status != 0)
-        // 注意：status 1 为待初审，用户说初审阶段直接驳回即可，不走此流程
-        if (form.getStatus() < 2 || form.getStatus() == 8) {
-            throw new RuntimeException("当前申报单状态不支持申请退回草稿 (当前状态: " + form.getStatus() + ")");
+        // 校验状态：仅限初审之后 (status >= 2)，且非已完成(10)、非已是退回待审(11)
+        // 注意：status 1 为待初审，初审阶段请走流程驳回，不走退回申请
+        Integer st = form.getStatus();
+        if (st == null || st < 2 || st == 10 || st == 11) {
+            throw new RuntimeException("当前申报单状态不支持申请退回草稿 (当前状态: " + st + ")");
         }
         
         // 1. 创建审核历史记录
@@ -729,8 +730,8 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
         
         auditRecordDao.insert(record);
         
-        // 2. 更新单据状态为 9-退回待审
-        form.setStatus(9);
+        // 2. 更新单据状态为 11-退回待审（新版：9=待发票审核，勿再用 9）
+        form.setStatus(11);
         boolean result = this.updateById(form);
         
         // 3. 记录操作日志
@@ -747,7 +748,7 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     @Transactional(rollbackFor = Exception.class)
     public boolean auditReturnToDraft(Long id, boolean approved, String remark) {
         DeclarationForm form = this.getById(id);
-        if (form == null || form.getStatus() != 9) {
+        if (form == null || form.getStatus() != 11) {
             throw new RuntimeException("申报单不存在或非退回待审状态");
         }
         
@@ -895,6 +896,157 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             
             return dto;
         }).collect(Collectors.toList());
+    }
+
+    /**
+     * 申请退回上一步 - 创建审核记录，状态不变，等待审核
+     * 支持状态：4→3、6→5、8→7
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean rollbackToPrevious(Long id, String reason) {
+        DeclarationForm form = this.getById(id);
+        if (form == null) {
+            throw new RuntimeException("申报单不存在");
+        }
+        Integer currentStatus = form.getStatus();
+
+        // 只允许 4、6、8 申请退回上一审核节点
+        switch (currentStatus) {
+            case 4: case 6: case 8: break;
+            default:
+                throw new RuntimeException("当前状态不支持退回上一步 (当前状态: " + currentStatus + ")");
+        }
+
+        // 检查是否已有待审核的退回申请，防止重复提交
+        long pendingCount = auditRecordDao.selectCount(new LambdaQueryWrapper<BusinessAuditRecord>()
+                .eq(BusinessAuditRecord::getBusinessId, id)
+                .eq(BusinessAuditRecord::getBusinessType, "DECLARATION_ROLLBACK")
+                .eq(BusinessAuditRecord::getAuditStatus, 0));
+        if (pendingCount > 0) {
+            throw new RuntimeException("已存在待审核的退回申请，请勿重复提交");
+        }
+
+        // 创建审核记录
+        BusinessAuditRecord record = new BusinessAuditRecord();
+        record.setBusinessId(id);
+        record.setBusinessType("DECLARATION_ROLLBACK");
+        if (StpUtil.isLogin()) {
+            record.setApplicantId(StpUtil.getLoginIdAsLong());
+        }
+        record.setApplyReason(reason != null && !reason.isEmpty() ? reason : "退回上一步");
+        record.setApplyTime(LocalDateTime.now());
+        record.setAuditStatus(0); // 0-待审核
+        record.setPreStatus(currentStatus);
+        auditRecordDao.insert(record);
+
+        recordAuditLog("申请退回上一步", "APPLY", "rollbackToPrevious",
+                "申报单ID: " + id + ", 当前状态: " + currentStatus + ", 原因: " + record.getApplyReason());
+
+        return true;
+    }
+
+    /**
+     * 审核退回上一步申请
+     * @param id 申报单ID
+     * @param approved 是否通过
+     * @param remark 审核备注
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean auditRollbackToPrevious(Long id, boolean approved, String remark) {
+        DeclarationForm form = this.getById(id);
+        if (form == null) {
+            throw new RuntimeException("申报单不存在");
+        }
+
+        // 获取最新的待审核记录
+        BusinessAuditRecord record = auditRecordDao.selectOne(new LambdaQueryWrapper<BusinessAuditRecord>()
+                .eq(BusinessAuditRecord::getBusinessId, id)
+                .eq(BusinessAuditRecord::getBusinessType, "DECLARATION_ROLLBACK")
+                .eq(BusinessAuditRecord::getAuditStatus, 0)
+                .orderByDesc(BusinessAuditRecord::getApplyTime)
+                .last("limit 1"));
+
+        if (record == null) {
+            throw new RuntimeException("未找到对应的退回申请记录");
+        }
+
+        // 更新审核记录
+        if (StpUtil.isLogin()) {
+            record.setAuditorId(StpUtil.getLoginIdAsLong());
+        }
+        record.setAuditStatus(approved ? 1 : 2);
+        record.setAuditRemark(remark != null && !remark.isEmpty() ? remark : (approved ? "通过" : "不同意退回"));
+        record.setAuditTime(LocalDateTime.now());
+        auditRecordDao.updateById(record);
+
+        if (approved) {
+            Integer currentStatus = record.getPreStatus();
+            if (currentStatus == null) {
+                throw new RuntimeException("退回记录缺少原始状态信息");
+            }
+            // 校验表单当前状态是否与申请时一致（防止并发操作导致状态不一致）
+            if (!currentStatus.equals(form.getStatus())) {
+                throw new RuntimeException("申报单状态已变更（当前: " + form.getStatus()
+                        + "，申请时: " + currentStatus + "），请刷新后重新审核");
+            }
+
+            // 计算回退目标
+            String currentActivity, targetActivity;
+            int targetStatus;
+            switch (currentStatus) {
+                case 4:
+                    currentActivity = "supplementSubmit";
+                    targetActivity = "materialAudit";
+                    targetStatus = 3;
+                    break;
+                case 6:
+                    currentActivity = "invoiceAmountSubmit";
+                    targetActivity = "supplementAudit";
+                    targetStatus = 5;
+                    break;
+                case 8:
+                    currentActivity = "invoiceSubmit";
+                    targetActivity = "invoiceAmountAudit";
+                    targetStatus = 7;
+                    break;
+                default:
+                    throw new RuntimeException("状态异常，无法退回 (当前状态: " + currentStatus + ")");
+            }
+
+            // 查询 Flowable 流程实例
+            List<ProcessInstance> instances = runtimeService.createProcessInstanceQuery()
+                    .processInstanceBusinessKey(String.valueOf(id))
+                    .list();
+            if (instances.isEmpty()) {
+                throw new RuntimeException("未找到活跃流程");
+            }
+            ProcessInstance pi = instances.get(0);
+
+            // moveActivityIdTo：移动 token 到上一个审核节点
+            runtimeService.createChangeActivityStateBuilder()
+                    .processInstanceId(pi.getId())
+                    .moveActivityIdTo(currentActivity, targetActivity)
+                    .changeState();
+            log.info("申报单 {} 流程已退回: {} -> {}", id, currentActivity, targetActivity);
+
+            // 清理流程变量
+            runtimeService.removeVariable(pi.getId(), "approved");
+
+            // 更新数据库状态
+            form.setStatus(targetStatus);
+            this.updateById(form);
+
+            recordAuditLog("退回上一步审核", "AUDIT", "审核通过",
+                    "申报单ID: " + id + ", 状态: " + currentStatus + " → " + targetStatus + ", 备注: " + record.getAuditRemark());
+        } else {
+            // 驳回：状态不变
+            recordAuditLog("退回上一步审核", "AUDIT", "审核驳回",
+                    "申报单ID: " + id + ", 备注: " + record.getAuditRemark());
+        }
+
+        return true;
     }
 
     /**

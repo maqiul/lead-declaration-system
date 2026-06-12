@@ -130,10 +130,10 @@ public class FileController {
             MediaType mediaType = getMediaTypeForFile(filename);
             System.out.println("MIME类型: " + mediaType);
             
-            // 如果是图片类型且不强制下载，使用inline模式让浏览器直接预览
+            // 如果是图片或PDF且不强制下载，使用inline模式让浏览器直接预览
             String contentDisposition;
             String encodedFilename = URLEncoder.encode(filename, StandardCharsets.UTF_8.toString()).replace("+", "%20");
-            if (!download && isImageType(mediaType)) {
+            if (!download && isPreviewableType(mediaType)) {
                 contentDisposition = "inline; filename=\"" + encodedFilename + "\"; filename*=UTF-8''" + encodedFilename;
             } else {
                 contentDisposition = "attachment; filename=\"" + encodedFilename + "\"; filename*=UTF-8''" + encodedFilename;
@@ -230,9 +230,11 @@ public class FileController {
     }
     
     /**
-     * 判断是否为图片类型
+     * 判断是否为可在线预览的类型（图片、PDF）
      */
-    private boolean isImageType(MediaType mediaType) {
-        return mediaType.getType().equals("image");
+    private boolean isPreviewableType(MediaType mediaType) {
+        if (mediaType.getType().equals("image")) return true;
+        if (mediaType.equals(MediaType.APPLICATION_PDF)) return true;
+        return false;
     }
 }

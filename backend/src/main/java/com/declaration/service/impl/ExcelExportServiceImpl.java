@@ -38,6 +38,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Function;
 
 import cn.hutool.core.util.IdUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -79,9 +80,13 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     @Autowired
     private MeasurementUnitService measurementUnitService;
 
+    @Autowired
+    private EntityConfigService entityConfigService;
+
     @Override
     public DeclarationAttachment generateAndSaveExportDocuments(DeclarationForm form) throws IOException {
-        String templatePath = getTemplatePath();
+        log.info("[生成单据] formNo={}, entityId={}, shipperCompany={}", form.getFormNo(), form.getEntityId(), form.getShipperCompany());
+        String templatePath = resolveTemplatePathByEntity(TEMPLATE_INVOICE, form.getEntityId(), EntityConfig::getInvoiceTemplate);
         if (templatePath == null) {
             throw new RuntimeException("模板文件不存在");
         }
@@ -221,6 +226,47 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     @Override
     public String getInvoiceTemplatePath() {
         return resolveTemplatePath(TEMPLATE_INVOICE);
+    }
+
+    /**
+     * 根据主体ID解析模板路径
+     * 如果主体有配置模板，使用主体模板；否则回退到系统默认
+     *
+     * @param defaultTemplateFileName 默认模板文件名（回退用）
+     * @param entityId 主体ID（可为 null）
+     * @param entityTemplateGetter 从主体配置中读取模板文件名的函数
+     * @return 模板文件绝对路径
+     */
+    private String resolveTemplatePathByEntity(String defaultTemplateFileName, Long entityId,
+                                                Function<EntityConfig, String> entityTemplateGetter) {
+        log.info("[模板解析] 默认模板={}, entityId={}", defaultTemplateFileName, entityId);
+        if (entityId != null) {
+            try {
+                EntityConfig entity = entityConfigService.getById(entityId);
+                if (entity != null) {
+                    String entityTemplate = entityTemplateGetter.apply(entity);
+                    log.info("[模板解析] 主体: {}, 配置的模板文件名={}", entity.getEntityName(), entityTemplate);
+                    if (entityTemplate != null && !entityTemplate.isEmpty()) {
+                        String path = resolveTemplatePath(entityTemplate);
+                        if (path != null) {
+                            log.info("[模板解析] ✅ 使用主体[{}]的模板: {}, 路径: {}", entity.getEntityName(), entityTemplate, path);
+                            return path;
+                        } else {
+                            log.warn("[模板解析] ⚠ 主体模板文件不存在: {}, 回退到默认模板", entityTemplate);
+                        }
+                    } else {
+                        log.info("[模板解析] 主体未配置该模板，使用默认: {}", defaultTemplateFileName);
+                    }
+                } else {
+                    log.warn("[模板解析] ⚠ 主体不存在: entityId={}", entityId);
+                }
+            } catch (Exception e) {
+                log.warn("[模板解析] 获取主体模板失败，回退到系统默认: {}", e.getMessage());
+            }
+        } else {
+            log.info("[模板解析] entityId为空，使用默认模板: {}", defaultTemplateFileName);
+        }
+        return resolveTemplatePath(defaultTemplateFileName);
     }
 
     private Map<String, Object> prepareFillData(DeclarationForm form) {
@@ -642,7 +688,8 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             return null;
         }
         
-        String templatePath = getRemittanceTemplatePath();
+        log.info("[生成水单] formNo={}, entityId={}, remittanceNo={}", form.getFormNo(), form.getEntityId(), remittance.getRemittanceNo());
+        String templatePath = resolveTemplatePathByEntity(TEMPLATE_REMITTANCE, form.getEntityId(), EntityConfig::getRemittanceTemplate);
         if (templatePath == null) {
             log.warn("水单模板文件不存在,跳过报告生成");
             return null;
@@ -749,7 +796,8 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
     @Override
     public DeclarationAttachment generateAndSaveAllTempleExportDocuments(DeclarationForm form, boolean mergeProducts) throws IOException {
-        String templatePath = getAllTempleTemplatePath();
+        log.info("[生成全套单据] formNo={}, entityId={}, shipperCompany={}", form.getFormNo(), form.getEntityId(), form.getShipperCompany());
+        String templatePath = resolveTemplatePathByEntity(TEMPLATE_ALLTEMPLE, form.getEntityId(), EntityConfig::getFullDocumentsTemplate);
         if (templatePath == null) {
             throw new RuntimeException("模板文件不存在: alltemple_template.xlsx");
         }

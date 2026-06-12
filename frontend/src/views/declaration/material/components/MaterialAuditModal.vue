@@ -58,14 +58,14 @@
           <template v-else-if="column.key === 'file'">
             <template v-if="record.attachments && record.attachments.length > 0">
               <div v-for="att in record.attachments" :key="att.id" class="flex items-center gap-1 py-0.5">
-                <a :href="att.fileUrl" target="_blank" class="text-blue-600">{{ att.fileName || '查看附件' }}</a>
+                <a @click.prevent="previewFile(att.fileUrl)" class="text-blue-600" style="cursor:pointer">{{ att.fileName || '查看附件' }}</a>
               </div>
               <div v-if="record.attachments.length > 1" class="text-xs text-gray-400">
                 共 {{ record.attachments.length }} 份文件
               </div>
             </template>
             <template v-else-if="record.status === 1 && record.fileUrl">
-              <a :href="record.fileUrl" target="_blank">{{ record.fileName || '查看附件' }}</a>
+              <a @click.prevent="previewFile(record.fileUrl)" style="cursor:pointer">{{ record.fileName || '查看附件' }}</a>
             </template>
             <template v-else>
               <span class="text-red-500">未上传</span>
@@ -96,6 +96,9 @@
       </div>
     </a-spin>
   </a-modal>
+
+  <!-- 文件预览弹窗 -->
+  <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
 </template>
 
 <script setup lang="ts">
@@ -106,6 +109,12 @@ import {
   auditMaterial,
   type MaterialItem
 } from '@/api/business/materialItem'
+import FilePreviewModal from '@/components/FilePreviewModal.vue'
+
+// 文件预览
+const previewVisible = ref(false)
+const previewUrl = ref('')
+const previewFile = (url: string) => { if (url) { previewUrl.value = url; previewVisible.value = true } }
 
 interface SchemaField {
   key: string

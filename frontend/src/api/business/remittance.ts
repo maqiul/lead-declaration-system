@@ -126,6 +126,7 @@ export function auditRemittance(id: number, data: {
   approved: boolean
   bankAccountId?: number
   taxRate?: number
+  bankFee?: number
   auditRemark?: string
 }) {
   return request({
@@ -174,6 +175,16 @@ export function getRemittancesByFormId(formId: number) {
   return request({
     url: `/v1/remittances/form/${formId}`,
     method: 'get'
+  })
+}
+
+/**
+ * 反审核水单（将已审核水单退回草稿）
+ */
+export function revokeRemittanceAudit(id: number) {
+  return request({
+    url: `/v1/remittances/${id}/revoke-audit`,
+    method: 'post'
   })
 }
 
