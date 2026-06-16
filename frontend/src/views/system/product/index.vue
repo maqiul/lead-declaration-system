@@ -45,6 +45,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="pagination"
+        :scroll="{ x: 1310 }"
         @change="handleTableChange"
         rowKey="id"
         class="ui-table"
@@ -135,6 +136,23 @@
           <a-col :span="12">
             <a-form-item label="英文名称" name="englishName">
               <a-input v-model:value="formData.englishName" placeholder="请输入英文名称" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-row :gutter="24">
+          <a-col :span="12">
+            <a-form-item label="退税率(%)" name="taxRefundRate">
+              <a-input-number
+                v-model:value="formData.taxRefundRate"
+                :min="0"
+                :max="100"
+                :precision="2"
+                :step="1"
+                placeholder="如 13 表示 13%"
+                style="width: 100%"
+                addon-after="%"
+              />
             </a-form-item>
           </a-col>
         </a-row>
@@ -327,10 +345,17 @@ const columns: any[] = [
     width: 150
   },
   {
-     title: '英文名称',
+    title: '英文名称',
     dataIndex: 'englishName',
     key: 'englishName',
     width: 250
+  },
+  {
+    title: '退税率',
+    dataIndex: 'taxRefundRate',
+    key: 'taxRefundRate',
+    width: 100,
+    customRender: ({ record }: any) => record.taxRefundRate != null ? `${record.taxRefundRate}%` : '-'
   },
   {
     title: '计量单位',
@@ -405,6 +430,7 @@ const formData = reactive({
   unitType: '',
   unitName: '',
   unitNameEn: '',
+  taxRefundRate: undefined as number | undefined,
   elements: [] as any[]
 })
 
@@ -490,6 +516,7 @@ const openEditModal = (record: any) => {
     unitType: record.unitType || '',
     unitName: record.unitName || '',
     unitNameEn: record.unitNameEn || '',
+    taxRefundRate: record.taxRefundRate ?? undefined,
     elements: record.elements ? record.elements.map((el: any) => ({
       ...el,
       optionsStr: el.options ? el.options.join(',') : '',
@@ -520,6 +547,7 @@ const resetFormData = () => {
     unitType: '',
     unitName: '',
     unitNameEn: '',
+    taxRefundRate: undefined,
     elements: []
   })
   selectedUnitInfo.value = ''

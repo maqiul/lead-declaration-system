@@ -51,6 +51,7 @@
         :columns="columns"
         :pagination="pagination"
         :loading="loading"
+        :scroll="{ x: 1150 }"
         :row-selection="rowSelection"
         row-key="id"
         @change="handleTableChange"
@@ -63,12 +64,12 @@
             </a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as User)" v-permission="['user:update']" class="font-medium text-blue-600">
+            <a-space :size="2">
+              <a-button type="link" size="small" @click="handleEdit(record as User)" v-permission="['user:update']" class="font-medium text-blue-600" style="padding: 0 4px">
                 <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
-              <a-button type="link" size="small" @click="handleResetPwd(record as User)" v-permission="['user:resetPwd']" class="font-medium text-blue-600">
+              <a-button type="link" size="small" @click="handleResetPwd(record as User)" v-permission="['user:resetPwd']" class="font-medium text-blue-600" style="padding: 0 4px">
                 <template #icon><KeyOutlined /></template>
                 重置密码
               </a-button>
@@ -76,7 +77,7 @@
                 title="确定要删除这个用户吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['user:delete']" class="font-medium">
+                <a-button type="link" size="small" danger v-permission="['user:delete']" class="font-medium" style="padding: 0 4px">
                   <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
@@ -211,38 +212,44 @@ const columns = [
   {
     title: '用户名',
     dataIndex: 'username',
-    key: 'username'
+    key: 'username',
+    width: 120
   },
   {
     title: '昵称',
     dataIndex: 'nickname',
-    key: 'nickname'
+    key: 'nickname',
+    width: 120
   },
   {
     title: '手机号',
     dataIndex: 'phone',
-    key: 'phone'
+    key: 'phone',
+    width: 150
   },
   {
     title: '邮箱',
     dataIndex: 'email',
-    key: 'email'
+    key: 'email',
+    width: 200
   },
   {
     title: '状态',
     dataIndex: 'status',
-    key: 'status'
+    key: 'status',
+    width: 100
   },
   {
     title: '创建时间',
     dataIndex: 'createTime',
-    key: 'createTime'
+    key: 'createTime',
+    width: 180
   },
   {
     title: '操作',
     key: 'action',
     fixed: 'right' as const,
-    width: 200
+    width: 220
   }
 ]
 

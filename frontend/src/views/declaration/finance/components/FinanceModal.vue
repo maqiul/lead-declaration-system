@@ -6,7 +6,7 @@
     :confirmLoading="saveLoading"
     @ok="handleSave"
     @cancel="handleClose"
-    okText="保存退税点"
+    okText="保存"
     cancelText="关闭"
   >
     <a-spin :spinning="loading">
@@ -87,26 +87,34 @@
         <a-divider orientation="left">退税计算</a-divider>
         <a-row :gutter="24">
           <a-col :span="10">
-            <a-card title="退税参数设置" size="small">
-              <a-form layout="vertical">
-                <a-form-item label="退税点 (%)">
-                    <a-input-number 
-                      v-model:value="formData.taxRefundRate" 
-                      style="width: 100%" 
-                      :min="0" 
-                      :max="100" 
-                      :precision="2"
-                      placeholder="如: 13 表示 13%"
-                    />
-                  </a-form-item>
-                  <a-form-item>
-                    <a-button type="primary" @click="handleGenerateCalculation" :loading="calcLoading" block>
-                      预览开票金额计算
-                    </a-button>
-                  </a-form-item>
-                </a-form>
-              </a-card>
-            </a-col>
+            <a-card title="商品退税率明细" size="small">
+              <template v-if="calculationDetail && calculationDetail.productTaxDetails && calculationDetail.productTaxDetails.length > 0">
+                <div v-for="(item, idx) in calculationDetail.productTaxDetails" :key="idx" class="calc-row" style="border-bottom: 1px dashed #ddd; padding: 8px 0;">
+                  <div>
+                    <div style="font-weight: 500;">{{ item.productName || item.hsCode || '商品' + (Number(idx) + 1) }}</div>
+                    <div style="font-size: 12px; color: #999;">HS: {{ item.hsCode || '-' }} | 汇率: {{ item.exchangeRate }}</div>
+                    <div style="font-size: 12px; color: #666;">原币: {{ formatMoney(item.amount) }} × {{ item.exchangeRate }} = {{ formatMoney(item.cnyAmount) }} CNY</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <div style="font-size: 12px;" :style="{ color: item.taxRefundRate > 0 ? '#52c41a' : '#ff4d4f' }">退税率 {{ item.taxRefundRate }}%</div>
+                    <div style="font-weight: 500;">{{ formatMoney(item.cnyAmount) }} × (1 + {{ item.taxRefundRate }}%) = {{ formatMoney(item.amountWithTaxRefund) }} CNY</div>
+                  </div>
+                </div>
+                <div class="calc-row total" style="margin-top: 8px;">
+                  <span class="calc-label">退税加成合计:</span>
+                  <span class="calc-value highlight">{{ formatMoney(calculationDetail.amountWithTaxRefund) }} CNY</span>
+                </div>
+              </template>
+              <template v-else>
+                <a-empty :description="calculationDetail ? '无商品退税信息' : '点击右侧按钮计算开票金额'" />
+              </template>
+              <a-form-item class="mt-4">
+                <a-button type="primary" @click="handleGenerateCalculation" :loading="calcLoading" block>
+                  计算开票金额
+                </a-button>
+              </a-form-item>
+            </a-card>
+          </a-col>
             <a-col :span="14">
               <a-card title="开票明细计算" size="small" :loading="calcLoading">
                 <template v-if="calculationDetail">
@@ -124,7 +132,7 @@
                           </span>
                         </div>
                         <div class="calc-row" style="font-size: 12px; color: #666; margin-left: 20px;">
-                          <span>银行: {{ item.bankAccountName || '-' }} | 手续费率: {{ ((item.bankFeeRate || 0) * 100).toFixed(2) }}% | 手续费: {{ formatMoney(item.bankFee || 0) }} {{ item.currency || 'USD' }} = {{ formatMoney(item.bankFeeCny || 0) }} CNY</span>
+                          <span>银行: {{ item.bankAccountName || '-' }} | 内部手续费: {{ formatMoney(item.bankFeeCny || 0) }} CNY</span>
                         </div>
                       </div>
                       <div class="calc-row total" style="margin-top: 8px;">
@@ -154,23 +162,27 @@
                         <span class="calc-value">{{ formatMoney(calculationDetail.totalGoodsAmount) }} CNY</span>
                       </div>
                       <div class="calc-row">
-                        <span class="calc-label">退税金额 ({{ calculationDetail.totalGoodsAmount }} × {{ calculationDetail.taxRefundRate }}%):</span>
-                        <span class="calc-value" style="color: #52c41a;">+{{ formatMoney(calculationDetail.amountWithTaxRefund - calculationDetail.totalGoodsAmount) }} CNY</span>
+                        <span class="calc-label">退税加成合计:</span>
+                        <span class="calc-value" style="color: #52c41a;">含税总计 {{ formatMoney(calculationDetail.amountWithTaxRefund) }} CNY (+{{ formatMoney(calculationDetail.amountWithTaxRefund - calculationDetail.totalGoodsAmount) }})</span>
                       </div>
                       <div class="calc-row total-with-tax">
                         <span class="calc-label">含税总金额 (货款+退税):</span>
                         <span class="calc-value highlight">{{ formatMoney(calculationDetail.amountWithTaxRefund) }} CNY</span>
                       </div>
-                      <div class="calc-row deduct">
-                        <span class="calc-label">- 货代发票金额:</span>
-                        <span class="calc-value">{{ formatMoney(calculationDetail.freightInvoiceAmount || 0) }} CNY</span>
+                      <div class="calc-row deduct" v-for="(ded, didx) in (calculationDetail.invoiceDeductionItems || [])" :key="'ded-'+didx">
+                        <span class="calc-label">- {{ ded.name }}:</span>
+                        <span class="calc-value">{{ formatMoney(ded.amount) }} CNY</span>
+                      </div>
+                      <div class="calc-row deduct" v-if="!calculationDetail.invoiceDeductionItems || calculationDetail.invoiceDeductionItems.length === 0">
+                        <span class="calc-label">发票扣减项:</span>
+                        <span class="calc-value text-gray-400">无</span>
+                      </div>
+                      <div class="calc-row deduct" style="border-bottom: 2px solid #ff4d4f;">
+                        <span class="calc-label" style="font-weight: bold;">- 发票扣减合计:</span>
+                        <span class="calc-value" style="font-weight: bold;">{{ formatMoney(calculationDetail.totalInvoiceDeduction || 0) }} CNY</span>
                       </div>
                       <div class="calc-row deduct">
-                        <span class="calc-label">- 海关代理发票金额:</span>
-                        <span class="calc-value">{{ formatMoney(calculationDetail.customsInvoiceAmount || 0) }} CNY</span>
-                      </div>
-                      <div class="calc-row deduct">
-                        <span class="calc-label">- 银行手续费合计:</span>
+                        <span class="calc-label">- 内部操作手续费合计:</span>
                         <span class="calc-value">{{ formatMoney(calculationDetail.bankFeeAmount) }} CNY <span style="font-size: 11px; color: #999;">（综合费率≈{{ calculationDetail.bankFeeRate }}%）</span></span>
                       </div>
                     </div>
@@ -200,8 +212,8 @@
                 </template>
                 <template v-else>
                   <div style="text-align: center; color: #999; padding: 40px 0;">
-                    <p>请先设置退税点，然后点击“预览开票金额计算”查看计算结果</p>
-                    <p style="font-size: 12px; color: #bbb;">确认无误后点击底部“保存退税点”按钮保存</p>
+                    <p>点击左侧“计算开票金额”按钮查看计算结果</p>
+                    <p style="font-size: 12px; color: #bbb;">退税率取自商品配置，未配置按 0% 计算</p>
                   </div>
                 </template>
               </a-card>
@@ -274,7 +286,7 @@ const formData = reactive({
   customsReceiptFileName: '',
   detailsFileUrl: '',
   detailsFileName: '',
-  taxRefundRate: undefined as number | undefined,
+  // taxRefundRate: undefined as number | undefined, // 已废弃，退税现由商品配置驱动
   currency: 'CNY',
   totalGoodsAmount: undefined as number | undefined,
   amountWithTaxRefund: undefined as number | undefined,
@@ -329,7 +341,7 @@ const init = async () => {
   formData.customsReceiptFileName = ''
   formData.detailsFileUrl = ''
   formData.detailsFileName = ''
-  formData.taxRefundRate = undefined
+  // formData.taxRefundRate 已废弃
   formData.totalGoodsAmount = undefined
   formData.amountWithTaxRefund = undefined
   formData.bankFeeAmount = undefined
@@ -399,7 +411,7 @@ const init = async () => {
         if (financeData.detailsFileUrl) formData.detailsFileUrl = financeData.detailsFileUrl
         if (financeData.detailsFileName) formData.detailsFileName = financeData.detailsFileName
 
-        if (financeData.taxRefundRate !== undefined && financeData.taxRefundRate !== null) formData.taxRefundRate = financeData.taxRefundRate
+        // taxRefundRate 已废弃，退税现由商品配置驱动
 
         // 添加计算结果字段
         if (financeData.totalGoodsAmount !== undefined && financeData.totalGoodsAmount !== null) formData.totalGoodsAmount = financeData.totalGoodsAmount
@@ -549,7 +561,7 @@ const handleSave = async () => {
       customsReceiptFileName: formData.customsReceiptFileName,
       detailsFileUrl: formData.detailsFileUrl,
       detailsFileName: formData.detailsFileName,
-      taxRefundRate: formData.taxRefundRate,
+      // taxRefundRate 已废弃，退税现由商品配置驱动
       currency: formData.currency
     }
     

@@ -1300,7 +1300,7 @@
                 <span v-else>开票金额查看</span>
               </div>
               <div class="progress-desc">
-                系统根据收汇、退税、货代发票、报关代理发票自动计算
+                系统根据收汇、商品退税率、发票资料项自动计算
               </div>
             </div>
             <div class="progress-right">
@@ -1343,27 +1343,6 @@
             <a-empty v-else description="暂无关联水单，请先在水单管理中关联并审核通过" :image-style="{ height: '30px' }" />
           </div>
 
-          <a-descriptions v-if="invoiceAmountCalcDetail" bordered size="small" :column="2" style="margin-bottom: 12px;">
-            <a-descriptions-item label="收汇金额">
-              {{ invoiceAmountCalcDetail.totalCny ?? '-' }}
-            </a-descriptions-item>
-            <a-descriptions-item label="退税点%">
-              {{ invoiceAmountCalcDetail.taxRefundRate ? invoiceAmountCalcDetail.taxRefundRate + '%' : '-' }}
-            </a-descriptions-item>
-            <a-descriptions-item label="货代发票金额">
-              {{ invoiceAmountCalcDetail.freightInvoiceAmount ?? '-' }}
-            </a-descriptions-item>
-            <a-descriptions-item label="报关代理发票金额">
-              {{ invoiceAmountCalcDetail.customsInvoiceAmount ?? '-' }}
-            </a-descriptions-item>
-            <a-descriptions-item label="银行手续费">
-              {{ invoiceAmountCalcDetail.bankFeeAmount ?? '-' }}
-            </a-descriptions-item>
-            <a-descriptions-item label="开票金额">
-              <b class="text-blue-600 text-lg">{{ invoiceAmountCalcDetail.invoiceAmount ?? '-' }}</b>
-            </a-descriptions-item>
-          </a-descriptions>
-
           <!-- 开票金额计算详情 -->
           <div v-if="invoiceAmountCalcDetail" class="calc-detail-wrap">
             <!-- 收入部分 -->
@@ -1371,21 +1350,49 @@
               <div class="calc-section-title">
                 <RiseOutlined style="margin-right: 6px;" /> 收入部分
               </div>
-              <div class="calc-row" v-for="(rd, idx) in (invoiceAmountCalcDetail.remittanceDetails || [])" :key="'rd-' + idx">
-                <span class="calc-label">{{ rd.remittanceName || '水单' }}</span>
-                <span class="calc-value">{{ fmtAmt(rd.amount) }} {{ rd.currency || 'USD' }} × {{ Number(rd.taxRate || 0).toFixed(4) }} = <b>{{ fmtAmt(rd.cnyAmount) }} CNY</b></span>
+              <div v-for="(rd, idx) in (invoiceAmountCalcDetail.remittanceDetails || [])" :key="'rd-' + idx" style="margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+                <div class="calc-row">
+                  <span class="calc-label" style="font-weight: 600;">{{ rd.remittanceName || '水单' }}</span>
+                  <span class="calc-value">{{ fmtAmt(rd.amount) }} {{ rd.currency || 'USD' }} × {{ Number(rd.taxRate || 0).toFixed(4) }} = <b>{{ fmtAmt(rd.cnyAmount) }} CNY</b></span>
+                </div>
+                <div v-if="rd.proportion && rd.proportion < 100" style="font-size: 12px; color: #666; margin-left: 12px; margin-top: 4px;">
+                  分配占比: {{ rd.proportion }}% ({{ fmtAmt(rd.relationAmount) }} / {{ fmtAmt(rd.fullAmount) }})
+                </div>
+                <div v-if="rd.bankFeeCny > 0 || rd.internalBankFee > 0" style="font-size: 12px; margin-left: 12px; margin-top: 4px; padding: 6px; background: #fff3e0; border-radius: 3px;">
+                  <div v-if="rd.bankFeeCny > 0" style="color: #e65100;">
+                    银行手续费: {{ fmtAmt(rd.bankFeeOriginal) }} {{ rd.currency || 'USD' }} × {{ Number(rd.taxRate || 0).toFixed(4) }}
+                    <span v-if="rd.proportion && rd.proportion < 100"> × {{ rd.proportion }}%</span>
+                    = {{ fmtAmt(rd.bankFeeCny) }} CNY
+                  </div>
+                  <div v-if="rd.internalBankFee > 0" style="color: #d84315; margin-top: 2px;">
+                    内部操作费: {{ fmtAmt(rd.internalBankFeeOriginal) }} CNY
+                    <span v-if="rd.proportion && rd.proportion < 100"> × {{ rd.proportion }}% = </span>
+                    <span v-if="rd.proportion && rd.proportion < 100">{{ fmtAmt(rd.internalBankFee) }} CNY</span>
+                  </div>
+                </div>
               </div>
               <div class="calc-row calc-subtotal">
                 <span class="calc-label">收汇合计</span>
                 <span class="calc-value text-green-600"><b>{{ fmtAmt(invoiceAmountCalcDetail.totalCny) }} CNY</b></span>
               </div>
-              <div class="calc-row" v-if="invoiceAmountCalcDetail.taxRefundRate">
-                <span class="calc-label">退税加成 ({{ invoiceAmountCalcDetail.taxRefundRate }}%)</span>
-                <span class="calc-value">{{ fmtAmt(invoiceAmountCalcDetail.totalGoodsAmount) }} × (1 + {{ invoiceAmountCalcDetail.taxRefundRate }}%) = <b>{{ fmtAmt(invoiceAmountCalcDetail.amountWithTaxRefund) }} CNY</b></span>
+              <div class="calc-row" v-if="invoiceAmountCalcDetail.productTaxDetails && invoiceAmountCalcDetail.productTaxDetails.length > 0">
+                <span class="calc-label">退税加成明细</span>
+                <span class="calc-value">
+                  <span v-for="(pd, pdx) in invoiceAmountCalcDetail.productTaxDetails" :key="'pd-'+pdx" style="display: block; font-size: 12px; margin-bottom: 6px;">
+                    <div style="color: #666;">{{ pd.productName || pd.hsCode || '商品' + (pdx + 1) }}</div>
+                    <div style="margin-left: 12px;">
+                      原币: {{ fmtAmt(pd.amount) }} × 汇率: {{ pd.exchangeRate }} = {{ fmtAmt(pd.cnyAmount) }} CNY
+                    </div>
+                    <div style="margin-left: 12px;">
+                      {{ fmtAmt(pd.cnyAmount) }} × (1+{{ pd.taxRefundRate }}%) = <b style="color: #16a34a;">{{ fmtAmt(pd.amountWithTaxRefund) }} CNY</b>
+                    </div>
+                  </span>
+                  <span style="display: block; margin-top: 4px; font-weight: bold; color: #16a34a; border-top: 1px dashed #ddd; padding-top: 4px;">合计: {{ fmtAmt(invoiceAmountCalcDetail.amountWithTaxRefund) }} CNY</span>
+                </span>
               </div>
               <div class="calc-row calc-highlight" v-else>
                 <span class="calc-label">退税加成</span>
-                <span class="calc-value text-gray-400">未录入退税点</span>
+                <span class="calc-value text-gray-400">商品未配置退税率，按 0% 计算</span>
               </div>
             </div>
           
@@ -1394,17 +1401,25 @@
               <div class="calc-section-title">
                 <FallOutlined style="margin-right: 6px;" /> 支出部分（扣减项）
               </div>
-              <div class="calc-row">
-                <span class="calc-label">货代发票</span>
-                <span class="calc-value text-red-500">-{{ fmtAmt(invoiceAmountCalcDetail.freightInvoiceAmount) }} CNY</span>
+              <div class="calc-row" v-for="(ded, didx) in (invoiceAmountCalcDetail.invoiceDeductionItems || [])" :key="'ded-'+didx">
+                <span class="calc-label">{{ ded.name }}</span>
+                <span class="calc-value text-red-500">-{{ fmtAmt(ded.amount) }} CNY</span>
               </div>
-              <div class="calc-row">
-                <span class="calc-label">报关代理发票</span>
-                <span class="calc-value text-red-500">-{{ fmtAmt(invoiceAmountCalcDetail.customsInvoiceAmount) }} CNY</span>
+              <div class="calc-row" v-if="!invoiceAmountCalcDetail.invoiceDeductionItems || invoiceAmountCalcDetail.invoiceDeductionItems.length === 0">
+                <span class="calc-label">发票扣减项</span>
+                <span class="calc-value text-gray-400">无</span>
               </div>
-              <div class="calc-row">
-                <span class="calc-label">银行手续费{{ invoiceAmountCalcDetail.bankFeeRate ? ' (≈' + Number(invoiceAmountCalcDetail.bankFeeRate).toFixed(2) + '%)' : '' }}</span>
+              <div class="calc-row" v-if="invoiceAmountCalcDetail.bankFeeAmount > 0">
+                <span class="calc-label">银行手续费</span>
                 <span class="calc-value text-red-500">-{{ fmtAmt(invoiceAmountCalcDetail.bankFeeAmount) }} CNY</span>
+              </div>
+              <div class="calc-row" v-if="invoiceAmountCalcDetail.internalBankFee > 0">
+                <span class="calc-label">内部操作费</span>
+                <span class="calc-value text-red-500">-{{ fmtAmt(invoiceAmountCalcDetail.internalBankFee) }} CNY</span>
+              </div>
+              <div class="calc-row" v-if="!invoiceAmountCalcDetail.bankFeeAmount && !invoiceAmountCalcDetail.internalBankFee">
+                <span class="calc-label">手续费</span>
+                <span class="calc-value text-gray-400">无</span>
               </div>
               <div class="calc-row calc-subtotal">
                 <span class="calc-label">支出合计</span>
@@ -2280,7 +2295,7 @@ const fmtAmt = (v: any) => {
 const calcExpenseTotal = computed(() => {
   const d = invoiceAmountCalcDetail.value
   if (!d) return 0
-  return Number(d.freightInvoiceAmount || 0) + Number(d.customsInvoiceAmount || 0) + Number(d.bankFeeAmount || 0)
+  return Number(d.totalInvoiceDeduction || 0) + Number(d.bankFeeAmount || 0) + Number(d.internalBankFee || 0)
 })
 /** 关联水单列表 */
 const invoiceAmountRemittances = ref<any[]>([])
@@ -2298,7 +2313,7 @@ const remittanceColumns = [
     return `${sym}${Number(record.relationAmount || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
   }},
   { title: '汇率', dataIndex: 'taxRate', key: 'taxRate', width: 80, customRender: ({ text }: any) => text != null ? Number(text).toFixed(4) : '-' },
-  { title: '收汇日期', dataIndex: 'remittanceDate', key: 'remittanceDate', width: 110 },
+  { title: '收汇日期', dataIndex: 'remittanceDate', key: 'remittanceDate', width: 110, customRender: ({ text }: any) => text ? String(text).split(' ')[0] : '-' },
   { title: '状态', key: 'status', width: 80, customRender: ({ text }: any) => text === 0 ? '草稿' : text === 1 ? '待审核' : '已审核' }
 ]
 
@@ -2917,7 +2932,7 @@ const handleSubmitInvoiceAmount = async () => {
   if (!formId.value) return
   Modal.confirm({
     title: '确认提交开票金额申请？',
-    content: '提交后系统将自动计算开票金额并进入审核流程。请确保：1) 外汇水单已关联 2) 退税率已在财务单证页面设置。',
+    content: '提交后系统将自动计算开票金额并进入审核流程。请确保：1) 外汇水单已关联 2) 商品退税率已在商品配置中维护（未配置按 0% 计算）。',
     okText: '确认提交',
     onOk: async () => {
       try {

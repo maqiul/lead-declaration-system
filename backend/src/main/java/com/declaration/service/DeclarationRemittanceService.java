@@ -57,7 +57,7 @@ public interface DeclarationRemittanceService extends IService<DeclarationRemitt
     /**
      * 分页查询水单
      */
-    IPage<DeclarationRemittance> getPage(PageParam pageParam, Integer remittanceType, Integer status, String remittanceNo);
+    IPage<DeclarationRemittance> getPage(PageParam pageParam, Integer remittanceType, Integer status, String remittanceNo, String relationStatus);
 
     /**
      * 计算水单手续费(根据选择的银行自动计算)

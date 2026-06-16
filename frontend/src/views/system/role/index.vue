@@ -51,6 +51,7 @@
         :columns="columns"
         :pagination="pagination"
         :loading="loading"
+        :scroll="{ x: 1380 }"
         :row-selection="rowSelection"
         row-key="id"
         @change="handleTableChange"
@@ -69,16 +70,16 @@
             <a-tag v-else color="default">自定义</a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as Role)" v-permission="['role:update']" class="font-medium text-blue-600">
+            <a-space :size="2">
+              <a-button type="link" size="small" @click="handleEdit(record as Role)" v-permission="['role:update']" class="font-medium text-blue-600" style="padding: 0 4px">
                 <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
-              <a-button type="link" size="small" @click="handlePermission(record as Role)" v-permission="['role:menu']" class="font-medium text-blue-600">
+              <a-button type="link" size="small" @click="handlePermission(record as Role)" v-permission="['role:menu']" class="font-medium text-blue-600" style="padding: 0 4px">
                 <template #icon><SafetyCertificateOutlined /></template>
                 权限配置
               </a-button>
-              <a-button type="link" size="small" @click="handleAssignUsers(record as Role)" v-permission="['role:assign']" class="font-medium text-green-600">
+              <a-button type="link" size="small" @click="handleAssignUsers(record as Role)" v-permission="['role:assign']" class="font-medium text-green-600" style="padding: 0 4px">
                 <template #icon><UsergroupAddOutlined /></template>
                 分配用户
               </a-button>
@@ -88,6 +89,7 @@
                 size="small"
                 @click="handleAssignAllPermissions(record as Role)"
                 class="font-medium text-blue-600"
+                style="padding: 0 4px"
               >
                 <template #icon><AppstoreOutlined /></template>
                 分配全部权限
@@ -96,7 +98,7 @@
                 title="确定要删除这个角色吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['role:delete']" class="font-medium">
+                <a-button type="link" size="small" danger v-permission="['role:delete']" class="font-medium" style="padding: 0 4px">
                   <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
@@ -348,38 +350,44 @@ const columns = [
   {
     title: '角色名称',
     dataIndex: 'roleName',
-    key: 'roleName'
+    key: 'roleName',
+    width: 150
   },
   {
     title: '角色编码',
     dataIndex: 'roleCode',
-    key: 'roleCode'
+    key: 'roleCode',
+    width: 150
   },
   {
     title: '描述',
     dataIndex: 'description',
-    key: 'description'
+    key: 'description',
+    width: 200
   },
   {
     title: '数据权限',
     dataIndex: 'dataScope',
-    key: 'dataScope'
+    key: 'dataScope',
+    width: 120
   },
   {
     title: '状态',
     dataIndex: 'status',
-    key: 'status'
+    key: 'status',
+    width: 100
   },
   {
     title: '创建时间',
     dataIndex: 'createTime',
-    key: 'createTime'
+    key: 'createTime',
+    width: 200
   },
   {
     title: '操作',
     key: 'action',
     fixed: 'right' as const,
-    width: 200
+    width: 400
   }
 ]
 

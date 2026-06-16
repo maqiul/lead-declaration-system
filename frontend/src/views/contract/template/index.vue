@@ -49,6 +49,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="pagination"
+        :scroll="{ x: 1600 }"
         @change="handleTableChange"
         rowKey="id"
       >
@@ -68,8 +69,8 @@
           </template>
 
           <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button v-permission="['business:contract:template:update']" type="link" size="small" @click="openEditModal(record)">
+            <a-space :size="0">
+              <a-button v-permission="['business:contract:template:update']" type="link" size="small" style="padding: 0 4px" @click="openEditModal(record)">
                 <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
@@ -78,16 +79,16 @@
                 :showUploadList="false"
                 :customRequest="(options: any) => handleUpload(options, record.id)"
               >
-                <a-button v-permission="['business:contract:template:upload']" type="link" size="small">
+                <a-button v-permission="['business:contract:template:upload']" type="link" size="small" style="padding: 0 4px">
                   <template #icon><UploadOutlined /></template>
-                  上传文件
+                  上传
                 </a-button>
               </a-upload>
-              <a-button v-permission="['business:contract:download']" v-if="record.filePath" type="link" size="small" @click="handlePreview(record)">
+              <a-button v-permission="['business:contract:download']" v-if="record.filePath" type="link" size="small" style="padding: 0 4px" @click="handlePreview(record)">
                 <template #icon><EyeOutlined /></template>
                 预览
               </a-button>
-              <a-button v-permission="['business:contract:download']" v-if="record.filePath" type="link" size="small" @click="handleDownload(record)">
+              <a-button v-permission="['business:contract:download']" v-if="record.filePath" type="link" size="small" style="padding: 0 4px" @click="handleDownload(record)">
                 <template #icon><DownloadOutlined /></template>
                 下载
               </a-button>
@@ -95,7 +96,7 @@
                 title="确定要删除这个模板吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button v-permission="['business:contract:template:delete']" type="link" size="small" danger>
+                <a-button v-permission="['business:contract:template:delete']" type="link" size="small" danger style="padding: 0 4px">
                   <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
@@ -197,7 +198,7 @@ const columns = [
   { title: '状态', key: 'status', width: 100 },
   { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
   { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
-  { title: '操作', key: 'action', width: 250, fixed: 'right' as const }
+  { title: '操作', key: 'action', width: 320, fixed: 'right' as const }
 ]
 
 // 弹窗相关

@@ -7,12 +7,11 @@
           <a-form-item label="水单编号">
             <a-input v-model:value="searchForm.remittanceNo" placeholder="请输入水单编号" allow-clear style="width: 180px" />
           </a-form-item>
-          <a-form-item label="状态">
-            <a-select v-model:value="searchForm.status" placeholder="请选择" allow-clear style="width: 120px">
-              <a-select-option :value="0">草稿</a-select-option>
-              <a-select-option :value="1">待审核</a-select-option>
-              <a-select-option :value="2">已审核</a-select-option>
-              <a-select-option :value="3">已驳回</a-select-option>
+          <a-form-item v-if="showRelationFilter" label="关联状态">
+            <a-select v-model:value="searchForm.relationStatus" placeholder="请选择" allow-clear style="width: 140px">
+              <a-select-option value="UNRELATED">未关联</a-select-option>
+              <a-select-option value="PARTIAL">未完全关联</a-select-option>
+              <a-select-option value="RELATED">已关联</a-select-option>
             </a-select>
           </a-form-item>
           <a-form-item class="button-item">
@@ -38,16 +37,6 @@
         </a-button>
       </div>
 
-      <!-- 数据权限提示 -->
-      <a-alert
-        message="数据权限提示"
-        description="普通用户只能查看自己创建的水单，管理员和财务经理可以查看所有水单"
-        type="info"
-        show-icon
-        closable
-        class="mb-4"
-      />
-
       <!-- 表格 -->
       <a-table
         :columns="columns"
@@ -55,6 +44,7 @@
         :loading="loading"
         :pagination="pagination"
         row-key="id"
+        :scroll="{ x: 2070 }"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
@@ -87,15 +77,28 @@
             <span v-else style="color: #999;">-</span>
           </template>
 
+          <template v-if="column.key === 'unrelatedAmount'">
+            <span :style="{ color: getUnrelatedAmount(record) > 0 ? '#ff4d4f' : '#52c41a', fontWeight: 500 }">
+              {{ formatCurrency(getUnrelatedAmount(record), record.currency) }}
+            </span>
+          </template>
+
+          <template v-if="column.key === 'relationStatus'">
+            <a-tag :color="getRelationStatusColor(record)">
+              {{ getRelationStatusText(record) }}
+            </a-tag>
+          </template>
+
           <template v-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleView(record as Remittance)">
+            <a-space :size="2">
+              <a-button type="link" size="small" style="padding: 0 4px" @click="handleView(record as Remittance)">
                 <template #icon><EyeOutlined /></template>
                 查看
               </a-button>
               <a-button
                 type="link"
                 size="small"
+                style="padding: 0 4px"
                 @click="handleEdit(record as Remittance)"
                 v-if="record.status === 0"
                 v-permission="['business:remittance:update']"
@@ -106,6 +109,7 @@
               <a-button
                 type="link"
                 size="small"
+                style="padding: 0 4px"
                 @click="handleSubmit(record as Remittance)"
                 v-if="record.status === 0"
                 v-permission="['business:remittance:submit']"
@@ -116,6 +120,7 @@
               <a-button
                 type="link"
                 size="small"
+                style="padding: 0 4px"
                 @click="handleAudit(record as Remittance)"
                 v-if="record.status === 1"
                 v-permission="['business:remittance:audit']"
@@ -129,7 +134,7 @@
                 @click="handleDirectAudit(record as Remittance)"
                 v-if="record.status === 0"
                 v-permission="['business:remittance:audit']"
-                style="color: #fa8c16"
+                style="color: #fa8c16; padding: 0 4px"
               >
                 <template #icon><ThunderboltOutlined /></template>
                 直接审核
@@ -140,7 +145,7 @@
                 @click="handleRevokeAudit(record as Remittance)"
                 v-if="record.status === 2"
                 v-permission="['business:remittance:audit']"
-                style="color: #fa541c"
+                style="color: #fa541c; padding: 0 4px"
               >
                 <template #icon><RollbackOutlined /></template>
                 反审核
@@ -148,6 +153,7 @@
               <a-button
                 type="link"
                 size="small"
+                style="padding: 0 4px"
                 @click="handleDelete(record as Remittance)"
                 v-if="record.status === 0"
                 danger
@@ -159,6 +165,7 @@
               <a-button
                 type="link"
                 size="small"
+                style="padding: 0 4px"
                 @click="handleManageForms(record as Remittance)"
                 v-permission="['business:remittance:update']"
               >
@@ -202,7 +209,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { SearchOutlined, PlusOutlined, ReloadOutlined, EyeOutlined, EditOutlined, SendOutlined, AuditOutlined, ThunderboltOutlined, DeleteOutlined, LinkOutlined, RollbackOutlined } from '@ant-design/icons-vue'
 import { getRemittanceList, deleteRemittance, submitRemittanceAudit, revokeRemittanceAudit } from '@/api/business/remittance'
@@ -212,13 +220,40 @@ import RemittanceDetail from './components/RemittanceDetail.vue'
 import AuditModal from './components/AuditModal.vue'
 import FormRelationModal from './components/FormRelationModal.vue'
 
+const route = useRoute()
+
+// 路由名 -> 状态筛选映射
+const routeStatusMap: Record<string, number | undefined> = {
+  RemittanceDraft: 0,
+  RemittancePending: 1,
+  RemittanceAudited: 2,
+  RemittanceUnrelated: undefined  // 未关联页面固定 status=2 + relationStatus=UNRELATED
+}
+
+// 是否显示关联状态筛选（仅已审核页面显示）
+const showRelationFilter = computed(() => route.name === 'RemittanceAudited')
+
+// 根据路由自动设置筛选条件
+const applyRouteFilter = () => {
+  const routeName = route.name as string
+  if (routeName === 'RemittanceUnrelated') {
+    // 未关联页面: 已审核 + 未关联
+    searchForm.status = 2
+    searchForm.relationStatus = 'UNRELATED'
+  } else {
+    searchForm.status = routeStatusMap[routeName]
+    searchForm.relationStatus = undefined
+  }
+}
+
 // 数据定义
 const remittanceList = ref<Remittance[]>([])
 const loading = ref(false)
 const searchForm = reactive({
   remittanceNo: undefined as string | undefined,
   remittanceType: undefined as number | undefined,
-  status: undefined as number | undefined
+  status: undefined as number | undefined,
+  relationStatus: undefined as string | undefined
 })
 
 const pagination = reactive({
@@ -305,6 +340,16 @@ const columns = [
     width: 120
   },
   {
+    title: '未关联金额',
+    key: 'unrelatedAmount',
+    width: 120
+  },
+  {
+    title: '关联状态',
+    key: 'relationStatus',
+    width: 110
+  },
+  {
     title: '状态',
     dataIndex: 'status',
     key: 'status',
@@ -313,7 +358,7 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 350,
+    width: 460,
     fixed: 'right' as const
   }
 ]
@@ -345,6 +390,13 @@ const loadRemittanceList = async () => {
   }
 }
 
+// 路由切换时重新加载数据
+watch(() => route.name, () => {
+  applyRouteFilter()
+  pagination.current = 1
+  loadRemittanceList()
+})
+
 // 搜索
 const handleSearch = () => {
   pagination.current = 1
@@ -354,7 +406,7 @@ const handleSearch = () => {
 // 重置
 const handleReset = () => {
   searchForm.remittanceNo = undefined
-  searchForm.status = undefined
+  searchForm.relationStatus = undefined
   handleSearch()
 }
 
@@ -486,6 +538,32 @@ const getStatusText = (status: number | undefined) => {
   return textMap[status || 0] || '未知'
 }
 
+// 获取关联状态颜色
+const getRelationStatusColor = (record: Record<string, any>) => {
+  const related = record.totalRelatedAmount || 0
+  const total = record.remittanceAmount || 0
+  if (related <= 0) return 'default'
+  if (related >= total) return 'green'
+  return 'orange'
+}
+
+// 计算未关联金额
+const getUnrelatedAmount = (record: Record<string, any>): number => {
+  const total = Number(record.remittanceAmount || 0)
+  const related = Number(record.totalRelatedAmount || 0)
+  const diff = total - related
+  return diff > 0 ? Math.round(diff * 100) / 100 : 0
+}
+
+// 获取关联状态文本
+const getRelationStatusText = (record: Record<string, any>) => {
+  const related = record.totalRelatedAmount || 0
+  const total = record.remittanceAmount || 0
+  if (related <= 0) return '未关联'
+  if (related >= total) return '已关联'
+  return '未完全关联'
+}
+
 // 格式化货币
 const formatCurrency = (amount: number | undefined, currency: string | undefined) => {
   if (amount === undefined || amount === null) return '-'
@@ -494,6 +572,7 @@ const formatCurrency = (amount: number | undefined, currency: string | undefined
 
 // 初始化
 onMounted(() => {
+  applyRouteFilter()
   loadRemittanceList()
 })
 </script>

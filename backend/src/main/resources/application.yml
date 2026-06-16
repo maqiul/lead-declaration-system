@@ -90,6 +90,10 @@ sa-token:
   token-style: uuid
   # 是否输出操作日志
   is-log: false
+  # 是否从请求体读取token（iframe等场景无法传header）
+  is-read-body: true
+  # 是否从cookie读取token
+  is-read-cookie: true
   # 配置Sa-Token单独使用的Redis连接
   alone-redis:
     # Redis数据库索引（默认为0）

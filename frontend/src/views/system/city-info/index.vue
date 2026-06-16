@@ -52,6 +52,7 @@
         :data-source="list"
         :loading="loading"
         :pagination="pagination"
+        :scroll="{ x: 1420 }"
         row-key="id"
         class="ui-table"
         @change="handleTableChange"
@@ -68,13 +69,14 @@
           </template>
           
           <template v-else-if="column.key === 'action'">
-            <a-space>
+            <a-space :size="2">
               <a-button
                 type="link"
                 size="small"
                 v-permission="['system:city-info:view']"
                 @click="handleView(record)"
                 class="font-medium text-blue-600"
+                style="padding: 0 4px"
               >
                 <template #icon><EyeOutlined /></template>
                 详情
@@ -85,6 +87,7 @@
                 v-permission="['system:city-info:update']"
                 @click="handleUpdate(record)"
                 class="font-medium text-blue-600"
+                style="padding: 0 4px"
               >
                 <template #icon><EditOutlined /></template>
                 修改
@@ -94,7 +97,7 @@
                 title="确定删除该城市信息吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger class="font-medium">
+                <a-button type="link" size="small" danger class="font-medium" style="padding: 0 4px">
                   <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
@@ -289,7 +292,7 @@ const columns: any[] = [
   {
     title: '操作',
     key: 'action',
-    width: 280,
+    width: 220,
     fixed: 'right',
     align: 'center' as const
   }

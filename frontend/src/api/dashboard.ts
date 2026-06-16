@@ -37,3 +37,11 @@ export function getDashboardCharts() {
     method: 'get'
   })
 }
+
+// 获取申报菜单统计和30天预警数据
+export function getDeclarationStats() {
+  return request({
+    url: '/dashboard/declaration-stats',
+    method: 'get'
+  })
+}

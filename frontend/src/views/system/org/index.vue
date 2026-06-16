@@ -54,6 +54,7 @@
         :data-source="orgTreeData"
         :loading="loading"
         :pagination="false"
+        :scroll="{ x: 1260 }"
         :expanded-row-keys="expandedRowKeys"
         @expand="handleExpand"
         row-key="id"
@@ -66,12 +67,12 @@
             </a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as Organization)" v-permission="['org:update']" class="font-medium text-blue-600">
+            <a-space :size="2">
+              <a-button type="link" size="small" @click="handleEdit(record as Organization)" v-permission="['org:update']" class="font-medium text-blue-600" style="padding: 0 4px">
                 <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
-              <a-button type="link" size="small" @click="handleAdd(record.id)" v-permission="['org:create']" class="font-medium text-blue-600">
+              <a-button type="link" size="small" @click="handleAdd(record.id)" v-permission="['org:create']" class="font-medium text-blue-600" style="padding: 0 4px">
                 <template #icon><PlusOutlined /></template>
                 新增下级
               </a-button>
@@ -79,7 +80,7 @@
                 title="确定要删除该机构及其所有下级机构吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['org:delete']" class="font-medium">
+                <a-button type="link" size="small" danger v-permission="['org:delete']" class="font-medium" style="padding: 0 4px">
                   <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
@@ -210,22 +211,25 @@ const columns = [
     title: '机构名称',
     dataIndex: 'orgName',
     key: 'orgName',
-    width: '25%'
+    width: 200
   },
   {
     title: '机构编码',
     dataIndex: 'orgCode',
-    key: 'orgCode'
+    key: 'orgCode',
+    width: 200
   },
   {
     title: '负责人',
     dataIndex: 'leader',
-    key: 'leader'
+    key: 'leader',
+    width: 200
   },
   {
     title: '联系电话',
     dataIndex: 'phone',
-    key: 'phone'
+    key: 'phone',
+    width: 200
   },
   {
     title: '状态',
@@ -243,7 +247,7 @@ const columns = [
     title: '操作',
     key: 'action',
     fixed: 'right' as const,
-    width: 200
+    width: 220
   }
 ]
 

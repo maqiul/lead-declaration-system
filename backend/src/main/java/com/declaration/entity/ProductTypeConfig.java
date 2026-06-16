@@ -2,6 +2,7 @@ package com.declaration.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -55,6 +56,11 @@ public class ProductTypeConfig {
      * 计量单位名称
      */
     private String unitName;
+
+    /**
+     * 退税率（如 13.00 表示 13%）
+     */
+    private BigDecimal taxRefundRate;
 
     /**
      * 排序

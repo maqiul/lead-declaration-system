@@ -125,10 +125,13 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
                 throw new RuntimeException("银行账户不存在");
             }
 
-            // 优先使用手动输入的手续费，否则自动计算
-            BigDecimal bankFee = (manualBankFee != null) ? manualBankFee : calculateBankFee(bankAccountId, remittance.getRemittanceAmount());
+            // 银行手续费由用户手动填写，不再自动计算
+            BigDecimal bankFee = (manualBankFee != null) ? manualBankFee : BigDecimal.ZERO;
             BigDecimal creditedAmount = remittance.getRemittanceAmount().subtract(bankFee)
                     .setScale(4, RoundingMode.HALF_UP);
+
+            // 计算内部手续费（人民币）= 汇率 × 收汇金额 × 银行手续费率，不低于最低操作费
+            BigDecimal internalBankFee = calculateInternalBankFee(bankAccountId, remittance.getRemittanceAmount(), taxRate);
 
             // 更新水单信息
             remittance.setStatus(2); // 已审核状态
@@ -138,6 +141,7 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
             remittance.setBankFeeRate(bankAccount.getServiceFeeRate());
             remittance.setBankFee(bankFee);
             remittance.setCreditedAmount(creditedAmount);
+            remittance.setInternalBankFee(internalBankFee);
         } else {
             // 审核驳回
             remittance.setStatus(3); // 已驳回状态
@@ -319,6 +323,7 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
             map.put("bankAccountName", remittance.getBankAccountName());
             map.put("bankFee", remittance.getBankFee());
             map.put("bankFeeRate", remittance.getBankFeeRate());
+            map.put("internalBankFee", remittance.getInternalBankFee());
             map.put("creditedAmount", remittance.getCreditedAmount());
             map.put("relationType", relationMap.get(remittance.getId()).getRelationType());
             map.put("relationAmount", relationMap.get(remittance.getId()).getRelationAmount());
@@ -327,25 +332,20 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
     }
 
     @Override
-    public IPage<DeclarationRemittance> getPage(PageParam pageParam, Integer remittanceType, Integer status, String remittanceNo) {
-        Page<DeclarationRemittance> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
+    public IPage<DeclarationRemittance> getPage(PageParam pageParam, Integer remittanceType, Integer status, String remittanceNo, String relationStatus) {
         LambdaQueryWrapper<DeclarationRemittance> wrapper = new LambdaQueryWrapper<>();
 
         // 数据权限控制：普通用户只能查看自己创建的水单
-        // 获取当前登录用户信息
         try {
             Long currentUserId = StpUtil.getLoginIdAsLong();
-            // 检查用户角色
             boolean isAdmin = StpUtil.hasRole("ADMIN");
             boolean isFinance = StpUtil.hasRole("FINANCE");
             boolean isDeptAdmin = StpUtil.hasRole("DEPT_ADMIN");
-            
-            // 如果不是管理员、财务经理或部门管理员，则只能查看自己创建的水单
             if (!isAdmin && !isFinance && !isDeptAdmin) {
                 wrapper.eq(DeclarationRemittance::getCreateBy, currentUserId);
             }
         } catch (Exception e) {
-            // 如果获取用户信息失败，不添加过滤条件（可能是未登录状态）
+            // ignore
         }
 
         if (remittanceType != null) {
@@ -357,32 +357,75 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
         if (remittanceNo != null && !remittanceNo.isEmpty()) {
             wrapper.like(DeclarationRemittance::getRemittanceNo, remittanceNo);
         }
-
-        wrapper.orderByDesc(DeclarationRemittance::getCreateTime);
-        IPage<DeclarationRemittance> result = page(page, wrapper);
-
-        // 为每条水单计算已关联金额合计
-        if (!result.getRecords().isEmpty()) {
-            List<Long> remittanceIds = result.getRecords().stream()
-                    .map(DeclarationRemittance::getId)
-                    .collect(Collectors.toList());
-            // 查询所有关联记录
-            LambdaQueryWrapper<RemittanceFormRelation> relWrapper = new LambdaQueryWrapper<>();
-            relWrapper.in(RemittanceFormRelation::getRemittanceId, remittanceIds);
-            List<RemittanceFormRelation> allRelations = relationDao.selectList(relWrapper);
-            // 按水单ID分组汇总关联金额
-            Map<Long, BigDecimal> totalAmountMap = new HashMap<>();
-            for (RemittanceFormRelation rel : allRelations) {
-                BigDecimal amt = rel.getRelationAmount() != null ? rel.getRelationAmount() : BigDecimal.ZERO;
-                totalAmountMap.merge(rel.getRemittanceId(), amt, BigDecimal::add);
-            }
-            // 设置到实体
-            for (DeclarationRemittance r : result.getRecords()) {
-                r.setTotalRelatedAmount(totalAmountMap.getOrDefault(r.getId(), BigDecimal.ZERO));
-            }
+        // 关联状态筛选仅对已审核水单有意义
+        if (relationStatus != null && !relationStatus.isEmpty()) {
+            wrapper.eq(DeclarationRemittance::getStatus, 2);
         }
 
-        return result;
+        wrapper.orderByDesc(DeclarationRemittance::getCreateTime);
+
+        // 如果有关联状态筛选，需要先查全量再内存过滤+手动分页
+        boolean needRelationFilter = relationStatus != null && !relationStatus.isEmpty();
+
+        List<DeclarationRemittance> allRecords;
+        long totalCount;
+
+        if (needRelationFilter) {
+            // 查全量（不分页）
+            allRecords = list(wrapper);
+            totalCount = allRecords.size();
+            // 计算关联金额
+            fillTotalRelatedAmount(allRecords);
+            // 内存过滤
+            allRecords = allRecords.stream().filter(r -> {
+                String rs = computeRelationStatus(r);
+                return relationStatus.equals(rs);
+            }).collect(Collectors.toList());
+            totalCount = allRecords.size();
+            // 手动分页
+            int from = (int) ((pageParam.getCurrent() - 1) * pageParam.getSize());
+            int to = Math.min(from + (int) pageParam.getSize(), allRecords.size());
+            List<DeclarationRemittance> pageRecords = from < allRecords.size() ? allRecords.subList(from, to) : new ArrayList<>();
+            Page<DeclarationRemittance> manualPage = new Page<>(pageParam.getCurrent(), pageParam.getSize(), totalCount);
+            manualPage.setRecords(pageRecords);
+            return manualPage;
+        } else {
+            Page<DeclarationRemittance> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
+            IPage<DeclarationRemittance> result = page(page, wrapper);
+            fillTotalRelatedAmount(result.getRecords());
+            return result;
+        }
+    }
+
+    /**
+     * 为水单列表填充已关联金额合计
+     */
+    private void fillTotalRelatedAmount(List<DeclarationRemittance> records) {
+        if (records == null || records.isEmpty()) return;
+        List<Long> remittanceIds = records.stream().map(DeclarationRemittance::getId).collect(Collectors.toList());
+        LambdaQueryWrapper<RemittanceFormRelation> relWrapper = new LambdaQueryWrapper<>();
+        relWrapper.in(RemittanceFormRelation::getRemittanceId, remittanceIds);
+        List<RemittanceFormRelation> allRelations = relationDao.selectList(relWrapper);
+        Map<Long, BigDecimal> totalAmountMap = new HashMap<>();
+        for (RemittanceFormRelation rel : allRelations) {
+            BigDecimal amt = rel.getRelationAmount() != null ? rel.getRelationAmount() : BigDecimal.ZERO;
+            totalAmountMap.merge(rel.getRemittanceId(), amt, BigDecimal::add);
+        }
+        for (DeclarationRemittance r : records) {
+            r.setTotalRelatedAmount(totalAmountMap.getOrDefault(r.getId(), BigDecimal.ZERO));
+        }
+    }
+
+    /**
+     * 计算单条水单的关联状态
+     */
+    private String computeRelationStatus(DeclarationRemittance r) {
+        if (r.getStatus() == null || r.getStatus() != 2) return "N/A";
+        BigDecimal related = r.getTotalRelatedAmount() != null ? r.getTotalRelatedAmount() : BigDecimal.ZERO;
+        BigDecimal total = r.getRemittanceAmount() != null ? r.getRemittanceAmount() : BigDecimal.ZERO;
+        if (related.compareTo(BigDecimal.ZERO) <= 0) return "UNRELATED";
+        if (related.compareTo(total) >= 0) return "RELATED";
+        return "PARTIAL";
     }
 
     @Override
@@ -397,7 +440,41 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
         }
 
         // 手续费 = 金额 * 手续费率（serviceFeeRate已是小数，如 0.02 表示 2%）
-        return amount.multiply(bankAccount.getServiceFeeRate()).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal calculatedFee = amount.multiply(bankAccount.getServiceFeeRate()).setScale(4, RoundingMode.HALF_UP);
+
+        // 如果设置了最低操作费，且计算出的手续费低于最低操作费，则按最低操作费收取
+        if (bankAccount.getMinServiceFee() != null && calculatedFee.compareTo(bankAccount.getMinServiceFee()) < 0) {
+            return bankAccount.getMinServiceFee();
+        }
+
+        return calculatedFee;
+    }
+
+    /**
+     * 计算内部手续费（人民币）
+     * 公式：汇率 × 收汇金额 × 银行手续费率，若低于最低操作费则按最低操作费计算
+     */
+    private BigDecimal calculateInternalBankFee(Long bankAccountId, BigDecimal amount, BigDecimal taxRate) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0 || taxRate == null) {
+            return BigDecimal.ZERO;
+        }
+
+        BankAccountConfig bankAccount = bankAccountConfigService.getById(bankAccountId);
+        if (bankAccount == null || bankAccount.getServiceFeeRate() == null) {
+            return BigDecimal.ZERO;
+        }
+
+        // 内部手续费 = 汇率 × 收汇金额 × 银行手续费率
+        BigDecimal calculatedFee = taxRate.multiply(amount)
+                .multiply(bankAccount.getServiceFeeRate())
+                .setScale(2, RoundingMode.HALF_UP);
+
+        // 如果设置了最低操作费，且计算结果低于最低操作费，则按最低操作费收取
+        if (bankAccount.getMinServiceFee() != null && calculatedFee.compareTo(bankAccount.getMinServiceFee()) < 0) {
+            return bankAccount.getMinServiceFee();
+        }
+
+        return calculatedFee;
     }
 
     /**

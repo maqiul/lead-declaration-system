@@ -345,7 +345,21 @@ public class FinancialSupplementController {
             sheet.addMergedRegion(new CellRangeAddress(rowNum-1, rowNum-1, 0, 3));
 
             createDataRow(sheet, rowNum++, "总货物金额(CNY)", String.format("%,.2f", calcDetail.get("totalGoodsAmount")), headerStyle);
-            createDataRow(sheet, rowNum++, "退税点(%)", String.format("%s", calcDetail.get("taxRefundRate")), headerStyle);
+
+            // 逐产品退税明细
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> productTaxDetails = (List<Map<String, Object>>) calcDetail.get("productTaxDetails");
+            if (productTaxDetails != null && !productTaxDetails.isEmpty()) {
+                for (Map<String, Object> pd : productTaxDetails) {
+                    String label = String.format("商品[%s] 退税率(%s%%) CNY",
+                            pd.get("productName") != null ? pd.get("productName") : "",
+                            pd.get("taxRefundRate") != null ? pd.get("taxRefundRate") : "0");
+                    createDataRow(sheet, rowNum++, label, String.format("%,.2f", pd.get("amountWithTaxRefund")), headerStyle);
+                }
+            } else {
+                createDataRow(sheet, rowNum++, "退税点(%)", "0（无商品信息）", headerStyle);
+            }
+
             // 计算并显示退税金额（含税金额 - 原始金额）
             BigDecimal totalGoodsAmount = (BigDecimal) calcDetail.get("totalGoodsAmount");
             BigDecimal amountWithTaxRefund = (BigDecimal) calcDetail.get("amountWithTaxRefund");
@@ -353,10 +367,19 @@ public class FinancialSupplementController {
             createDataRow(sheet, rowNum++, "货款金额(CNY)", String.format("%,.2f", totalGoodsAmount), headerStyle);
             createDataRow(sheet, rowNum++, "退税金额(CNY)", String.format("%,.2f", taxRefundAmount), headerStyle);
             createDataRow(sheet, rowNum++, "含税总金额(CNY)", String.format("%,.2f", amountWithTaxRefund), headerStyle);
-            createDataRow(sheet, rowNum++, "货代发票金额扣减(CNY)", String.format("%,.2f", calcDetail.get("freightInvoiceAmount")), headerStyle);
-            createDataRow(sheet, rowNum++, "报关代理发票金额扣减(CNY)", String.format("%,.2f", calcDetail.get("customsInvoiceAmount")), headerStyle);
-            createDataRow(sheet, rowNum++, "银行手续费率(%)", String.format("%s", calcDetail.get("bankFeeRate")), headerStyle);
-            createDataRow(sheet, rowNum++, "银行手续费扣款(CNY)", String.format("%,.2f", calcDetail.get("bankFeeAmount")), headerStyle);
+
+            // 逐项发票扣减
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> invoiceDeductionItems = (List<Map<String, Object>>) calcDetail.get("invoiceDeductionItems");
+            if (invoiceDeductionItems != null && !invoiceDeductionItems.isEmpty()) {
+                for (Map<String, Object> ded : invoiceDeductionItems) {
+                    String dedName = ded.get("name") != null ? ded.get("name").toString() : "发票";
+                    createDataRow(sheet, rowNum++, dedName + "扣减(CNY)", String.format("%,.2f", ded.get("amount")), headerStyle);
+                }
+            }
+            createDataRow(sheet, rowNum++, "发票扣减合计(CNY)", String.format("%,.2f", calcDetail.get("totalInvoiceDeduction")), headerStyle);
+            createDataRow(sheet, rowNum++, "内部操作手续费率(%)", String.format("%s", calcDetail.get("bankFeeRate")), headerStyle);
+            createDataRow(sheet, rowNum++, "内部操作手续费扣款(CNY)", String.format("%,.2f", calcDetail.get("bankFeeAmount")), headerStyle);
 
             rowNum++;
             XSSFRow resultRow = sheet.createRow(rowNum++);

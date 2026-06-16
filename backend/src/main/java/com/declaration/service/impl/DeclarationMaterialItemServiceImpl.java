@@ -541,13 +541,12 @@ public class DeclarationMaterialItemServiceImpl
         if (relatedRemittances == null || relatedRemittances.isEmpty()) {
             throw new RuntimeException("请先提交外汇水单后再申请开票金额");
         }
-        // 前置校验：退税率已设置
+        // 前置校验：退税率已由商品配置驱动，无需手动设置
+        // 只需确保财务补充记录存在（发票等数据源）
         FinancialSupplement supplement = financialSupplementService.lambdaQuery()
                 .eq(FinancialSupplement::getFormId, formId)
                 .one();
-        if (supplement == null || supplement.getTaxRefundRate() == null) {
-            throw new RuntimeException("请先在财务单证页面设置退税率后再申请开票金额");
-        }
+        // 商品级退税率无需前置校验，未配置则按0%计算
         // 自动计算开票金额
         Map<String, Object> calcDetail = financialSupplementService.getCalculationDetail(formId);
         Object invoiceAmountObj = calcDetail.get("invoiceAmount");

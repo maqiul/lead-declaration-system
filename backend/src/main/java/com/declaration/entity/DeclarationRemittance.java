@@ -82,6 +82,11 @@ public class DeclarationRemittance {
     private BigDecimal bankFee;
 
     /**
+     * 内部手续费（人民币）= 汇率 × 收汇金额 × 银行手续费率，不低于最低操作费
+     */
+    private BigDecimal internalBankFee;
+
+    /**
      * 入账金额(原币)
      */
     private BigDecimal creditedAmount;

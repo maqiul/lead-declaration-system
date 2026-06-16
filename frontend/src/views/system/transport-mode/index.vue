@@ -48,6 +48,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="pagination"
+        :scroll="{ x: 1000 }"
         @change="handleTableChange"
         rowKey="id"
         class="ui-table"

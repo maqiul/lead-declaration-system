@@ -43,6 +43,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="false"
+        :scroll="{ x: 1160 }"
         rowKey="id"
         class="ui-table"
       >
@@ -318,7 +319,7 @@ const columns = [
   { title: '必填', dataIndex: 'required', key: 'required', width: 100 },
   { title: '启用', dataIndex: 'enabled', key: 'enabled', width: 100 },
   { title: '说明', dataIndex: 'remark', key: 'remark', ellipsis: true },
-  { title: '操作', key: 'action', fixed: 'right' as const, width: 220 }
+  { title: '操作', key: 'action', fixed: 'right' as const, width: 300 }
 ]
 
 const modalVisible = ref(false)

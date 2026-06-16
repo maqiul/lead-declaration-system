@@ -64,6 +64,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="pagination"
+        :scroll="{ x: 2050 }"
         @change="handleTableChange"
         rowKey="id"
         class="ui-table"
@@ -86,8 +87,8 @@
           </template>
           
           <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="openEditModal(record as BankAccountConfig)" v-permission="['system:bank-account:update']" class="font-medium text-blue-600">
+            <a-space :size="2">
+              <a-button type="link" size="small" @click="openEditModal(record as BankAccountConfig)" v-permission="['system:bank-account:update']" class="font-medium text-blue-600" style="padding: 0 4px">
                 <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
@@ -98,6 +99,7 @@
                 @click="setDefault(record as BankAccountConfig)"
                 v-permission="['system:bank-account:update']"
                 class="font-medium text-blue-600"
+                style="padding: 0 4px"
               >
                 <template #icon><StarOutlined /></template>
                 设为默认
@@ -112,6 +114,7 @@
                   :danger="record.status === 1"
                   v-permission="['system:bank-account:update']"
                   class="font-medium"
+                  style="padding: 0 4px"
                 >
                   <template #icon>
                     <component :is="record.status === 1 ? 'StopOutlined' : 'CheckCircleOutlined'" />
@@ -123,7 +126,7 @@
                 title="确定要删除吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['system:bank-account:delete']" class="font-medium">
+                <a-button type="link" size="small" danger v-permission="['system:bank-account:delete']" class="font-medium" style="padding: 0 4px">
                   <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
@@ -247,6 +250,17 @@
           />
         </a-form-item>
 
+        <a-form-item label="最低操作费" name="minServiceFee">
+          <a-input-number
+            v-model:value="formData.minServiceFee"
+            :min="0"
+            :precision="2"
+            :step="1"
+            placeholder="计算手续费低于此值时，按此值收取"
+            style="width: 100%"
+          />
+        </a-form-item>
+
         <a-form-item label="排序" name="sort">
           <a-input-number
             v-model:value="formData.sort"
@@ -310,6 +324,7 @@ interface BankAccountConfig {
   status: number
   sort: number
   serviceFeeRate: number
+  minServiceFee: number
   remarks: string
   createTime?: string
 }
@@ -473,6 +488,13 @@ const columns = [
     width: 100
   },
   {
+    title: '最低操作费',
+    dataIndex: 'minServiceFee',
+    key: 'minServiceFee',
+    width: 110,
+    customRender: ({ record }: any) => record.minServiceFee != null ? record.minServiceFee : '-'
+  },
+  {
     title: '排序',
     dataIndex: 'sort',
     key: 'sort',
@@ -488,7 +510,7 @@ const columns = [
     title: '操作',
     key: 'action',
     fixed: 'right' as const,
-    width: 220
+    width: 300
   }
 ]
 
@@ -515,6 +537,7 @@ const formData = reactive({
   status: 1,
   sort: 0,
   serviceFeeRate: 0,
+  minServiceFee: undefined as number | undefined,
   remarks: ''
 })
 
@@ -617,6 +640,7 @@ const openEditModal = (record: BankAccountConfig) => {
   formData.status = record.status
   formData.sort = record.sort
   formData.serviceFeeRate = record.serviceFeeRate || 0
+  formData.minServiceFee = record.minServiceFee ?? undefined
   formData.remarks = record.remarks
   modalVisible.value = true
 }
@@ -644,6 +668,7 @@ const resetForm = () => {
   formData.status = 1
   formData.sort = 0
   formData.serviceFeeRate = 0
+  formData.minServiceFee = undefined
   formData.remarks = ''
   formRef.value?.resetFields()
 }
@@ -671,6 +696,7 @@ const handleSave = async () => {
       status: formData.status,
       sort: formData.sort,
       serviceFeeRate: formData.serviceFeeRate,
+      minServiceFee: formData.minServiceFee || null,
       remarks: formData.remarks
     }
     

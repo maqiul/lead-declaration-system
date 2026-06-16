@@ -102,6 +102,11 @@ public class BankAccountConfig {
     private BigDecimal serviceFeeRate;
 
     /**
+     * 最低操作费金额（计算出的手续费低于此值时，按此值收取）
+     */
+    private BigDecimal minServiceFee;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

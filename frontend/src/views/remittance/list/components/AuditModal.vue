@@ -232,10 +232,9 @@ const recalcCreditedAmount = () => {
 const handleBankChange = (value: any) => {
   const bank = bankList.value.find(b => b.id === value)
   if (bank && remittance.value) {
+    // 只设置手续费率，手续费由用户手动填写
     auditForm.bankFeeRate = bank.serviceFeeRate * 100
-    const amount = remittance.value.remittanceAmount || 0
-    auditForm.bankFee = parseFloat((amount * bank.serviceFeeRate).toFixed(2))
-    recalcCreditedAmount()
+    // 不再自动计算 bankFee，让用户自己填写
   }
 }
 

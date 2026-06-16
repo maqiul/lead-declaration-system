@@ -51,6 +51,7 @@
         :data-source="countryList"
         :loading="loading"
         :pagination="pagination"
+        :scroll="{ x: 1050 }"
         @change="handleTableChange"
         row-key="id"
         class="ui-table"
@@ -62,12 +63,12 @@
             </a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as CountryInfo)" v-permission="['system:country:update']" class="text-blue-600 font-medium">
+            <a-space :size="2">
+              <a-button type="link" size="small" @click="handleEdit(record as CountryInfo)" v-permission="['system:country:update']" class="text-blue-600 font-medium" style="padding: 0 4px">
                 <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
-              <a-button type="link" size="small" :danger="record.status === 1" @click="handleToggleStatus(record as CountryInfo)" v-permission="['system:country:update']" class="font-medium">
+              <a-button type="link" size="small" :danger="record.status === 1" @click="handleToggleStatus(record as CountryInfo)" v-permission="['system:country:update']" class="font-medium" style="padding: 0 4px">
                 <template #icon>
                   <component :is="record.status === 1 ? 'StopOutlined' : 'CheckCircleOutlined'" />
                 </template>
@@ -77,7 +78,7 @@
                 title="确定要删除国家数据吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['system:country:delete']" class="font-medium">
+                <a-button type="link" size="small" danger v-permission="['system:country:delete']" class="font-medium" style="padding: 0 4px">
                   <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
@@ -163,45 +164,53 @@ const columns = [
   {
     title: '中文名称',
     dataIndex: 'chineseName',
-    key: 'chineseName'
+    key: 'chineseName',
+    width: 120
   },
   {
     title: '英文名称',
     dataIndex: 'englishName',
-    key: 'englishName'
+    key: 'englishName',
+    width: 150
   },
   {
     title: '国家编码',
     dataIndex: 'countryCode',
-    key: 'countryCode'
+    key: 'countryCode',
+    width: 120
   },
   {
     title: '缩写',
     dataIndex: 'abbreviation',
-    key: 'abbreviation'
+    key: 'abbreviation',
+    width: 100
   },
   {
     title: '大洲',
     dataIndex: 'continent',
-    key: 'continent'
+    key: 'continent',
+    width: 100
   },
   {
     title: '状态',
     dataIndex: 'status',
-    key: 'status'
+    key: 'status',
+    width: 100
   },
   {
     title: '排序',
     dataIndex: 'sort',
-    key: 'sort'
+    key: 'sort',
+    width: 80
   },
   {
     title: '操作',
     key: 'action',
     fixed: 'right' as const,
-    width: 200
+    width: 220
   }
 ]
+// 列宽总和: 120+150+120+100+100+100+80+220 = 990, scroll.x = 990+60 = 1050
 
 // 响应式数据
 const loading = ref(false)

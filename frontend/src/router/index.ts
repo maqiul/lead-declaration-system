@@ -222,10 +222,29 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '水单管理', icon: 'AccountBookOutlined' },
     children: [
       {
-        path: 'list',
-        name: 'RemittanceList',
+        path: 'draft',
+        name: 'RemittanceDraft',
         component: () => import('@/views/remittance/list/index.vue'),
-        meta: { title: '水单列表', icon: 'ListOutlined' }
+        meta: { title: '草稿水单', icon: 'EditOutlined' },
+        props: { defaultStatus: 0 }
+      },
+      {
+        path: 'pending',
+        name: 'RemittancePending',
+        component: () => import('@/views/remittance/list/index.vue'),
+        meta: { title: '待审核', icon: 'ClockCircleOutlined' }
+      },
+      {
+        path: 'audited',
+        name: 'RemittanceAudited',
+        component: () => import('@/views/remittance/list/index.vue'),
+        meta: { title: '已审核', icon: 'CheckCircleOutlined' }
+      },
+      {
+        path: 'unrelated',
+        name: 'RemittanceUnrelated',
+        component: () => import('@/views/remittance/list/index.vue'),
+        meta: { title: '未关联', icon: 'LinkOutlined' }
       },
       {
         path: 'audit',

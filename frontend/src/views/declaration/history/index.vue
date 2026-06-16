@@ -47,6 +47,7 @@
         :columns="columns" 
         :pagination="pagination"
         :loading="loading"
+        :scroll="{ x: 1500 }"
         rowKey="id"
         @change="handleTableChange"
       >

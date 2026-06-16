@@ -48,6 +48,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="pagination"
+        :scroll="{ x: 1210 }"
         @change="handleTableChange"
         rowKey="id"
         class="ui-table"
@@ -259,7 +260,7 @@ const columns = [
     title: '操作',
     key: 'action',
     fixed: 'right' as const,
-    width: 200
+    width: 220
   }
 ]
 

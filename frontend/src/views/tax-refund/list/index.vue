@@ -56,6 +56,7 @@
         :columns="columns" 
         :loading="loading"
         :pagination="pagination"
+        :scroll="{ x: 1200 }"
         :row-selection="rowSelection"
         @change="handleTableChange"
         rowKey="id"

@@ -37,6 +37,7 @@
         :loading="loading"
         :pagination="pagination"
         row-key="id"
+        :scroll="{ x: 1160 }"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
@@ -51,16 +52,16 @@
           </template>
 
           <template v-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleView(record as Remittance)">
+            <a-space :size="2">
+              <a-button type="link" size="small" style="padding: 0 4px" @click="handleView(record as Remittance)">
                 <template #icon><EyeOutlined /></template>
                 查看
               </a-button>
-              <a-button type="primary" size="small" @click="handleAudit(record as Remittance)" v-if="record.status === 1">
+              <a-button type="primary" size="small" style="padding: 0 4px" @click="handleAudit(record as Remittance)" v-if="record.status === 1">
                 <template #icon><AuditOutlined /></template>
                 审核
               </a-button>
-              <a-button type="link" size="small" @click="handleRevokeAudit(record as Remittance)" v-if="record.status === 2" style="color: #fa541c">
+              <a-button type="link" size="small" style="padding: 0 4px" @click="handleRevokeAudit(record as Remittance)" v-if="record.status === 2" color="#fa541c">
                 <template #icon><RollbackOutlined /></template>
                 反审核
               </a-button>
@@ -337,7 +338,7 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 200,
+    width: 220,
     fixed: 'right' as const
   }
 ]

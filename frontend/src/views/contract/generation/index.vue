@@ -41,6 +41,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="pagination"
+        :scroll="{ x: 1270 }"
         @change="handleTableChange"
         rowKey="id"
       >
@@ -56,12 +57,12 @@
           </template>
 
           <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button v-permission="['business:contract:download']" type="link" size="small" @click="handlePreview(record.id)">
+            <a-space :size="2">
+              <a-button v-permission="['business:contract:download']" type="link" size="small" style="padding: 0 4px" @click="handlePreview(record.id)">
                 <template #icon><EyeOutlined /></template>
                 预览
               </a-button>
-              <a-button v-permission="['business:contract:download']" type="primary" size="small" @click="handleDownload(record.id)">
+              <a-button v-permission="['business:contract:download']" type="primary" size="small" style="padding: 0 4px" @click="handleDownload(record.id)">
                 <template #icon><DownloadOutlined /></template>
                 下载
               </a-button>
@@ -69,7 +70,7 @@
                 title="确定要删除这条记录吗？(仅删除记录，不一定删除实际文件)"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button v-permission="['business:contract:generation:delete']" type="link" size="small" danger>
+                <a-button v-permission="['business:contract:generation:delete']" type="link" size="small" danger style="padding: 0 4px">
                   <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
@@ -124,7 +125,7 @@ const columns = [
   { title: '文件名', dataIndex: 'generatedFileName', key: 'generatedFileName' },
   { title: '大小', key: 'fileSize', width: 100 },
   { title: '生成时间', dataIndex: 'generatedTime', key: 'generatedTime', width: 180 },
-  { title: '操作', key: 'action', width: 180, fixed: 'right' as const }
+  { title: '操作', key: 'action', width: 200, fixed: 'right' as const }
 ]
 
 // 加载列表

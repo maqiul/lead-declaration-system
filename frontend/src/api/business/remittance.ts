@@ -32,6 +32,7 @@ export interface Remittance {
   submitTime?: string
   createTime?: string
   updateTime?: string
+  totalRelatedAmount?: number // 已关联金额合计（后端动态计算）
 }
 
 // 水单查询参数
@@ -44,6 +45,7 @@ export interface RemittanceQueryParams {
   remittanceType?: number // 已废弃
   status?: number
   remittanceNo?: string
+  relationStatus?: string // UNRELATED-未关联 RELATED-已关联 PARTIAL-未完全关联
 }
 
 // 水单关联申报单

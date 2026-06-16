@@ -54,6 +54,7 @@
         :data-source="menuList"
         :loading="loading"
         :pagination="false"
+        :scroll="{ x: 1120 }"
         :expanded-row-keys="expandedRowKeys"
         @expand="handleExpand"
         row-key="id"
@@ -77,12 +78,12 @@
             </a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleEdit(record as Menu)" v-permission="['menu:update']" class="font-medium text-blue-600">
+            <a-space :size="2">
+              <a-button type="link" size="small" @click="handleEdit(record as Menu)" v-permission="['menu:update']" class="font-medium text-blue-600" style="padding: 0 4px">
                 <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
-              <a-button type="link" size="small" @click="handleAdd(record.id)" v-permission="['menu:create']" class="font-medium text-blue-600">
+              <a-button type="link" size="small" @click="handleAdd(record.id)" v-permission="['menu:create']" class="font-medium text-blue-600" style="padding: 0 4px">
                 <template #icon><PlusOutlined /></template>
                 新增下级
               </a-button>
@@ -90,7 +91,7 @@
                 title="确定要删除该菜单及其所有子菜单吗？"
                 @confirm="handleDelete(record.id)"
               >
-                <a-button type="link" size="small" danger v-permission="['menu:delete']" class="font-medium">
+                <a-button type="link" size="small" danger v-permission="['menu:delete']" class="font-medium" style="padding: 0 4px">
                   <template #icon><DeleteOutlined /></template>
                   删除
                 </a-button>
@@ -256,7 +257,7 @@ const columns = [
     title: '菜单名称',
     dataIndex: 'menuName',
     key: 'menuName',
-    width: '20%'
+    width: 180
   },
   {
     title: '类型',
@@ -267,12 +268,14 @@ const columns = [
   {
     title: '权限标识',
     dataIndex: 'permission',
-    key: 'permission'
+    key: 'permission',
+    width: 200
   },
   {
     title: '路由地址',
     dataIndex: 'path',
-    key: 'path'
+    key: 'path',
+    width: 200
   },
   {
     title: '状态',
@@ -290,7 +293,7 @@ const columns = [
     title: '操作',
     key: 'action',
     fixed: 'right' as const,
-    width: 200
+    width: 220
   }
 ]
 

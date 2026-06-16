@@ -63,6 +63,7 @@
         :data-source="pickList"
         :pagination="pickPagination"
         :loading="pickLoading"
+        :scroll="{ x: 800 }"
         row-key="id"
         size="small"
         @change="handlePickTableChange"

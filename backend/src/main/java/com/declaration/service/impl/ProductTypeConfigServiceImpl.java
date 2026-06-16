@@ -99,24 +99,40 @@ public class ProductTypeConfigServiceImpl extends ServiceImpl<ProductTypeConfigD
 
     @Override
     public ProductTypeConfig getByHsCode(String hsCode) {
+        if (hsCode == null || hsCode.isBlank()) {
+            return null;
+        }
+        // 规范化：去掉点号和空格，统一为纯数字编码
+        String normalizedCode = hsCode.replaceAll("[.\\s]", "");
+
         try {
-            // 尝试从缓存获取
-            ProductTypeConfig cachedConfig = getCachedByHsCode(hsCode);
+            // 尝试从缓存获取（用规范化后的编码作 key）
+            ProductTypeConfig cachedConfig = getCachedByHsCode(normalizedCode);
             if (cachedConfig != null) {
                 return cachedConfig;
             }
-            
-            // 缓存未命中，从数据库查询
+
+            // 优先精确匹配
             LambdaQueryWrapper<ProductTypeConfig> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(ProductTypeConfig::getHsCode, hsCode);
-            
+            wrapper.eq(ProductTypeConfig::getHsCode, normalizedCode);
             ProductTypeConfig config = getOne(wrapper);
+
+            // 精确匹配失败，尝试去点号后匹配（兼容数据库中带点号存储的情况）
+            if (config == null) {
+                List<ProductTypeConfig> allEnabled = getEnabledList();
+                for (ProductTypeConfig ptc : allEnabled) {
+                    String dbNormalized = ptc.getHsCode() != null ? ptc.getHsCode().replaceAll("[.\\s]", "") : "";
+                    if (dbNormalized.equals(normalizedCode)) {
+                        config = ptc;
+                        break;
+                    }
+                }
+            }
+
             if (config != null) {
                 parseElements(config);
-                
-                // 尝试缓存结果（失败不影响业务）
                 try {
-                    cacheByHsCode(hsCode, config);
+                    cacheByHsCode(normalizedCode, config);
                 } catch (Exception e) {
                     log.warn("缓存HS商品类型详情失败，但不影响业务: {}", e.getMessage());
                 }
@@ -124,10 +140,8 @@ public class ProductTypeConfigServiceImpl extends ServiceImpl<ProductTypeConfigD
             return config;
         } catch (Exception e) {
             log.error("根据HS编码获取商品类型失败: hsCode={}", hsCode, e);
-            // 如果Redis完全不可用，直接查询数据库
             LambdaQueryWrapper<ProductTypeConfig> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(ProductTypeConfig::getHsCode, hsCode);
-            
+            wrapper.eq(ProductTypeConfig::getHsCode, normalizedCode);
             ProductTypeConfig config = getOne(wrapper);
             if (config != null) {
                 parseElements(config);

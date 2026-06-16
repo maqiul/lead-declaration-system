@@ -75,6 +75,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="pagination"
+        :scroll="{ x: 1200 }"
         @change="handleTableChange"
         rowKey="id"
         class="ui-table"

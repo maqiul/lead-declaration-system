@@ -158,11 +158,12 @@ public class RemittanceController {
             PageParam pageParam,
             @RequestParam(required = false) Integer remittanceType,
             @RequestParam(required = false) Integer status,
-            @RequestParam(required = false) String remittanceNo) {
+            @RequestParam(required = false) String remittanceNo,
+            @RequestParam(required = false) String relationStatus) {
         
         // 普通用户只能查看自己创建的水单
         // 管理员和财务经理可以查看所有水单
-        IPage<DeclarationRemittance> page = remittanceService.getPage(pageParam, remittanceType, status, remittanceNo);
+        IPage<DeclarationRemittance> page = remittanceService.getPage(pageParam, remittanceType, status, remittanceNo, relationStatus);
         return Result.success(page);
     }
 
