@@ -329,9 +329,11 @@ public class FinancialSupplementController {
                     BigDecimal amt = (BigDecimal) d.get("amount");
                     BigDecimal rate = (BigDecimal) d.get("taxRate");
                     BigDecimal cny = (BigDecimal) d.get("cnyAmount");
+                    BigDecimal bankFeeCny = (BigDecimal) d.get("bankFeeCny");
+                    BigDecimal internalFeeCny = (BigDecimal) d.get("internalBankFee");
                     String currency = d.get("currency") != null ? d.get("currency").toString() : "USD";
-                    createDataRow(sheet, rowNum++, name.isEmpty() ? "水单" : name, 
-                            String.format("%,.2f %s × %s = %,.2f CNY", amt, currency, rate, cny), headerStyle);
+                    createDataRow(sheet, rowNum++, name.isEmpty() ? "水单" : name,
+                            String.format("%1$,.2f %2$s × %3$s = %4$,.2f CNY，银行手续费: %5$,.2f CNY，内部操作费: %6$,.2f CNY", amt, currency, rate, cny, bankFeeCny, internalFeeCny), headerStyle);
                 }
             }
             createDataRow(sheet, rowNum++, "收汇合计(CNY)", String.format("%,.2f", calcDetail.get("totalCny")), headerStyle);
@@ -351,9 +353,10 @@ public class FinancialSupplementController {
             List<Map<String, Object>> productTaxDetails = (List<Map<String, Object>>) calcDetail.get("productTaxDetails");
             if (productTaxDetails != null && !productTaxDetails.isEmpty()) {
                 for (Map<String, Object> pd : productTaxDetails) {
-                    String label = String.format("商品[%s] 退税率(%s%%) CNY",
+                    String label = String.format("商品[%1$s] 退税率(%2$s%%) 分摊%3$s%%",
                             pd.get("productName") != null ? pd.get("productName") : "",
-                            pd.get("taxRefundRate") != null ? pd.get("taxRefundRate") : "0");
+                            pd.get("taxRefundRate") != null ? pd.get("taxRefundRate") : "0",
+                            pd.get("proportion") != null ? pd.get("proportion") : "0");
                     createDataRow(sheet, rowNum++, label, String.format("%,.2f", pd.get("amountWithTaxRefund")), headerStyle);
                 }
             } else {
@@ -378,8 +381,9 @@ public class FinancialSupplementController {
                 }
             }
             createDataRow(sheet, rowNum++, "发票扣减合计(CNY)", String.format("%,.2f", calcDetail.get("totalInvoiceDeduction")), headerStyle);
-            createDataRow(sheet, rowNum++, "内部操作手续费率(%)", String.format("%s", calcDetail.get("bankFeeRate")), headerStyle);
-            createDataRow(sheet, rowNum++, "内部操作手续费扣款(CNY)", String.format("%,.2f", calcDetail.get("bankFeeAmount")), headerStyle);
+            createDataRow(sheet, rowNum++, "银行手续费扣款(CNY)", String.format("%,.2f", calcDetail.get("bankFeeAmount")), headerStyle);
+            createDataRow(sheet, rowNum++, "内部操作手续费扣款(CNY)", String.format("%,.2f", calcDetail.get("internalBankFee")), headerStyle);
+            createDataRow(sheet, rowNum++, "手续费合计(CNY)", String.format("%,.2f", calcDetail.get("totalFeeAmount")), headerStyle);
 
             rowNum++;
             XSSFRow resultRow = sheet.createRow(rowNum++);

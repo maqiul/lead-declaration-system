@@ -287,29 +287,47 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
                 .eq(DeclarationProduct::getFormId, formId)
                 .list();
 
-        // 7.2 获取第一条水单的汇率（用于商品换算CNY）
-        BigDecimal firstRemittanceRate = BigDecimal.ZERO;
-        if (!auditedRemittances.isEmpty()) {
-            Map<String, Object> firstR = auditedRemittances.get(0);
-            firstRemittanceRate = firstR.get("taxRate") != null ? (BigDecimal) firstR.get("taxRate") : BigDecimal.ZERO;
+        // 7.2 计算产品总金额（原币），用于比例分摊
+        BigDecimal totalProductAmount = BigDecimal.ZERO;
+        for (DeclarationProduct product : products) {
+            if (product.getAmount() != null && product.getAmount().compareTo(BigDecimal.ZERO) > 0) {
+                totalProductAmount = totalProductAmount.add(product.getAmount());
+            }
         }
-        calculationSteps.add(String.format("使用汇率: 第一条水单汇率 = %s", RATE_FORMAT.format(firstRemittanceRate)));
 
-        // 7.3 逐产品计算退税加成：商品总价 × 第一条水单汇率 × (1 + 退税率)
+        // 7.3 逐产品按比例分摊 totalGoodsAmount(CNY)，最后一个产品差额补齐
         BigDecimal amountWithTaxRefund = BigDecimal.ZERO;
+        BigDecimal allocatedCny = BigDecimal.ZERO;  // 已累计分配的CNY
         List<Map<String, Object>> productTaxDetails = new ArrayList<>();
 
-        if (products.isEmpty()) {
-            // 无产品时，不计算退税
+        if (products.isEmpty() || totalProductAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            // 无产品或无金额时，不计算退税
             amountWithTaxRefund = totalGoodsAmount;
             calculationSteps.add(String.format("退税加成: %s CNY（无商品信息）", AMOUNT_FORMAT.format(amountWithTaxRefund)));
         } else {
+            // 过滤出有效产品
+            List<DeclarationProduct> validProducts = new ArrayList<>();
             for (DeclarationProduct product : products) {
-                BigDecimal productAmount = product.getAmount() != null ? product.getAmount() : BigDecimal.ZERO;
-                if (productAmount.compareTo(BigDecimal.ZERO) <= 0) continue;
+                BigDecimal pa = product.getAmount() != null ? product.getAmount() : BigDecimal.ZERO;
+                if (pa.compareTo(BigDecimal.ZERO) > 0) {
+                    validProducts.add(product);
+                }
+            }
 
-                // 商品总价 × 第一条水单汇率 = CNY
-                BigDecimal productCny = productAmount.multiply(firstRemittanceRate).setScale(2, RoundingMode.HALF_UP);
+            for (int i = 0; i < validProducts.size(); i++) {
+                DeclarationProduct product = validProducts.get(i);
+                BigDecimal productAmount = product.getAmount();
+                boolean isLast = (i == validProducts.size() - 1);
+
+                // 按比例分摊 CNY：最后一个产品用差额补齐，避免精度丢失
+                BigDecimal productCny;
+                if (isLast) {
+                    productCny = totalGoodsAmount.subtract(allocatedCny);
+                } else {
+                    BigDecimal proportion = productAmount.divide(totalProductAmount, 8, RoundingMode.HALF_UP);
+                    productCny = totalGoodsAmount.multiply(proportion).setScale(2, RoundingMode.HALF_UP);
+                    allocatedCny = allocatedCny.add(productCny);
+                }
 
                 // 查询该 HS 编码的退税率，无则默认 0
                 BigDecimal productTaxRefundRate = BigDecimal.ZERO;
@@ -326,19 +344,22 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
                 amountWithTaxRefund = amountWithTaxRefund.add(productAmountWithTax);
 
                 // 记录详情用于展示
+                BigDecimal displayProportion = productAmount.divide(totalProductAmount, 4, RoundingMode.HALF_UP)
+                        .multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP);
                 Map<String, Object> detail = new LinkedHashMap<>();
                 detail.put("productName", product.getProductName() != null ? product.getProductName() : product.getProductChineseName());
                 detail.put("hsCode", product.getHsCode());
                 detail.put("amount", productAmount);
-                detail.put("exchangeRate", firstRemittanceRate);
+                detail.put("proportion", displayProportion);
                 detail.put("cnyAmount", productCny);
                 detail.put("taxRefundRate", productTaxRefundRate.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
                 detail.put("amountWithTaxRefund", productAmountWithTax);
                 productTaxDetails.add(detail);
 
-                calculationSteps.add(String.format("商品[%s]: %s × %s = %s CNY, 退税率%s%%: %s × (1 + %s%%) = %s CNY",
+                calculationSteps.add(String.format("商品[%s] 分摊%s%%: %s CNY, 退税率%s%%: %s × (1 + %s%%) = %s CNY",
                         product.getProductName() != null ? product.getProductName() : product.getHsCode(),
-                        AMOUNT_FORMAT.format(productAmount), RATE_FORMAT.format(firstRemittanceRate), AMOUNT_FORMAT.format(productCny),
+                        RATE_FORMAT.format(displayProportion),
+                        AMOUNT_FORMAT.format(productCny),
                         RATE_FORMAT.format(productTaxRefundRate.multiply(new BigDecimal("100"))),
                         AMOUNT_FORMAT.format(productCny),
                         RATE_FORMAT.format(productTaxRefundRate.multiply(new BigDecimal("100"))),
@@ -363,14 +384,19 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
         BigDecimal bankFeeAmount = totalBankFeeCny;
         BigDecimal internalBankFeeTotal = totalInternalBankFee;
         BigDecimal totalFeeAmount = bankFeeAmount.add(internalBankFeeTotal);
+        // 分别计算费率
         BigDecimal bankFeeRate = BigDecimal.ZERO;
+        BigDecimal internalBankFeeRate = BigDecimal.ZERO;
         if (totalCny.compareTo(BigDecimal.ZERO) > 0) {
-            bankFeeRate = totalFeeAmount.divide(totalCny, 6, RoundingMode.HALF_UP);
+            bankFeeRate = bankFeeAmount.divide(totalCny, 6, RoundingMode.HALF_UP);
+            internalBankFeeRate = internalBankFeeTotal.divide(totalCny, 6, RoundingMode.HALF_UP);
         }
         BigDecimal bankFeePercent = bankFeeRate.multiply(new BigDecimal("100"));
-        calculationSteps.add(String.format("减 银行手续费: -%s CNY, 内部操作费: -%s CNY, 合计: -%s CNY (综合费率≈%s%%)",
-                AMOUNT_FORMAT.format(bankFeeAmount), AMOUNT_FORMAT.format(internalBankFeeTotal),
-                AMOUNT_FORMAT.format(totalFeeAmount), RATE_FORMAT.format(bankFeePercent)));
+        BigDecimal internalBankFeePercent = internalBankFeeRate.multiply(new BigDecimal("100"));
+        calculationSteps.add(String.format("减 银行手续费: -%s CNY (费率≈%s%%), 内部操作费: -%s CNY (费率≈%s%%), 合计: -%s CNY",
+                AMOUNT_FORMAT.format(bankFeeAmount), RATE_FORMAT.format(bankFeePercent),
+                AMOUNT_FORMAT.format(internalBankFeeTotal), RATE_FORMAT.format(internalBankFeePercent),
+                AMOUNT_FORMAT.format(totalFeeAmount)));
 
         // 10. 计算最终开票金额
         BigDecimal invoiceAmount = amountWithTaxRefund
@@ -402,7 +428,9 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
         result.put("totalInvoiceDeduction", totalInvoiceDeduction);
         result.put("bankFeeRate", bankFeePercent);
         result.put("bankFeeAmount", bankFeeAmount);
+        result.put("internalBankFeeRate", internalBankFeePercent);
         result.put("internalBankFee", internalBankFeeTotal);
+        result.put("totalFeeAmount", totalFeeAmount);
         result.put("foreignExchangeBank", foreignExchangeBank);
 
         // 最终结果

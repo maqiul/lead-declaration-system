@@ -182,8 +182,16 @@
                         <span class="calc-value" style="font-weight: bold;">{{ formatMoney(calculationDetail.totalInvoiceDeduction || 0) }} CNY</span>
                       </div>
                       <div class="calc-row deduct">
-                        <span class="calc-label">- 内部操作手续费合计:</span>
-                        <span class="calc-value">{{ formatMoney(calculationDetail.bankFeeAmount) }} CNY <span style="font-size: 11px; color: #999;">（综合费率≈{{ calculationDetail.bankFeeRate }}%）</span></span>
+                        <span class="calc-label">- 银行手续费:</span>
+                        <span class="calc-value">{{ formatMoney(calculationDetail.bankFeeAmount) }} CNY</span>
+                      </div>
+                      <div class="calc-row deduct">
+                        <span class="calc-label">- 内部操作手续费:</span>
+                        <span class="calc-value">{{ formatMoney(calculationDetail.internalBankFee) }} CNY</span>
+                      </div>
+                      <div class="calc-row deduct" style="border-bottom: 1px solid #d9d9d9;">
+                        <span class="calc-label" style="font-weight: bold;">- 手续费合计:</span>
+                        <span class="calc-value" style="font-weight: bold;">{{ formatMoney(calculationDetail.totalFeeAmount || 0) }} CNY</span>
                       </div>
                     </div>
                     <a-divider />
