@@ -57,7 +57,7 @@
               <a-tag :color="getStatusColor(record.status)">{{ getStatusLabel(record.status) }}</a-tag>
             </template>
             <template v-if="column.key === 'totalAmount'">
-              ¥{{ record.totalAmount?.toFixed(2) || '0.00' }}
+              {{ record.currencySymbol || '' }}{{ record.totalAmount?.toFixed(2) || '0.00' }}
             </template>
             <template v-if="column.key === 'createTime'">
               {{ formatDate(record.createTime) }}
@@ -128,6 +128,8 @@ interface WarningItem {
   destinationCountry: string
   daysOverdue: number
   declarantName: string
+  currency: string
+  currencySymbol: string
 }
 const warningCount = ref(0)
 const warningList = ref<WarningItem[]>([])

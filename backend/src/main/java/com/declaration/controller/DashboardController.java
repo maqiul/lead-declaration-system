@@ -3,9 +3,11 @@ package com.declaration.controller;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.declaration.common.Result;
+import com.declaration.entity.CurrencyInfo;
 import com.declaration.entity.DeclarationForm;
 import com.declaration.entity.TaxRefundApplication;
 import com.declaration.entity.User;
+import com.declaration.service.CurrencyInfoService;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.TaxRefundApplicationService;
 import com.declaration.service.TaskService;
@@ -39,6 +41,7 @@ public class DashboardController {
     private final TaxRefundApplicationService taxRefundApplicationService;
     private final TaskService taskService;
     private final UserService userService;
+    private final CurrencyInfoService currencyInfoService;
 
     @GetMapping("/stats")
     @Operation(summary = "获取工作台统计卡片数据")
@@ -284,6 +287,10 @@ public class DashboardController {
                     (a, b) -> a)));
         }
 
+        // 批量查询货币符号
+        Map<String, String> currencySymbolMap = currencyInfoService.getEnabledList().stream()
+                .collect(Collectors.toMap(CurrencyInfo::getCurrencyCode, CurrencyInfo::getSymbol, (a, b) -> a));
+
         List<Map<String, Object>> warningItems = warningList.stream().map(form -> {
             Map<String, Object> item = new HashMap<>();
             item.put("id", form.getId());
@@ -292,6 +299,9 @@ public class DashboardController {
             item.put("status", form.getStatus());
             item.put("createTime", form.getCreateTime());
             item.put("totalAmount", form.getTotalAmount());
+            item.put("currency", form.getCurrency());
+            item.put("currencySymbol", form.getCurrency() != null
+                    ? currencySymbolMap.getOrDefault(form.getCurrency().toUpperCase(), form.getCurrency()) : "");
             item.put("destinationCountry", form.getDestinationCountry());
             item.put("declarantName", form.getCreateBy() != null
                     ? userNameMap.getOrDefault(form.getCreateBy(), "未知用户") : "未知用户");
