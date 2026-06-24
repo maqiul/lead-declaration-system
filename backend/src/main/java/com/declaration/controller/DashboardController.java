@@ -268,6 +268,22 @@ public class DashboardController {
         warningWrapper.orderByAsc(DeclarationForm::getCreateTime);
 
         List<DeclarationForm> warningList = declarationFormService.list(warningWrapper);
+
+        // 批量查询申报人姓名
+        List<Long> userIds = warningList.stream()
+                .map(DeclarationForm::getCreateBy)
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> userNameMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<User> users = userService.listByIds(userIds);
+            userNameMap.putAll(users.stream().collect(Collectors.toMap(
+                    User::getId,
+                    u -> u.getNickname() != null ? u.getNickname() : u.getUsername(),
+                    (a, b) -> a)));
+        }
+
         List<Map<String, Object>> warningItems = warningList.stream().map(form -> {
             Map<String, Object> item = new HashMap<>();
             item.put("id", form.getId());
@@ -277,6 +293,8 @@ public class DashboardController {
             item.put("createTime", form.getCreateTime());
             item.put("totalAmount", form.getTotalAmount());
             item.put("destinationCountry", form.getDestinationCountry());
+            item.put("declarantName", form.getCreateBy() != null
+                    ? userNameMap.getOrDefault(form.getCreateBy(), "未知用户") : "未知用户");
             return item;
         }).collect(Collectors.toList());
 

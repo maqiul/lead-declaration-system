@@ -127,6 +127,7 @@ interface WarningItem {
   totalAmount: number
   destinationCountry: string
   daysOverdue: number
+  declarantName: string
 }
 const warningCount = ref(0)
 const warningList = ref<WarningItem[]>([])
@@ -146,6 +147,7 @@ function getIcon(name: string): Component {
 
 const warningColumns = [
   { title: '申报单号', key: 'formNo', dataIndex: 'formNo' },
+  { title: '申报人', key: 'declarantName', dataIndex: 'declarantName' },
   { title: '发货人', key: 'shipperCompany', dataIndex: 'shipperCompany' },
   { title: '目的国', key: 'destinationCountry', dataIndex: 'destinationCountry' },
   { title: '总金额', key: 'totalAmount', dataIndex: 'totalAmount' },
