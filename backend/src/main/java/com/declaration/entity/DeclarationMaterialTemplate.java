@@ -43,6 +43,9 @@ public class DeclarationMaterialTemplate implements Serializable {
     /** 所属环节：MATERIAL_SUBMIT-资料上传 / INVOICE-业务发票 / FINANCE_SUPPLEMENT-财务补充 */
     private String stage;
 
+    /** 发票模式: 0-普通附件 1-附件级金额/发票号/日期 */
+    private Integer invoiceMode;
+
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

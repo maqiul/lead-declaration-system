@@ -264,6 +264,7 @@ public class DeclarationMaterialItemServiceImpl
                 virtual.setFormId(formId);
                 virtual.setTemplateId(tpl.getId());
                 virtual.setStage(tpl.getStage());
+                virtual.setInvoiceMode(tpl.getInvoiceMode() != null ? tpl.getInvoiceMode() : 0);
                 virtual.setCode(tpl.getCode());
                 virtual.setName(tpl.getName());
                 virtual.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());
@@ -333,6 +334,7 @@ public class DeclarationMaterialItemServiceImpl
         item.setFormId(formId);
         item.setTemplateId(tpl.getId());
         item.setStage(tpl.getStage());
+        item.setInvoiceMode(tpl.getInvoiceMode() != null ? tpl.getInvoiceMode() : 0);
         item.setCode(tpl.getCode());
         item.setName(tpl.getName());
         item.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());
@@ -370,6 +372,7 @@ public class DeclarationMaterialItemServiceImpl
             item.setFormId(formId);
             item.setTemplateId(tpl.getId());
             item.setStage(tpl.getStage());
+            item.setInvoiceMode(tpl.getInvoiceMode() != null ? tpl.getInvoiceMode() : 0);
             item.setCode(tpl.getCode());
             item.setName(tpl.getName());
             item.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());

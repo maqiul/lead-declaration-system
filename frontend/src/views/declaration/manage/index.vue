@@ -340,6 +340,10 @@
             </a-list-item-meta>
             <template #actions>
               <a-space>
+                <a-button type="link" size="small" @click="previewAttachment(item)">
+                  <template #icon><EyeOutlined /></template>
+                  预览
+                </a-button>
                 <a-button type="link" size="small" @click="downloadAttachment(item)" v-permission="['business:declaration:download']">
                   <template #icon><DownloadOutlined /></template>
                   下载
@@ -1782,11 +1786,18 @@ const loadAttachmentsForDeclaration = async (declaration: any) => {
 }
 
 
-const downloadAttachment = (attachment: any) => {
+const previewAttachment = (attachment: any) => {
   if (attachment.fileUrl) {
     previewUrl.value = attachment.fileUrl
     previewVisible.value = true
   }
+}
+const downloadAttachment = (attachment: any) => {
+  if (!attachment.fileUrl) return
+  const a = document.createElement('a')
+  a.href = attachment.fileUrl
+  a.download = attachment.fileName || 'download'
+  a.click()
 }
 
 

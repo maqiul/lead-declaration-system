@@ -410,6 +410,46 @@ public class FinancialSupplementController {
                 }
             }
 
+            rowNum++;
+
+            // 商品明细
+            XSSFRow productTitleRow = sheet.createRow(rowNum++);
+            productTitleRow.createCell(0).setCellValue("商品明细");
+            productTitleRow.getCell(0).setCellStyle(headerStyle);
+            sheet.addMergedRegion(new CellRangeAddress(rowNum - 1, rowNum - 1, 0, 3));
+
+            if (productTaxDetails != null && !productTaxDetails.isEmpty()) {
+                // 计算总费用（发票扣减 + 手续费），按比例分摊到每个商品
+                BigDecimal totalDeductions = BigDecimal.ZERO;
+                if (calcDetail.get("totalInvoiceDeduction") instanceof BigDecimal) {
+                    totalDeductions = totalDeductions.add((BigDecimal) calcDetail.get("totalInvoiceDeduction"));
+                }
+                if (calcDetail.get("totalFeeAmount") instanceof BigDecimal) {
+                    totalDeductions = totalDeductions.add((BigDecimal) calcDetail.get("totalFeeAmount"));
+                }
+                BigDecimal totalProductAmountWithTax = (BigDecimal) calcDetail.get("amountWithTaxRefund");
+
+                for (Map<String, Object> pd : productTaxDetails) {
+                    String productName = pd.get("productName") != null ? pd.get("productName").toString() : "";
+                    Integer qty = pd.get("quantity") != null ? ((Number) pd.get("quantity")).intValue() : null;
+                    String unit = pd.get("unit") != null ? pd.get("unit").toString() : "";
+                    BigDecimal productAmtWithTax = (BigDecimal) pd.get("amountWithTaxRefund");
+
+                    // 按比例分摊费用：商品净金额 = 含税金额 - (含税金额 / 总含税金额 × 总费用)
+                    BigDecimal netAmount = productAmtWithTax;
+                    if (totalProductAmountWithTax != null && totalProductAmountWithTax.compareTo(BigDecimal.ZERO) > 0) {
+                        BigDecimal allocatedFee = totalDeductions
+                                .multiply(productAmtWithTax.divide(totalProductAmountWithTax, 8, java.math.RoundingMode.HALF_UP))
+                                .setScale(2, java.math.RoundingMode.HALF_UP);
+                        netAmount = productAmtWithTax.subtract(allocatedFee);
+                    }
+
+                    String qtyStr = qty != null ? qty + " " + unit : "-";
+                    createDataRow(sheet, rowNum++, productName,
+                            qtyStr + "  |  " + String.format("%,.2f CNY", netAmount), headerStyle);
+                }
+            }
+
             for(int i=0; i<4; i++) {
                 sheet.autoSizeColumn(i);
             }

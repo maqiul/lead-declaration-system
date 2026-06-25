@@ -7,6 +7,13 @@
     :destroy-on-close="true"
     class="file-preview-modal"
   >
+    <!-- 工具栏 -->
+    <div v-if="url" class="preview-toolbar">
+      <a-button size="small" @click="downloadFile">
+        <template #icon><DownloadOutlined /></template>
+        下载文件
+      </a-button>
+    </div>
     <div v-if="url" class="preview-container">
       <!-- PDF 预览 -->
       <div v-if="isPdf" class="pdf-preview">
@@ -29,11 +36,7 @@
 
       <!-- 其他文件 -->
       <div v-else class="other-file">
-        <a-result status="info" title="该文件类型不支持在线预览">
-          <template #extra>
-            <a-button type="primary" @click="downloadFile">下载文件</a-button>
-          </template>
-        </a-result>
+        <a-result status="info" title="该文件类型不支持在线预览，请点击上方下载按钮" />
       </div>
     </div>
   </a-modal>
@@ -41,6 +44,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue'
+import { DownloadOutlined } from '@ant-design/icons-vue'
 import { getToken } from '@/utils/auth'
 
 interface Props {
@@ -180,13 +184,14 @@ const openFullImage = () => {
 
 // 下载文件
 const downloadFile = () => {
-  if (authedUrl.value) {
-    const a = document.createElement('a')
-    a.href = authedUrl.value
-    a.download = ''
-    a.target = '_blank'
-    a.click()
-  }
+  if (!authedUrl.value) return
+  const a = document.createElement('a')
+  a.href = authedUrl.value
+  // 从 URL 中提取文件名作为下载文件名
+  const urlPath = authedUrl.value.split('?')[0]
+  const fileName = urlPath.substring(urlPath.lastIndexOf('/') + 1) || 'download'
+  a.download = decodeURIComponent(fileName)
+  a.click()
 }
 </script>
 
@@ -275,6 +280,14 @@ const downloadFile = () => {
   margin-top: 8px;
   color: #999;
   font-size: 12px;
+}
+
+.preview-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .other-file {

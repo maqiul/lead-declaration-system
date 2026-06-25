@@ -288,6 +288,9 @@
             </a-list-item-meta>
             <template #actions>
               <a-space>
+                <a-button type="link" size="small" @click="previewAttachment(item)">
+                  <template #icon><EyeOutlined /></template>预览
+                </a-button>
                 <a-button type="link" size="small" @click="downloadAttachment(item)" v-permission="['business:declaration:download']">
                   <template #icon><DownloadOutlined /></template>下载
                 </a-button>
@@ -855,7 +858,14 @@ const loadAttachmentsForDeclaration = async (decl: any) => {
 const previewVisible = ref(false)
 const previewUrl = ref('')
 const handlePreviewContract = (id: number) => { previewUrl.value = getContractDownloadUrl(id); previewVisible.value = true }
-const downloadAttachment = (att: any) => { if (att.fileUrl) { previewUrl.value = att.fileUrl; previewVisible.value = true } }
+const previewAttachment = (att: any) => { if (att.fileUrl) { previewUrl.value = att.fileUrl; previewVisible.value = true } }
+const downloadAttachment = (att: any) => {
+  if (!att.fileUrl) return
+  const a = document.createElement('a')
+  a.href = att.fileUrl
+  a.download = att.fileName || 'download'
+  a.click()
+}
 const showReplaceContractModal = (c: any) => { currentReplacingContract.value = c; replaceContractFileList.value = []; replaceContractModalVisible.value = true }
 const beforeReplaceContractUpload = (file: any) => { if (file.size / 1048576 > 10) { message.error('不超过10MB!'); return false }; if (!file.name.toLowerCase().endsWith('.docx')) { message.error('只支持.docx!'); return false }; replaceContractFileList.value = [file]; return false }
 const handleReplaceContract = async () => {

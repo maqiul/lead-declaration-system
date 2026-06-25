@@ -49,7 +49,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="pagination"
-        :scroll="{ x: 1600 }"
+        :scroll="{ x: 1600, y: 'calc(100vh - 520px)' }"
         @change="handleTableChange"
         rowKey="id"
       >
@@ -198,7 +198,7 @@ const columns = [
   { title: '状态', key: 'status', width: 100 },
   { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
   { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
-  { title: '操作', key: 'action', width: 320, fixed: 'right' as const }
+  { title: '操作', key: 'action', width: 400, fixed: 'right' as const }
 ]
 
 // 弹窗相关
@@ -391,7 +391,7 @@ onMounted(() => {
 <style scoped>
 /* 页面特有样式已由全局 index.less 覆盖 */
 .contract-template-management {
-  padding: 24px;
+  /* padding 由外层 .content 统一提供，此处不重复 */
 }
 </style>
 

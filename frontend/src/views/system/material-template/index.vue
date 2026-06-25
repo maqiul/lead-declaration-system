@@ -53,6 +53,11 @@
               {{ MATERIAL_STAGE_LABEL[record.stage as MaterialStage] || record.stage || '未设置' }}
             </a-tag>
           </template>
+          <template v-else-if="column.key === 'invoiceMode'">
+            <a-tag :color="record.invoiceMode === 1 ? 'orange' : 'default'" class="ui-tag">
+              {{ record.invoiceMode === 1 ? '发票式' : '普通' }}
+            </a-tag>
+          </template>
           <template v-else-if="column.key === 'required'">
             <a-tag :color="record.required === 1 ? 'red' : 'default'" class="ui-tag">
               {{ record.required === 1 ? '必填' : '选填' }}
@@ -139,6 +144,17 @@
               </a-select>
             </a-form-item>
           </a-col>
+          <a-col :span="12">
+            <a-form-item label="附件模式" name="invoiceMode">
+              <a-radio-group v-model:value="formData.invoiceMode" button-style="solid">
+                <a-radio :value="0">普通附件</a-radio>
+                <a-radio :value="1">发票式（金额/发票号/日期）</a-radio>
+              </a-radio-group>
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="是否必填" name="required">
               <a-radio-group v-model:value="formData.required" button-style="solid">
@@ -316,6 +332,7 @@ const columns = [
   { title: '编码', dataIndex: 'code', key: 'code', width: 200 },
   { title: '名称', dataIndex: 'name', key: 'name', width: 200 },
   { title: '所属环节', dataIndex: 'stage', key: 'stage', width: 120 },
+  { title: '发票模式', dataIndex: 'invoiceMode', key: 'invoiceMode', width: 100 },
   { title: '必填', dataIndex: 'required', key: 'required', width: 100 },
   { title: '启用', dataIndex: 'enabled', key: 'enabled', width: 100 },
   { title: '说明', dataIndex: 'remark', key: 'remark', ellipsis: true },
@@ -335,7 +352,8 @@ const defaultForm = (): MaterialTemplate => ({
   remark: '',
   formSchema: '',
   enabled: 1,
-  stage: 'MATERIAL_SUBMIT' as MaterialStage
+  stage: 'MATERIAL_SUBMIT' as MaterialStage,
+  invoiceMode: 0
 })
 
 const formData = reactive<MaterialTemplate>(defaultForm())

@@ -38,6 +38,8 @@ export interface MaterialTemplate {
   formSchema?: string | null
   enabled: number
   stage?: MaterialStage
+  /** 发票模式: 0-普通附件 1-附件级金额/发票号/日期 */
+  invoiceMode?: number
   createTime?: string
   updateTime?: string
 }

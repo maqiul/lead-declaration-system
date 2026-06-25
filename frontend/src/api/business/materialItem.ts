@@ -45,6 +45,8 @@ export interface MaterialItem {
   formSchema?: string | null
   /** 所属环节：MATERIAL_SUBMIT / INVOICE / FINANCE_SUPPLEMENT（从模板同步） */
   stage?: string
+  /** 发票模式: 0-普通附件 1-附件级金额/发票号/日期（从模板同步） */
+  invoiceMode?: number
   fileName?: string
   fileUrl?: string
   uploadBy?: number | string

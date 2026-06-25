@@ -83,9 +83,11 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
         if ("INVOICE".equals(item.getStage())) return false;
         // 排除财务补充环节
         if ("FINANCE_SUPPLEMENT".equals(item.getStage())) return false;
-        // 1. 已知发票编码（货代/报关代理）
+        // 1. 数据库 invoice_mode=1 标记的资料项
+        if (item.getInvoiceMode() != null && item.getInvoiceMode() == 1) return true;
+        // 2. 已知发票编码（货代/报关代理，兼容旧数据）
         if (CODE_FREIGHT.equals(item.getCode()) || CODE_CUSTOMS.equals(item.getCode())) return true;
-        // 2. 资料提交环节中 formSchema 含 amount 字段的项（发票类默认 schema）
+        // 3. 资料提交环节中 formSchema 含 amount 字段的项（兼容旧数据）
         if ("MATERIAL_SUBMIT".equals(item.getStage())
                 && item.getFormSchema() != null && item.getFormSchema().contains("\"amount\"")) return true;
         return false;
@@ -349,6 +351,9 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
                 Map<String, Object> detail = new LinkedHashMap<>();
                 detail.put("productName", product.getProductName() != null ? product.getProductName() : product.getProductChineseName());
                 detail.put("hsCode", product.getHsCode());
+                detail.put("quantity", product.getQuantity());
+                detail.put("unit", product.getUnit());
+                detail.put("unitPrice", product.getUnitPrice());
                 detail.put("amount", productAmount);
                 detail.put("proportion", displayProportion);
                 detail.put("cnyAmount", productCny);

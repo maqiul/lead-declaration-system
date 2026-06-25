@@ -1985,9 +1985,9 @@ const materialRowKey = (record: MaterialItem) => (record.id ?? `tpl-${record.tem
 const materialPdfMessages = reactive<Record<string, { type: 'success' | 'warn' | 'info'; text: string }>>({})
 // 已解析过的文件指纹缓存，避免同一文件重复上传解析
 
-/** 资料项是否为发票类（货代 / 报关代理） */
+/** 资料项是否为发票类（根据数据库 invoiceMode 字段判断） */
 const isInvoiceMaterial = (item: MaterialItem): boolean =>
-  item.code === 'FREIGHT_INVOICE' || item.code === 'CUSTOMS_AGENT_INVOICE' || item.stage === 'INVOICE'
+  item.invoiceMode === 1
 
 /** 附件文件名显示：UUID 类文件名截短展示 */
 const displayAttFileName = (att: MaterialAttachment): string => {

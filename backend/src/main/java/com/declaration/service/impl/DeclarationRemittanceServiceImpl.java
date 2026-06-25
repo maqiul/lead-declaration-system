@@ -130,7 +130,7 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
             BigDecimal creditedAmount = remittance.getRemittanceAmount().subtract(bankFee)
                     .setScale(4, RoundingMode.HALF_UP);
 
-            // 计算内部手续费（人民币）= 汇率 × 收汇金额 × 银行手续费率，不低于最低操作费
+            // 计算内部手续费（人民币）= 汇率 × 收汇金额 × 银行手续费率
             BigDecimal internalBankFee = calculateInternalBankFee(bankAccountId, remittance.getRemittanceAmount(), taxRate);
 
             // 更新水单信息
@@ -452,7 +452,7 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
 
     /**
      * 计算内部手续费（人民币）
-     * 公式：汇率 × 收汇金额 × 银行手续费率，若低于最低操作费则按最低操作费计算
+     * 公式：汇率 × 收汇金额 × 银行手续费率
      */
     private BigDecimal calculateInternalBankFee(Long bankAccountId, BigDecimal amount, BigDecimal taxRate) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0 || taxRate == null) {
@@ -465,16 +465,9 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
         }
 
         // 内部手续费 = 汇率 × 收汇金额 × 银行手续费率
-        BigDecimal calculatedFee = taxRate.multiply(amount)
+        return taxRate.multiply(amount)
                 .multiply(bankAccount.getServiceFeeRate())
                 .setScale(2, RoundingMode.HALF_UP);
-
-        // 如果设置了最低操作费，且计算结果低于最低操作费，则按最低操作费收取
-        if (bankAccount.getMinServiceFee() != null && calculatedFee.compareTo(bankAccount.getMinServiceFee()) < 0) {
-            return bankAccount.getMinServiceFee();
-        }
-
-        return calculatedFee;
     }
 
     /**
