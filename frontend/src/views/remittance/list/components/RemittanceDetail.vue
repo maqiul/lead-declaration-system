@@ -22,7 +22,6 @@
         </a-descriptions-item>
         <a-descriptions-item label="汇率">{{ remittance.taxRate || '-' }}</a-descriptions-item>
         <a-descriptions-item label="银行名称">{{ remittance.bankAccountName || '-' }}</a-descriptions-item>
-        <a-descriptions-item label="手续费率">{{ remittance.bankFeeRate ? remittance.bankFeeRate + '%' : '-' }}</a-descriptions-item>
         <a-descriptions-item label="手续费">{{ remittance.bankFee ? remittance.bankFee.toFixed(2) : '-' }}</a-descriptions-item>
         <a-descriptions-item label="入账金额">{{ remittance.creditedAmount ? remittance.creditedAmount.toFixed(2) : '-' }}</a-descriptions-item>
         <a-descriptions-item label="提交时间">{{ remittance.submitTime || '-' }}</a-descriptions-item>

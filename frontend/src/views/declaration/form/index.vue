@@ -1379,9 +1379,9 @@
                 <span class="calc-label">退税加成明细</span>
                 <span class="calc-value">
                   <span v-for="(pd, pdx) in invoiceAmountCalcDetail.productTaxDetails" :key="'pd-'+pdx" style="display: block; font-size: 12px; margin-bottom: 6px;">
-                    <div style="color: #666;">{{ pd.productName || pd.hsCode || '商品' + (pdx + 1) }}</div>
+                    <div style="color: #666;">{{ pd.productName || pd.hsCode || '商品' + (Number(pdx) + 1) }}</div>
                     <div style="margin-left: 12px;">
-                      原币: {{ fmtAmt(pd.amount) }} × 汇率: {{ pd.exchangeRate }} = {{ fmtAmt(pd.cnyAmount) }} CNY
+                      原币: {{ fmtAmt(pd.amount) }} × 汇率: {{ invoiceAmountCalcDetail.weightedExchangeRate }} = {{ fmtAmt(pd.cnyAmount) }} CNY
                     </div>
                     <div style="margin-left: 12px;">
                       {{ fmtAmt(pd.cnyAmount) }} × (1+{{ pd.taxRefundRate }}%) = <b style="color: #16a34a;">{{ fmtAmt(pd.amountWithTaxRefund) }} CNY</b>
