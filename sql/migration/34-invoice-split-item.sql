@@ -1,0 +1,15 @@
+-- 开票文件80%/20%拆分产品明细表
+CREATE TABLE `invoice_split_item` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `form_id` BIGINT NOT NULL COMMENT '申报单ID',
+  `product_name` VARCHAR(200) DEFAULT NULL COMMENT '产品名称',
+  `spec` VARCHAR(200) DEFAULT NULL COMMENT '规格型号',
+  `quantity` DECIMAL(15,2) DEFAULT NULL COMMENT '数量',
+  `unit_price` DECIMAL(15,4) DEFAULT NULL COMMENT '单价',
+  `amount` DECIMAL(15,2) DEFAULT NULL COMMENT '金额',
+  `sort` INT DEFAULT 0 COMMENT '排序',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `del_flag` TINYINT DEFAULT 0,
+  INDEX idx_form_id (`form_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='开票文件20%拆分产品明细';

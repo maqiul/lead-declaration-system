@@ -611,7 +611,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             result.append("ZERO");
         }
 
-        result.append(" USD ONLY");
+        result.append(" ").append(currency != null ? currency : "USD").append(" ONLY");
         return result.toString();
     }
 

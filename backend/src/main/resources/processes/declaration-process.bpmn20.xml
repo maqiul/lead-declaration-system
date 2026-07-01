@@ -175,9 +175,14 @@
     <!-- 补充资料审核 → 补充资料审核结果网关 -->
     <sequenceFlow id="f14" sourceRef="supplementAudit" targetRef="gw4" />
 
-    <!-- 补充资料审核通过 → 申请开票金额 -->
-    <sequenceFlow id="f15_pass" name="通过" sourceRef="gw4" targetRef="invoiceAmountSubmit">
-      <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    <!-- 补充资料审核通过 + 自用申报 → 直接完成 -->
+    <sequenceFlow id="f15_pass_self" name="通过(自用)" sourceRef="gw4" targetRef="endEvent">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true and declarationType == 'SELF'}</conditionExpression>
+    </sequenceFlow>
+
+    <!-- 补充资料审核通过 + 外部申报 → 申请开票金额 -->
+    <sequenceFlow id="f15_pass" name="通过(外部)" sourceRef="gw4" targetRef="invoiceAmountSubmit">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true and (declarationType == null or declarationType != 'SELF')}</conditionExpression>
     </sequenceFlow>
 
     <!-- 补充资料审核驳回 → 回到补充资料提交 -->
@@ -359,7 +364,14 @@
         <omgdi:waypoint x="1200" y="235" />
         <omgdi:waypoint x="1230" y="235" />
       </bpmndi:BPMNEdge>
-      <!-- 补充资料审核通过 → 申请开票金额 -->
+      <!-- 补充资料审核通过 + 自用申报 → 直接完成 -->
+      <bpmndi:BPMNEdge id="BPMNEdge_f15_pass_self" bpmnElement="f15_pass_self">
+        <omgdi:waypoint x="1250" y="215" />
+        <omgdi:waypoint x="1250" y="80" />
+        <omgdi:waypoint x="2015" y="80" />
+        <omgdi:waypoint x="2015" y="220" />
+      </bpmndi:BPMNEdge>
+      <!-- 补充资料审核通过 + 外部申报 → 申请开票金额 -->
       <bpmndi:BPMNEdge id="BPMNEdge_f15_pass" bpmnElement="f15_pass">
         <omgdi:waypoint x="1270" y="235" />
         <omgdi:waypoint x="1300" y="235" />

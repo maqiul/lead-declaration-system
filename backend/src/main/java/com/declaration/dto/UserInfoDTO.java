@@ -36,6 +36,9 @@ public class UserInfoDTO {
     @Schema(description = "所属组织ID")
     private Long orgId;
 
+    @Schema(description = "所属组织类型: INTERNAL-内部机构, EXTERNAL-外部机构")
+    private String orgType;
+
     @Schema(description = "状态 0:禁用 1:启用")
     private Integer status;
 

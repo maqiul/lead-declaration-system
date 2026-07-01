@@ -352,6 +352,13 @@
               />
             </a-form-item>
           </a-col>
+          <a-col :span="6">
+            <a-form-item label="申报类型">
+              <a-tag :color="formData.declarationType === 'SELF' ? 'blue' : 'default'" style="font-size: 13px; padding: 4px 12px;">
+                {{ formData.declarationType === 'SELF' ? '内部申报' : '外部申报' }}
+              </a-tag>
+            </a-form-item>
+          </a-col>
         </a-row>
       </a-card>
       
@@ -1308,9 +1315,9 @@
                 <template #icon><ReloadOutlined /></template>
                 {{ isInvoiceAmountEditable ? '刷新计算' : '加载详情' }}
               </a-button>
-              <a-button v-if="invoiceAmountCalcDetail" type="link" @click="handleDownloadCalcFile">
+              <a-button v-if="invoiceAmountCalcDetail" type="link" @click="handleDownloadInvoicePackage">
                 <template #icon><DownloadOutlined /></template>
-                下载计算文件
+                下载开票文件
               </a-button>
             </div>
           </div>
@@ -1642,12 +1649,16 @@
     <!-- 文件预览弹窗 -->
     <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
 
+    <!-- 20%拆分产品设置弹窗 -->
+    <InvoiceSplitModal ref="invoiceSplitModalRef" :form-id="formId!" :calc-detail="invoiceAmountCalcDetail" :readonly="!hasFinancePermission" @confirm="handleSplitConfirm" />
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch, h, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useUserStore } from '@/store/user'
 import { message, Modal, Textarea } from 'ant-design-vue'
 import { checkPermission } from '@/directives/permission'
 import type { SelectValue } from 'ant-design-vue/lib/select';
@@ -1693,7 +1704,9 @@ import {
   getActiveTasks,
   auditReturnToDraft,
   getReturnAuditHistory,
-  exportFinanceCalculation,
+  
+  exportInvoicePackage,
+  getInvoiceSplitItems,
   // 业务发票 API 已废弃，统一使用资料项 INVOICE 环节
 } from '@/api/business/declaration'
 import {
@@ -1734,6 +1747,7 @@ import { getCitiesByCountry } from '@/api/system/city-info'
 import {  findUnitByCode } from '@/utils/measurement-unit'
 import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityConfig'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
+import InvoiceSplitModal from './InvoiceSplitModal.vue'
 
 // 文件预览
 const previewVisible = ref(false)
@@ -2206,8 +2220,9 @@ const showSupplementSection = computed(() => {
   return false
 })
 
-/** 业务发票区域是否显示（发票环节进行中、已完成查阅均展示） */
+/** 业务发票区域是否显示（发票环节进行中、已完成查阅均展示；自用申报跳过） */
 const showInvoiceSection = computed(() => {
+  if (formData.declarationType === 'SELF') return false
   if (invoiceStageItems.value.length === 0) return false
   const s = formStatus.value
   if (s == null) return false
@@ -2258,8 +2273,9 @@ const canAuditSupplement = computed(() => {
 /** 补充资料可编辑条件：与可提交一致 */
 const isSupplementEditable = computed(() => canSubmitSupplement.value)
 
-/** 状态=6 时可提交开票金额（不限 mode，与补充资料提交逻辑一致） */
+/** 状态=6 时可提交开票金额（不限 mode，与补充资料提交逻辑一致；自用申报跳过） */
 const canSubmitInvoiceAmount = computed(() => {
+  if (formData.declarationType === 'SELF') return false
   if (formStatus.value !== 6) return false
   if (route.query.readonly === 'true') return false
   if (isInvoiceAmountAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value) return false
@@ -2268,16 +2284,17 @@ const canSubmitInvoiceAmount = computed(() => {
   return true
 })
 
-/** 状态=7 时可审核开票金额 */
+/** 状态=7 时可审核开票金额（自用申报跳过） */
 const canAuditInvoiceAmount = computed(() => {
+  if (formData.declarationType === 'SELF') return false
   if (formStatus.value !== 7) return false
   if (route.query.readonly === 'true') return false
   if (isMaterialMode.value || isSupplementMode.value) return false
   return true
 })
 
-/** 申请开票金额区域：补充资料审过后（status > 5）一律展示，不限 URL mode / 发票提交菜单 */
-const showInvoiceAmountSection = computed(() => isAfterSupplementStage.value)
+/** 申请开票金额区域：补充资料审过后（status > 5）一律展示；自用申报隐藏 */
+const showInvoiceAmountSection = computed(() => formData.declarationType !== 'SELF' && isAfterSupplementStage.value)
 
 /** 申请开票金额可编辑（刷新计算、提交前确认） */
 const isInvoiceAmountEditable = computed(() => canSubmitInvoiceAmount.value)
@@ -2317,16 +2334,18 @@ const remittanceColumns = [
   { title: '状态', key: 'status', width: 80, customRender: ({ text }: any) => text === 0 ? '草稿' : text === 1 ? '待审核' : '已审核' }
 ]
 
-/** 状态=8 时可提交业务发票（不限 mode） */
+/** 状态=8 时可提交业务发票（不限 mode；自用申报跳过） */
 const canSubmitInvoice = computed(() => {
+  if (formData.declarationType === 'SELF') return false
   if (formStatus.value !== 8) return false
   if (route.query.readonly === 'true') return false
   if (isInvoiceAuditMode.value || isMaterialAuditMode.value || isSupplementAuditMode.value || isAudit.value) return false
   return true
 })
 
-/** 状态=9 时可审核业务发票 */
+/** 状态=9 时可审核业务发票（自用申报跳过） */
 const canAuditInvoice = computed(() => {
+  if (formData.declarationType === 'SELF') return false
   if (formStatus.value !== 9) return false
   if (route.query.readonly === 'true') return false
   if (isMaterialMode.value || isSupplementMode.value) return false
@@ -2911,21 +2930,59 @@ const loadInvoiceAmountDetail = async () => {
   }
 }
 
-/** 下载开票计算明细单 */
-const handleDownloadCalcFile = async () => {
+// 20%拆分弹窗
+const invoiceSplitModalRef = ref<InstanceType<typeof InvoiceSplitModal> | null>(null)
+
+/** 是否有财务权限（可编辑20%数据） */
+const hasFinancePermission = computed(() => {
+  return checkPermission(['business:declaration:finance:supplement'])
+})
+
+/** 下载开票文件包(80%+20%) */
+const handleDownloadInvoicePackage = async () => {
+  if (!formId.value) return
+
+  if (hasFinancePermission.value) {
+    // 有财务权限：打开弹窗，可编辑+下载
+    invoiceSplitModalRef.value?.open()
+  } else {
+    // 无财务权限：检查是否已配置20%数据，已配置则直接下载
+    try {
+      const res = await getInvoiceSplitItems(formId.value)
+      const savedItems = res.data?.data
+      if (!Array.isArray(savedItems) || savedItems.length === 0) {
+        message.warning('请先联系财务人员录入20%产品数据')
+        return
+      }
+    } catch {
+      message.warning('请先联系财务人员录入20%产品数据')
+      return
+    }
+    // 直接下载
+    await doDownloadInvoicePackage([])
+  }
+}
+
+/** 执行下载开票文件包 */
+const doDownloadInvoicePackage = async (splitItems: any[]) => {
   if (!formId.value) return
   try {
-    const res = await exportFinanceCalculation(formId.value!)
+    const res = await exportInvoicePackage(formId.value!, splitItems)
     const downloadUrl = res.data?.data
     if (downloadUrl) {
       window.location.href = downloadUrl
-      message.success('计算明细文件下载中...')
+      message.success('开票文件包下载中...')
     } else {
       message.warning('暂无计算数据')
     }
   } catch (e: any) {
     message.error('下载失败: ' + (e.message || '未知错误'))
   }
+}
+
+/** 20%弹窗确认回调 */
+const handleSplitConfirm = async (splitItems: any[]) => {
+  await doDownloadInvoicePackage(splitItems)
 }
 
 const handleSubmitInvoiceAmount = async () => {
@@ -3175,6 +3232,7 @@ const formData = reactive({
   tradeCountry: undefined as string | undefined,
   currency: 'USD',
   declarationDate: undefined as Dayjs | undefined,
+  declarationType: 'EXTERNAL' as string,
   orgId: undefined as number | undefined
 })
 
@@ -4290,6 +4348,7 @@ const loadData = async () => {
         formData.tradeCountry = detailData.tradeCountry || ''
         formData.currency = detailData.currency || 'USD'
         formData.declarationDate = detailData.declarationDate ? dayjs(detailData.declarationDate) : undefined
+        formData.declarationType = detailData.declarationType || 'EXTERNAL'
         
         // 填充产品列表
         const productsRaw = detailData.products
@@ -4385,8 +4444,8 @@ const loadData = async () => {
           scrollToQuerySection()
         }
 
-        // 补充资料审过后（status>5）：任意入口进入都加载开票金额详情
-        if (formId.value && submittedStatus > 5) {
+        // 补充资料审过后（status>5）：任意入口进入都加载开票金额详情（自用申报跳过）
+        if (formId.value && submittedStatus > 5 && formData.declarationType !== 'SELF') {
           await loadInvoiceAmountDetail()
           if (route.query.scrollTo === 'invoice-amount') {
             scrollToQuerySection()
@@ -4533,6 +4592,11 @@ const scrollToQuerySection = () => {
 }
 
 onMounted(() => {
+  // 新申报单时根据用户组织类型自动设置申报类型
+  const userStore = useUserStore()
+  if (!formId.value) {
+    formData.declarationType = userStore.orgType === 'INTERNAL' ? 'SELF' : 'EXTERNAL'
+  }
   loadData()
   loadCountries()
   loadMeasurementUnits()

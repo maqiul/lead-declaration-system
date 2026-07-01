@@ -167,4 +167,21 @@ public class OrganizationServiceImpl extends ServiceImpl<OrganizationDao, Organi
             })
             .collect(Collectors.toList());
     }
+
+    /**
+     * 判断组织是否为内部机构（含祖先继承）
+     * 递归向上检查：若当前组织或其任一祖先的 orgType = INTERNAL，则返回 true
+     * 跳过根节点（“系统”层级，parentId = 0 或 null）
+     */
+    @Override
+    public boolean isInternalOrg(Long orgId) {
+        if (orgId == null) return false;
+        Organization org = this.getById(orgId);
+        if (org == null) return false;
+        // 当前组织是 INTERNAL
+        if ("INTERNAL".equals(org.getOrgType())) return true;
+        // 递归检查父组织（跳过根节点：parentId 为 null 或 0）
+        Long parentId = org.getParentId();
+        return parentId != null && parentId != 0L && isInternalOrg(parentId);
+    }
 }

@@ -11,6 +11,9 @@ export interface EntityConfig {
   entityAddress: string       // 英文地址
   entityNameCn: string        // 公司中文名
   entityAddressCn: string     // 中文地址
+  taxId: string               // 纳税人识别号
+  phone: string               // 电话
+  bankAccount: string          // 开户银行
   invoiceTemplate: string     // 发票模板文件名
   packingListTemplate: string // 装箱单模板文件名
   fullDocumentsTemplate: string // 海关附件模板文件名

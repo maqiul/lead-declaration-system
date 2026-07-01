@@ -61,7 +61,12 @@
         class="ui-table"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'status'">
+          <template v-if="column.key === 'orgType'">
+            <a-tag :color="record.orgType === 'INTERNAL' ? 'blue' : 'default'">
+              {{ record.orgType === 'INTERNAL' ? '内部机构' : '外部机构' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.key === 'status'">
             <a-tag :color="record.status === 1 ? 'success' : 'error'" class="ui-tag">
               {{ record.status === 1 ? '启用' : '禁用' }}
             </a-tag>
@@ -167,6 +172,17 @@
             </a-form-item>
           </a-col>
         </a-row>
+
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="机构类型" name="orgType">
+              <a-select v-model:value="formData.orgType" placeholder="请选择机构类型">
+                <a-select-option value="INTERNAL">内部机构</a-select-option>
+                <a-select-option value="EXTERNAL">外部机构</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+        </a-row>
       </a-form>
     </a-modal>
   </div>
@@ -196,6 +212,7 @@ interface Organization {
   email: string
   sort: number
   status: number
+  orgType: string
   children?: Organization[]
 }
 
@@ -230,6 +247,12 @@ const columns = [
     dataIndex: 'phone',
     key: 'phone',
     width: 200
+  },
+  {
+    title: '机构类型',
+    dataIndex: 'orgType',
+    key: 'orgType',
+    width: 100
   },
   {
     title: '状态',
@@ -271,7 +294,8 @@ const formData = reactive({
   phone: '',
   email: '',
   sort: 0,
-  status: 1
+  status: 1,
+  orgType: 'EXTERNAL' as string
 })
 
 const formRules = {
@@ -355,7 +379,8 @@ const handleAdd = (parentId: number | null = null) => {
     phone: '',
     email: '',
     sort: 0,
-    status: 1
+    status: 1,
+    orgType: 'EXTERNAL'
   })
   modalVisible.value = true
 }
@@ -371,7 +396,8 @@ const handleEdit = (record: Organization) => {
     phone: record.phone,
     email: record.email,
     sort: record.sort,
-    status: record.status
+    status: record.status,
+    orgType: record.orgType || 'EXTERNAL'
   })
   modalVisible.value = true
 }

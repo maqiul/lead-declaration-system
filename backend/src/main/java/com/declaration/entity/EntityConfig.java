@@ -42,6 +42,21 @@ public class EntityConfig {
     private String entityAddressCn;
 
     /**
+     * 纳税人识别号
+     */
+    private String taxId;
+
+    /**
+     * 电话
+     */
+    private String phone;
+
+    /**
+     * 开户银行
+     */
+    private String bankAccount;
+
+    /**
      * 发票模板文件名（空=用系统默认）
      */
     private String invoiceTemplate;

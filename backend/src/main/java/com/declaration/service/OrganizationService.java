@@ -62,4 +62,13 @@ public interface OrganizationService extends IService<Organization> {
      * @return 组织列表
      */
     List<Organization> getUserOrgs(Long userId);
+
+    /**
+     * 判断组织是否为内部机构（含祖先继承）
+     * 若当前组织或其任一祖先组织的 orgType 为 INTERNAL，则返回 true
+     *
+     * @param orgId 组织ID
+     * @return 是否为内部机构
+     */
+    boolean isInternalOrg(Long orgId);
 }

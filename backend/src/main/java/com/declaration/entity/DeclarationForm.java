@@ -144,6 +144,11 @@ public class DeclarationForm {
     private Integer status;
 
     /**
+     * 申报类型: SELF-自用(内部), EXTERNAL-外部
+     */
+    private String declarationType;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

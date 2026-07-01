@@ -11,6 +11,8 @@ interface UserState {
   roles: string[]
   permissions: string[]
   routes: any[]
+  orgId: number | null
+  orgType: string
 }
 
 export const useUserStore = defineStore('user', {
@@ -20,7 +22,9 @@ export const useUserStore = defineStore('user', {
     avatar: '',
     roles: [],
     permissions: [],
-    routes: []
+    routes: [],
+    orgId: null,
+    orgType: 'EXTERNAL'
   }),
 
   actions: {
@@ -56,6 +60,8 @@ export const useUserStore = defineStore('user', {
       this.permissions = permissions
       this.name = data.nickname || data.username
       this.avatar = data.avatar
+      this.orgId = data.orgId || null
+      this.orgType = data.orgType || 'EXTERNAL'
     },
 
     // 生成路由
@@ -103,6 +109,8 @@ export const useUserStore = defineStore('user', {
       this.token = ''
       this.roles = []
       this.permissions = []
+      this.orgId = null
+      this.orgType = 'EXTERNAL'
       removeToken()
     }
   }

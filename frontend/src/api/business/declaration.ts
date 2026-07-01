@@ -34,6 +34,7 @@ export interface DeclarationForm {
   totalVolume: number
   totalAmount: number
   status: number
+  declarationType?: string
   createTime?: string
   updateTime?: string
   orgId?: number
@@ -380,6 +381,40 @@ export function exportFinanceCalculation(id: number) {
   return request({
     url: `/v1/financial-supplements/form/${id}/export-finance-calculation`,
     method: 'get'
+  })
+}
+
+// 导出开票通知书
+export function exportInvoiceNotification(id: number) {
+  return request({
+    url: `/v1/financial-supplements/form/${id}/export-invoice-notification`,
+    method: 'get'
+  })
+}
+
+// 查询已保存的20%拆分产品列表
+export function getInvoiceSplitItems(id: number) {
+  return request({
+    url: `/v1/financial-supplements/form/${id}/split-items`,
+    method: 'get'
+  })
+}
+
+// 保存20%拆分产品列表
+export function saveInvoiceSplitItems(id: number, items: any[]) {
+  return request({
+    url: `/v1/financial-supplements/form/${id}/split-items`,
+    method: 'post',
+    data: { items }
+  })
+}
+
+// 下载开票文件包(80%+20% ZIP)
+export function exportInvoicePackage(id: number, splitItems: any[]) {
+  return request({
+    url: `/v1/financial-supplements/form/${id}/export-invoice-package`,
+    method: 'post',
+    data: { splitItems }
   })
 }
 

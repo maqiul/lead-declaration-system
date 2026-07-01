@@ -485,20 +485,29 @@ public class DeclarationMaterialItemServiceImpl
         if (formId == null) {
             throw new RuntimeException("申报单ID不能为空");
         }
-        // 检查 SUPPLEMENT 阶段的资料项是否已上传附件
+        // 校验补充资料必填项是否已上传附件
         List<DeclarationMaterialItem> supplementItems = lambdaQuery()
                 .eq(DeclarationMaterialItem::getFormId, formId)
                 .eq(DeclarationMaterialItem::getStage, "SUPPLEMENT")
                 .list();
-        if (supplementItems.isEmpty()) {
-            throw new RuntimeException("没有补充资料项，请先在资料模板中配置");
-        }
-        // 校验所有必填项都有附件
+        // 已落库的必填项：校验附件数
+        Set<Long> existingTemplateIds = new HashSet<>();
         for (DeclarationMaterialItem item : supplementItems) {
+            if (item.getTemplateId() != null) existingTemplateIds.add(item.getTemplateId());
             if (item.getRequired() != null && item.getRequired() == 1) {
                 long attCount = materialAttachmentService.countByItemId(item.getId());
                 if (attCount == 0) {
                     throw new RuntimeException("补充资料「" + item.getName() + "」为必填项，请先上传附件");
+                }
+            }
+        }
+        // 模板中必填但未落库的项（未操作过 = 未上传）
+        if (templateService.listEnabled() != null) {
+            for (DeclarationMaterialTemplate tpl : templateService.listEnabled()) {
+                if ("SUPPLEMENT".equals(tpl.getStage())
+                        && tpl.getRequired() != null && tpl.getRequired() == 1
+                        && !existingTemplateIds.contains(tpl.getId())) {
+                    throw new RuntimeException("补充资料「" + tpl.getName() + "」为必填项，请先上传附件");
                 }
             }
         }

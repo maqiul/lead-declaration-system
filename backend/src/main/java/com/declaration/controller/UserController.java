@@ -13,6 +13,7 @@ import com.declaration.entity.User;
 import com.declaration.service.PermissionService;
 import com.declaration.service.RoleService;
 import com.declaration.service.UserService;
+import com.declaration.service.OrganizationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -38,6 +39,7 @@ public class UserController {
     private final UserService userService;
     private final PermissionService permissionService;
     private final RoleService roleService;
+    private final OrganizationService organizationService;
 
     @PostMapping("/login")
     public Result<String> login(@RequestBody User user) {
@@ -87,6 +89,12 @@ public class UserController {
         userInfo.setAvatar(user.getAvatar());
         userInfo.setOrgId(user.getOrgId());
         userInfo.setStatus(user.getStatus());
+
+        // 获取用户所属组织的类型（含祖先继承）
+        if (user.getOrgId() != null) {
+            boolean isInternal = organizationService.isInternalOrg(user.getOrgId());
+            userInfo.setOrgType(isInternal ? "INTERNAL" : "EXTERNAL");
+        }
         
         // 获取用户角色和权限
         userInfo.setRoles(new ArrayList<>(permissionService.getUserRoles(userId)));

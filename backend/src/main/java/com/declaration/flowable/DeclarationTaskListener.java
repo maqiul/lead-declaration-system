@@ -234,7 +234,8 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
 
     /**
      * 判断是否应该更新状态
-     * 新版流程状态更新规则: 0→1→2→3→4→5→6
+     * 新版流程状态更新规则: 0→1→2→3→4→5→6→7→8→9→10
+     * 自用申报(SELF): 5→10 (补充资料审核通过后直接完成)
      */
     private boolean shouldUpdateStatus(Integer currentStatus, Integer newStatus) {
         if (currentStatus == null || newStatus == null) {

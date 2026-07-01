@@ -71,6 +71,7 @@ public class DeclarationFormController {
     private final BusinessAuditRecordDao auditRecordDao;
     private final InvoiceService invoiceService; // 新增发票服务
     private final DeclarationFlowMigrationService declarationFlowMigrationService;
+    private final OrganizationService organizationService;
 
     /**
      * 获取申报单统计数据
@@ -1316,6 +1317,23 @@ public class DeclarationFormController {
                 variables.put("starterId", form.getCreateBy());
                 variables.put("orgId", form.getOrgId());
                 variables.put("formNo", form.getFormNo());
+
+                // 根据申报类型或组织类型确定流程分支
+                String declarationType = form.getDeclarationType();
+                if (declarationType == null || declarationType.isEmpty()) {
+                    // 自动根据组织类型判断（含祖先继承）
+                    if (form.getOrgId() != null && organizationService.isInternalOrg(form.getOrgId())) {
+                        declarationType = "SELF";
+                    }
+                    if (declarationType == null) {
+                        declarationType = "EXTERNAL";
+                    }
+                    // 回写到申报单
+                    form.setDeclarationType(declarationType);
+                    declarationFormService.updateById(form);
+                }
+                variables.put("declarationType", declarationType);
+                log.info("申报类型: {}, 流程变量: {}", declarationType, variables);
 
                 log.info("准备启动流程：key={}, businessKey={}, variables={}", "declarationProcess", String.valueOf(id),
                         variables);

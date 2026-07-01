@@ -148,6 +148,18 @@
           <a-textarea v-model:value="formData.entityAddressCn" placeholder="中文地址" :rows="2" />
         </a-form-item>
 
+        <a-form-item label="纳税人识别号" name="taxId">
+          <a-input v-model:value="formData.taxId" placeholder="纳税人识别号" />
+        </a-form-item>
+
+        <a-form-item label="电话" name="phone">
+          <a-input v-model:value="formData.phone" placeholder="电话" />
+        </a-form-item>
+
+        <a-form-item label="开户银行" name="bankAccount">
+          <a-input v-model:value="formData.bankAccount" placeholder="开户银行" />
+        </a-form-item>
+
         <a-divider orientation="left">模板配置（留空则使用系统默认）</a-divider>
 
         <a-form-item label="发票模板" name="invoiceTemplate">
@@ -289,6 +301,9 @@ const formData = reactive({
   entityAddress: '',
   entityNameCn: '',
   entityAddressCn: '',
+  taxId: '',
+  phone: '',
+  bankAccount: '',
   invoiceTemplate: '',
   packingListTemplate: '',
   fullDocumentsTemplate: '',
@@ -364,6 +379,9 @@ const openEditModal = (record: EntityConfig) => {
   formData.entityAddress = record.entityAddress
   formData.entityNameCn = record.entityNameCn
   formData.entityAddressCn = record.entityAddressCn
+  formData.taxId = record.taxId || ''
+  formData.phone = record.phone || ''
+  formData.bankAccount = record.bankAccount || ''
   formData.invoiceTemplate = record.invoiceTemplate || ''
   formData.packingListTemplate = record.packingListTemplate || ''
   formData.fullDocumentsTemplate = record.fullDocumentsTemplate || ''
@@ -387,6 +405,9 @@ const resetForm = () => {
   formData.entityAddress = ''
   formData.entityNameCn = ''
   formData.entityAddressCn = ''
+  formData.taxId = ''
+  formData.phone = ''
+  formData.bankAccount = ''
   formData.invoiceTemplate = ''
   formData.packingListTemplate = ''
   formData.fullDocumentsTemplate = ''
@@ -410,6 +431,9 @@ const handleSave = async () => {
       entityAddress: formData.entityAddress,
       entityNameCn: formData.entityNameCn,
       entityAddressCn: formData.entityAddressCn,
+      taxId: formData.taxId || '',
+      phone: formData.phone || '',
+      bankAccount: formData.bankAccount || '',
       invoiceTemplate: formData.invoiceTemplate || '',
       packingListTemplate: formData.packingListTemplate || '',
       fullDocumentsTemplate: formData.fullDocumentsTemplate || '',

@@ -63,6 +63,10 @@ public class Organization extends BaseEntity {
     @TableField("status")
     private Integer status;
 
+    @Schema(description = "机构类型: INTERNAL-内部机构, EXTERNAL-外部机构")
+    @TableField("org_type")
+    private String orgType;
+
     @Schema(description = "删除标志 0:未删除 1:已删除")
     @TableLogic
     @TableField("deleted")
