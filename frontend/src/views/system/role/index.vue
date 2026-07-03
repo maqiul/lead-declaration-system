@@ -498,8 +498,8 @@ const loadData = async () => {
   loading.value = true
   try {
     const params = {
-      pageNum: pagination.current,
-      pageSize: pagination.pageSize,
+      current: pagination.current,
+      size: pagination.pageSize,
       roleName: searchForm.roleName,
       roleCode: searchForm.roleCode,
       status: searchForm.status
@@ -629,8 +629,8 @@ const loadUsers = async () => {
   userLoading.value = true
   try {
     const params = {
-      pageNum: userPagination.current,
-      pageSize: userPagination.pageSize,
+      current: userPagination.current,
+      size: userPagination.pageSize,
       username: userSearchKeyword.value,
       phone: userSearchKeyword.value
     }

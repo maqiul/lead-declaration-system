@@ -325,8 +325,8 @@ const loadUnitList = async () => {
   loading.value = true;
   try {
     const params: any = {
-      pageNum: pagination.current,
-      pageSize: pagination.pageSize
+      current: pagination.current,
+      size: pagination.pageSize
     };
     
     if (searchForm.keyword) {

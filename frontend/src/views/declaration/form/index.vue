@@ -1788,6 +1788,23 @@ const loadEntityList = async () => {
   } catch (error) {
     // ignore
   }
+  // 加载完主体列表后，如果 entityId 未设置，根据 shipperCompany 自动匹配
+  autoMatchEntity()
+}
+
+// 根据发货公司名称自动匹配主体
+const autoMatchEntity = () => {
+  if (formData.entityId) return // 已有主体ID，不覆盖
+  if (!formData.shipperCompany || entityList.value.length === 0) return
+  const entity = entityList.value.find(
+    e => e.entityName === formData.shipperCompany || e.entityNameCn === formData.shipperCompany
+  )
+  if (entity) {
+    formData.entityId = entity.id
+    if (!formData.shipperAddress && entity.entityAddress) {
+      formData.shipperAddress = entity.entityAddress
+    }
+  }
 }
 
 // 选择主体后自动填充发货人信息
@@ -4349,6 +4366,9 @@ const loadData = async () => {
         formData.currency = detailData.currency || 'USD'
         formData.declarationDate = detailData.declarationDate ? dayjs(detailData.declarationDate) : undefined
         formData.declarationType = detailData.declarationType || 'EXTERNAL'
+        
+        // 如果 entityId 为空，根据发货公司名称自动匹配主体
+        autoMatchEntity()
         
         // 填充产品列表
         const productsRaw = detailData.products

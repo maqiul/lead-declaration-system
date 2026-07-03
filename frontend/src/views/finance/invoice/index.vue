@@ -188,7 +188,7 @@ const declarationList = ref<any[]>([]) // 申报单列表
 const invoiceFileList = ref<any[]>([])
 const tempInvoiceFile = ref<any>(null)
 
-const queryParam = reactive({ pageNum: 1, pageSize: 10, invoiceType: undefined, invoiceNo: '', formId: undefined })
+const queryParam = reactive({ current: 1, size: 10, invoiceType: undefined, invoiceNo: '', formId: undefined })
 const pagination = reactive({ current: 1, pageSize: 10, total: 0, showSizeChanger: true })
 const form = reactive<any>({ id: undefined, formId: undefined, invoiceType: 1, invoiceNo: '', invoiceName: '', amount: null, taxAmount: null, invoiceDate: undefined, remarks: '' })
 
@@ -220,7 +220,7 @@ const loadData = async () => {
 }
 
 const handleSearch = () => {
-  queryParam.pageNum = 1
+  queryParam.current = 1
   pagination.current = 1
   loadData()
 }
@@ -233,7 +233,7 @@ const handleReset = () => {
 }
 
 const handleTableChange = (pag: any) => {
-  queryParam.pageNum = pag.current
+  queryParam.current = pag.current
   pagination.current = pag.current
   loadData()
 }
@@ -262,7 +262,7 @@ const openModal = (record?: any) => {
 // 加载申报单列表
 const loadDeclarations = async () => {
   try {
-    const res = await getDeclarationList({ pageNum: 1, pageSize: 1000, status: undefined })
+    const res = await getDeclarationList({ current: 1, size: 1000, status: undefined })
     if (res.data.code === 200) {
       declarationList.value = res.data.data.records.map((item: any) => ({
         value: item.id,
@@ -314,7 +314,7 @@ const handleSave = async () => {
     // 如果是新增且有文件，需要获取刚保存的发票ID来上传文件
     if (!isEdit.value && tempInvoiceFile.value) {
       // 重新查询获取最新发票
-      const res = await getFinanceInvoiceList({ pageNum: 1, pageSize: 1, formId: form.formId })
+      const res = await getFinanceInvoiceList({ current: 1, size: 1, formId: form.formId })
       if (res.data.code === 200 && res.data.data.records.length > 0) {
         const latestInvoice = res.data.data.records[0]
         const formData = new FormData()

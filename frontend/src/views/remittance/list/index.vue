@@ -431,7 +431,7 @@ const handleEdit = (record: Remittance) => {
 
 // 查看水单
 const handleView = (record: Remittance) => {
-  currentRemittanceId.value = record.id || 0
+  currentRemittanceId.value = Number(record.id) || 0
   detailVisible.value = true
 }
 
@@ -457,7 +457,7 @@ const handleDirectAudit = async (record: Remittance) => {
   try {
     await submitRemittanceAudit(record.id!)
     message.success('已提交审核，请填写审核信息')
-    currentRemittanceId.value = record.id || 0
+    currentRemittanceId.value = Number(record.id) || 0
     auditVisible.value = true
   } catch (error) {
     message.error('提交审核失败')
@@ -466,7 +466,7 @@ const handleDirectAudit = async (record: Remittance) => {
 
 // 审核水单
 const handleAudit = (record: Remittance) => {
-  currentRemittanceId.value = record.id || 0
+  currentRemittanceId.value = Number(record.id) || 0
   auditVisible.value = true
 }
 
@@ -511,8 +511,8 @@ const handleDelete = (record: Remittance) => {
 const currentRemittanceAmount = ref<number>(0)
 
 const handleManageForms = (record: Remittance) => {
-  currentRemittanceId.value = record.id || 0
-  currentRemittanceAmount.value = record.remittanceAmount || 0
+  currentRemittanceId.value = Number(record.id) || 0
+  currentRemittanceAmount.value = Number(record.remittanceAmount) || 0
   relationVisible.value = true
 }
 

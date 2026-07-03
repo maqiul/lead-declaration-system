@@ -2,8 +2,8 @@ import request from '@/utils/request'
 
 // 用户管理相关API
 export interface UserQueryParams {
-  pageNum?: number
-  pageSize?: number
+  current?: number
+  size?: number
   username?: string
   phone?: string
   status?: number
@@ -73,8 +73,8 @@ export function resetUserPwd(userId: number) {
 
 // 角色管理相关API
 export interface RoleQueryParams {
-  pageNum?: number
-  pageSize?: number
+  current?: number
+  size?: number
   roleName?: string
   roleCode?: string
   status?: number

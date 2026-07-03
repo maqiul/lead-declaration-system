@@ -6,8 +6,8 @@ export interface DefinitionQueryParams {
   processKey?: string
   category?: string
   status?: number
-  pageNum?: number
-  pageSize?: number
+  current?: number
+  size?: number
 }
 
 export interface ProcessDefinitionForm {
@@ -113,7 +113,7 @@ export interface ProcessInstance {
 }
 
 // 获取我的流程实例
-export function getMyProcessInstances(params?: { pageNum?: number; pageSize?: number; processName?: string }) {
+export function getMyProcessInstances(params?: { current?: number; size?: number; processName?: string }) {
   return request({
     url: '/workflow/instances/my',
     method: 'get',
@@ -122,7 +122,7 @@ export function getMyProcessInstances(params?: { pageNum?: number; pageSize?: nu
 }
 
 // 获取运行中的流程实例
-export function getRunningProcessInstances(params?: InstanceQueryParams & { pageNum?: number; pageSize?: number }) {
+export function getRunningProcessInstances(params?: InstanceQueryParams & { current?: number; size?: number }) {
   return request({
     url: '/workflow/instances/running',
     method: 'get',
@@ -198,7 +198,7 @@ export interface TaskInstance {
 }
 
 // 获取我的待办任务
-export function getMyAssignedTasks(params?: { pageNum?: number; pageSize?: number; taskName?: string; processName?: string }) {
+export function getMyAssignedTasks(params?: { current?: number; size?: number; taskName?: string; processName?: string }) {
   return request({
     url: '/workflow/tasks/assigned',
     method: 'get',
@@ -207,7 +207,7 @@ export function getMyAssignedTasks(params?: { pageNum?: number; pageSize?: numbe
 }
 
 // 获取我的候选任务
-export function getMyCandidateTasks(params?: { pageNum?: number; pageSize?: number; taskName?: string; processName?: string }) {
+export function getMyCandidateTasks(params?: { current?: number; size?: number; taskName?: string; processName?: string }) {
   return request({
     url: '/workflow/tasks/candidate',
     method: 'get',
@@ -216,7 +216,7 @@ export function getMyCandidateTasks(params?: { pageNum?: number; pageSize?: numb
 }
 
 // 获取我的已完成任务
-export function getMyCompletedTasks(params?: { pageNum?: number; pageSize?: number; taskName?: string; processName?: string }) {
+export function getMyCompletedTasks(params?: { current?: number; size?: number; taskName?: string; processName?: string }) {
   return request({
     url: '/workflow/tasks/completed',
     method: 'get',
@@ -279,7 +279,7 @@ export function getMonitorStats() {
   })
 }
 
-export function getAllActiveTasks(params?: { pageNum?: number; pageSize?: number; taskName?: string; processName?: string }) {
+export function getAllActiveTasks(params?: { current?: number; size?: number; taskName?: string; processName?: string }) {
   return request({
     url: '/workflow/monitor/tasks',
     method: 'get',

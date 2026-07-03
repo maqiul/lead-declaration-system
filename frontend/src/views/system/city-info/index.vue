@@ -307,8 +307,8 @@ const queryParams = reactive({
   provinceName: '',
   countryName: '',
   status: undefined,
-  pageNum: 1,
-  pageSize: 10
+  current: 1,
+  size: 10
 })
 const pagination = reactive({
   current: 1,
@@ -365,8 +365,8 @@ const getList = async () => {
     if (response.data && response.data.code === 200) {
       list.value = response.data.data?.records || []
       pagination.total = response.data.data?.total || 0
-      pagination.current = queryParams.pageNum
-      pagination.pageSize = queryParams.pageSize
+      pagination.current = queryParams.current
+      pagination.pageSize = queryParams.size
     } else {
       message.error(response.data?.message || '获取城市信息失败')
     }
@@ -394,7 +394,7 @@ const getList = async () => {
 
 // 搜索
 const handleSearch = () => {
-  queryParams.pageNum = 1
+  queryParams.current = 1
   getList()
 }
 
@@ -404,14 +404,14 @@ const handleReset = () => {
   queryParams.provinceName = ''
   queryParams.countryName = ''
   queryParams.status = undefined
-  queryParams.pageNum = 1
+  queryParams.current = 1
   getList()
 }
 
 // 分页变化
 const handleTableChange = (pag: any) => {
-  queryParams.pageNum = pag.current
-  queryParams.pageSize = pag.pageSize
+  queryParams.current = pag.current
+  queryParams.size = pag.pageSize
   getList()
 }
 

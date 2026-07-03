@@ -32,7 +32,7 @@
       </a-card>
 
       <!-- 审核信息 -->
-      <a-card title="审核信息" size="small">
+      <a-card :key="'audit-' + modalKey" title="审核信息" size="small">
         <a-form :model="auditForm" layout="vertical">
           <a-row :gutter="16">
             <a-col :span="12">
@@ -54,10 +54,11 @@
                   v-model:value="auditForm.bankAccountId"
                   placeholder="请选择银行"
                   show-search
+                  allow-clear
                   :filter-option="filterBankOption"
                   @change="handleBankChange"
                 >
-                  <a-select-option v-for="bank in bankList" :key="bank.id" :value="bank.id">
+                  <a-select-option v-for="bank in bankList" :key="bank.id" :value="Number(bank.id)">
                     {{ bank.bankName }} - {{ bank.accountName }} ({{ bank.currency }})
                   </a-select-option>
                 </a-select>
@@ -156,6 +157,9 @@ const visible = computed({
 const submitLoading = ref(false)
 const remittance = ref<any>(null)
 const bankList = ref<any[]>([])
+const initLoading = ref(false)
+
+const modalKey = ref(0)
 
 // 审核表单
 const auditForm = reactive({
@@ -164,11 +168,25 @@ const auditForm = reactive({
   bankFeeRate: undefined as number | undefined,
   bankFee: undefined as number | undefined,
   creditedAmount: undefined as number | undefined,
-  auditRemark: undefined as string | undefined
+  auditRemark: '' as string
 })
 
 // 初始化
 const init = async () => {
+  if (initLoading.value) return
+  initLoading.value = true
+  try {
+  // 先重置表单
+  remittance.value = null
+  bankList.value = []
+  modalKey.value++
+  auditForm.taxRate = undefined
+  auditForm.bankAccountId = undefined
+  auditForm.bankFeeRate = undefined
+  auditForm.bankFee = undefined
+  auditForm.creditedAmount = undefined
+  auditForm.auditRemark = ''
+
   // 加载水单详情
   if (props.remittanceId) {
     try {
@@ -183,20 +201,27 @@ const init = async () => {
   }
 
   // 根据水单关联的申报单获取主体ID，按主体过滤银行
+  // - 已绑定申报单：用申报单的 entityId + currency 过滤
+  // - 未绑定申报单：只用水单自身的 currency 过滤
   let entityId: number | undefined
+  const currency = remittance.value?.currency || undefined
   if (props.remittanceId) {
     try {
       const res = await getRelatedForms(props.remittanceId)
       const forms = res.data?.data || []
-      entityId = forms.length > 0 ? forms[0].entityId : undefined
+      if (forms.length > 0 && forms[0].entityId) {
+        entityId = forms[0].entityId
+      }
     } catch {
       // ignore
     }
   }
 
-  // 加载银行列表
+  // 加载银行列表：有主体按主体+币种，没有主体只按币种
   try {
-    const response = await getEnabledBankAccounts(undefined, entityId || undefined)
+    const response = entityId
+      ? await getEnabledBankAccounts(currency || undefined, entityId)
+      : await getEnabledBankAccounts(currency || undefined)
     let data = response.data
     if (data?.code === 200) {
       bankList.value = data.data || []
@@ -204,18 +229,30 @@ const init = async () => {
   } catch (error) {
     console.error('加载银行列表失败', error)
   }
+
+  // 回显已有审核数据（只回显有效的非零值，显式转 Number）
+  if (remittance.value) {
+    const r = remittance.value
+    const taxRate = Number(r.taxRate)
+    if (taxRate && taxRate !== 0) auditForm.taxRate = taxRate
+    const bankId = Number(r.bankAccountId)
+    if (bankId && bankId !== 0) auditForm.bankAccountId = bankId
+    const feeRate = Number(r.bankFeeRate)
+    if (feeRate && feeRate !== 0) auditForm.bankFeeRate = feeRate * 100
+    const bankFee = Number(r.bankFee)
+    if (bankFee && bankFee !== 0) auditForm.bankFee = bankFee
+    const credited = Number(r.creditedAmount)
+    if (credited && credited !== 0) auditForm.creditedAmount = credited
+    if (r.auditRemark) auditForm.auditRemark = r.auditRemark
+  }
+  } finally {
+    initLoading.value = false
+  }
 }
 
 watch(() => props.visible, (val) => {
   if (val) {
     init()
-    // 重置表单
-    auditForm.taxRate = undefined
-    auditForm.bankAccountId = undefined
-    auditForm.bankFeeRate = undefined
-    auditForm.bankFee = undefined
-    auditForm.creditedAmount = undefined
-    auditForm.auditRemark = undefined
   }
 })
 
@@ -228,13 +265,17 @@ const recalcCreditedAmount = () => {
   }
 }
 
-// 银行选择变更
 const handleBankChange = (value: any) => {
-  const bank = bankList.value.find(b => b.id === value)
-  if (bank && remittance.value) {
-    // 只设置手续费率，手续费由用户手动填写
+  // 清除或无效值统一置为 undefined
+  if (value == null || value === 0 || value === '' || value === '0') {
+    auditForm.bankAccountId = undefined
+    return
+  }
+  auditForm.bankAccountId = Number(value)
+  // 自动填充手续费率
+  const bank = bankList.value.find(b => Number(b.id) === auditForm.bankAccountId)
+  if (bank && bank.serviceFeeRate) {
     auditForm.bankFeeRate = bank.serviceFeeRate * 100
-    // 不再自动计算 bankFee，让用户自己填写
   }
 }
 

@@ -13,8 +13,8 @@ export interface MeasurementUnit {
 }
 
 export interface MeasurementUnitQueryParams {
-  pageNum?: number
-  pageSize?: number
+  current?: number
+  size?: number
   keyword?: string
   unitType?: string
   status?: number

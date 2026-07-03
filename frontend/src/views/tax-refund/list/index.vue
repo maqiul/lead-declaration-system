@@ -220,8 +220,8 @@ const loadData = async () => {
   loading.value = true
   try {
     const params = {
-      pageNum: pagination.current,
-      pageSize: pagination.pageSize,
+      current: pagination.current,
+      size: pagination.pageSize,
       applicationNo: searchForm.applicationNo,
       status: searchForm.status,
       initiatorName: searchForm.initiatorName

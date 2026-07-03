@@ -299,7 +299,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, nextTick } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, ReloadOutlined, SearchOutlined, EditOutlined, StarOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { TablePaginationConfig } from 'ant-design-vue'
@@ -620,6 +620,9 @@ const openAddModal = () => {
   editingId.value = null
   resetForm()
   modalVisible.value = true
+  nextTick(() => {
+    formRef.value?.clearValidate()
+  })
 }
 
 // 打开编辑弹窗

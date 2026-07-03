@@ -219,8 +219,8 @@ const loadAssignedTasks = async () => {
   loading.value = true
   try {
     const params = {
-      pageNum: assignedPagination.current,
-      pageSize: assignedPagination.pageSize,
+      current: assignedPagination.current,
+      size: assignedPagination.pageSize,
       ...assignedPagination.searchParams
     }
     const response = await getMyAssignedTasks(params)
@@ -254,8 +254,8 @@ const loadCompletedTasks = async () => {
   loading.value = true
   try {
     const params = {
-      pageNum: completedPagination.current,
-      pageSize: completedPagination.pageSize,
+      current: completedPagination.current,
+      size: completedPagination.pageSize,
       ...completedPagination.searchParams
     }
     const response = await getMyCompletedTasks(params)
@@ -290,8 +290,8 @@ const loadCandidateTasks = async () => {
   loading.value = true
   try {
     const params = {
-      pageNum: candidatePagination.current,
-      pageSize: candidatePagination.pageSize,
+      current: candidatePagination.current,
+      size: candidatePagination.pageSize,
       ...candidatePagination.searchParams
     }
     const response = await getMyCandidateTasks(params)

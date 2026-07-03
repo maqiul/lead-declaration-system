@@ -318,10 +318,10 @@ const loadData = async () => {
   loading.value = true
   try {
     const params = {
-      pageNum: pagination.current,
-      pageSize: pagination.pageSize,
-      username: searchForm.username,
-      phone: searchForm.phone,
+      current: pagination.current,
+      size: pagination.pageSize,
+      username: searchForm.username || undefined,
+      phone: searchForm.phone || undefined,
       status: searchForm.status
     }
     
@@ -499,7 +499,7 @@ const loadOrgTree = async () => {
 // 加载角色列表
 const loadRoleList = async () => {
   try {
-    const response = await getRoleList({ pageNum: 1, pageSize: 1000 })
+    const response = await getRoleList({ current: 1, size: 1000 })
     if (response.data?.code === 200) {
       roleOptions.value = response.data.data.records.map((role: any) => ({
         label: role.roleName,

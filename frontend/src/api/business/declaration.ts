@@ -2,8 +2,6 @@ import request from '@/utils/request'
 
 // 申报单管理相关API
 export interface DeclarationQueryParams {
-  pageNum?: number
-  pageSize?: number
   current?: number
   size?: number
   formNo?: string
@@ -447,8 +445,8 @@ export function savePickupAttachment(id: number, data: any) {
 
 // === 财务开票补充 ===
 export interface FinancialSupplementQueryParams {
-  pageNum?: number
-  pageSize?: number
+  current?: number
+  size?: number
   formNo?: string
   status?: number
 }

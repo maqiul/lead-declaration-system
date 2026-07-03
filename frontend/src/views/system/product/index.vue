@@ -448,8 +448,8 @@ const loadProductList = async () => {
   try {
     loading.value = true
     const params = {
-      pageNum: pagination.current,
-      pageSize: pagination.pageSize,
+      current: pagination.current,
+      size: pagination.pageSize,
       hsCode: searchForm.hsCode,
       productName: searchForm.productName
     }

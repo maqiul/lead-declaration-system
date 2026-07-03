@@ -1,3 +1,44 @@
+# Dependencies
+/frontend/node_modules/
+
+# IDE & Editor
+/.vscode/
+/.idea/
+/.qoder/
+/.qwen/
+
+# Build output
+/frontend/dist/*
+/backend/target/
+/target/
+
+# Maven
+/backend/apache-maven-3.9.14-bin.zip
+/backend/apache-maven-3.9.14/
+/backend/-p/
+
+# Uploads (runtime generated files)
+/uploads/
+
+# Temporary files
+/tmp/
+*.log
+
+# Python temp scripts
+/frontend/fix_*.py
+/frontend/repl.py
+
+# Agent skills (external)
+.agent/skills/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Legacy SQL files
+sql/create_declaration_attachment.sql
+sql/create_declaration_remittance.sql
+sql/update_declaration_form.sql
 /frontend/node_modules/
 /.vscode/
 /.qoder/

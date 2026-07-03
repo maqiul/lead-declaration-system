@@ -209,8 +209,8 @@ const loadHistory = async () => {
     
     // 构建查询参数
     const params: DeclarationQueryParams = {
-      pageNum: pagination.current,
-      pageSize: pagination.pageSize
+      current: pagination.current,
+      size: pagination.pageSize
     }
     
     // 添加可选的筛选条件

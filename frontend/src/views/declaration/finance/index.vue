@@ -124,8 +124,8 @@ import {
 const router = useRouter()
 
 const queryParams = reactive({
-  pageNum: 1,
-  pageSize: 10,
+  current: 1,
+  size: 10,
 })
 
 const pagination = reactive({
@@ -178,8 +178,8 @@ const getList = async () => {
 }
 
 const handleTableChange = (pag: any) => {
-  queryParams.pageNum = pag.current
-  queryParams.pageSize = pag.pageSize
+  queryParams.current = pag.current
+  queryParams.size = pag.pageSize
   pagination.current = pag.current
   pagination.pageSize = pag.pageSize
   getList()
