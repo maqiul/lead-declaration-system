@@ -2695,7 +2695,7 @@ const handleSubmitMaterial = async () => {
     if (!item.attachments?.length) continue
     for (let i = 0; i < item.attachments.length; i++) {
       const att = item.attachments[i]
-      if (!att.amount || Number(att.amount) <= 0) {
+      if (att.amount == null || Number(att.amount) < 0) {
         invoiceFieldMissing.push(`「${item.name}」第${i + 1}份附件未填写金额`)
       }
       if (!att.invoiceNo) {
@@ -3815,7 +3815,6 @@ const handleElementsModalConfirm = () => {
 
 // 获取产品关联的箱子信息
 const getProductCartonInfo = (product: any) => {
-  // 遍历所有箱子，找到关联了该产品的箱子
   return cartonList.value.filter(carton => 
     carton.selectedProducts && carton.selectedProducts.includes(product.id)
   )
@@ -4148,6 +4147,9 @@ const handleSubmit = async () => {
       return
     }
     
+    // 校验箱子产品数量分配不超总量
+    // (已取消每箱数量分配功能)
+    
     submitting.value = true
     
     // 确保所有产品的金额都已计算，但保留手动输入的金额
@@ -4182,7 +4184,6 @@ const handleSubmit = async () => {
     cartonList.value.forEach(carton => {
       if (carton.selectedProducts && carton.selectedProducts.length > 0) {
         carton.selectedProducts.forEach((productId: number) => {
-          // 找到对应的产品
           const product = productList.value.find(p => p.id === productId)
           if (product) {
             cartonProducts.push({

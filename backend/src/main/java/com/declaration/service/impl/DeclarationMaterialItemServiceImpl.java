@@ -452,6 +452,7 @@ public class DeclarationMaterialItemServiceImpl
         }
         Map<String, Object> variables = new HashMap<>();
         variables.put("approved", true);
+        claimIfNeeded(task, currentUserId);
         flowableTaskService.complete(task.getId(), variables);
         // 插入待审核记录（同一条，审核时 update）
         insertPendingAuditRecord(formId, BT_MATERIAL_AUDIT, currentUserId, "资料提交待审核");
@@ -517,6 +518,7 @@ public class DeclarationMaterialItemServiceImpl
         }
         Map<String, Object> variables = new HashMap<>();
         variables.put("approved", true);
+        claimIfNeeded(task, currentUserId);
         flowableTaskService.complete(task.getId(), variables);
         insertPendingAuditRecord(formId, BT_SUPPLEMENT_AUDIT, currentUserId, "补充资料提交待审核");
         log.info("申报单 {} 补充资料提交完成，操作人={}", formId, currentUserId);
@@ -580,6 +582,7 @@ public class DeclarationMaterialItemServiceImpl
         }
         Map<String, Object> variables = new HashMap<>();
         variables.put("approved", true);
+        claimIfNeeded(task, currentUserId);
         flowableTaskService.complete(task.getId(), variables);
         insertPendingAuditRecord(formId, BT_INVOICE_AMOUNT_AUDIT, currentUserId, "申请开票金额待审核");
         log.info("申报单 {} 申请开票金额完成，金额={} 操作人={}", formId, invoiceAmount, currentUserId);
@@ -632,6 +635,7 @@ public class DeclarationMaterialItemServiceImpl
         }
         Map<String, Object> variables = new HashMap<>();
         variables.put("approved", true);
+        claimIfNeeded(task, currentUserId);
         flowableTaskService.complete(task.getId(), variables);
         insertPendingAuditRecord(formId, BT_INVOICE_AUDIT, currentUserId, "业务发票提交待审核");
         log.info("申报单 {} 发票提交完成，操作人={}", formId, currentUserId);
@@ -664,6 +668,25 @@ public class DeclarationMaterialItemServiceImpl
                 .taskDefinitionKey(taskKey)
                 .list();
         return (tasks == null || tasks.isEmpty()) ? null : tasks.get(0);
+    }
+
+    /**
+     * 确保当前用户可以操作该任务。
+     * 如果当前用户不是 assignee，将其加入 candidateUsers，
+     * 兼容旧流程实例（旧实例没有 candidateGroups）。
+     */
+    private void claimIfNeeded(Task task, Long currentUserId) {
+        if (currentUserId == null) return;
+        String assignee = task.getAssignee();
+        if (assignee != null && assignee.equals(String.valueOf(currentUserId))) {
+            return; // 已经是 assignee，无需处理
+        }
+        // 将当前用户加入候选人，确保可以完成任务
+        try {
+            flowableTaskService.addCandidateUser(task.getId(), String.valueOf(currentUserId));
+        } catch (Exception e) {
+            log.warn("添加候选人失败 taskId={} userId={}: {}", task.getId(), currentUserId, e.getMessage());
+        }
     }
 
     /**

@@ -35,7 +35,7 @@ public class IdempotentAspect {
             return joinPoint.proceed();
         }
         HttpServletRequest request = attributes.getRequest();
-        
+            
         // 构造全局唯一的防重Key：前缀 + 用户ID + 接口URI
         String userId = "anonymous";
         try {
@@ -45,9 +45,9 @@ public class IdempotentAspect {
         } catch (Exception e) {
             // 忽略未登录异常
         }
-        
+            
         String key = idempotent.prefix() + userId + ":" + request.getRequestURI();
-        
+            
         RLock lock = redissonClient.getLock(key);
         boolean isLocked = false;
         try {
@@ -57,15 +57,30 @@ public class IdempotentAspect {
                 log.warn("触发防重复提交保护，短时间内重复的高并发写请求被精准拦截: {}", key);
                 return Result.fail(idempotent.message());
             }
-            
+                
             // 执行目标业务代码
-            return joinPoint.proceed();
-            
-        } finally {
-            // 注意：这里故意不去主动释放锁 (unlock)，而是让锁在 Redisson 里面根据 expireTime 自然过期。
-            // 因为如果是处理并发的“二次点击”，业务可能在100ms就执行完了，如果此时主动释放锁，
-            // 那么500ms后到达的第二次点击就会再次通过！
-            // 靠自然延时过期可以完美实现“在3秒内绝对不允许触发第二次”的物理阻断。
+            Object result = joinPoint.proceed();
+                
+            // 业务执行完毕后释放锁，避免锁残留导致用户无法重试
+            // 防重复点击的保护已在 tryLock 阶段完成（并发请求拿不到锁会立刻返回）
+            unlockSafely(lock, key);
+                
+            return result;
+                
+        } catch (Throwable ex) {
+            // 业务异常时也释放锁
+            unlockSafely(lock, key);
+            throw ex;
+        }
+    }
+    
+    private void unlockSafely(RLock lock, String key) {
+        try {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        } catch (Exception e) {
+            log.debug("释放防重锁失败（可能已过期）: {}", key);
         }
     }
 }

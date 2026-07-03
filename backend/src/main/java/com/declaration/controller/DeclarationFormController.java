@@ -1253,7 +1253,10 @@ public class DeclarationFormController {
      */
     @PostMapping("/{id}/submit")
     @Operation(summary = "提交申报单")
-    @RequiresPermissions("business:declaration:submit")
+    @RequiresPermissions(value = {
+            "business:declaration:submit",
+            "business:declaration:submit:others"
+    }, logical = RequiresPermissions.Logical.OR)
     @Idempotent(prefix = "sys:idempotent:submit:", expireTime = 5, message = "申报单正在提交中，请勿重复操作！")
     public Result<String> submitDeclaration(@Parameter(description = "申报单ID") @PathVariable Long id) {
         log.info("调用提交申报单");
@@ -1263,11 +1266,23 @@ public class DeclarationFormController {
                 return Result.fail("当前状态不支持提交操作");
             }
 
-            // 验证组织权限，确保用户只能提交自己组织的申报单
+            // 验证是否为创建者：非创建者需要 submit:others 权限
+            Long currentUserId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
+            boolean isOwner = currentUserId != null && form.getCreateBy() != null
+                    && currentUserId.equals(form.getCreateBy());
+            if (!isOwner && !StpUtil.hasPermission("business:declaration:submit:others")) {
+                log.warn("用户{}尝试提交非本人创建的申报单: {}", currentUserId, id);
+                return Result.fail("只能提交自己创建的申报单，或联系管理员开通代提交权限");
+            }
+
+            // 验证组织权限：非创建者且跨组织需要 submit:others 权限
             Long currentOrgId = OrganizationUtils.getCurrentUserOrgId();
             if (form.getOrgId() != null && currentOrgId != null && !form.getOrgId().equals(currentOrgId)) {
-                log.warn("用户尝试提交不属于其组织的申报单: {}", id);
-                return Result.fail("没有权限提交此申报单");
+                if (!StpUtil.hasPermission("business:declaration:submit:others")) {
+                    log.warn("用户尝试提交不属于其组织的申报单: {}", id);
+                    return Result.fail("没有权限提交此申报单");
+                }
+                log.info("用户(userId={})跨组织提交申报单: {}", currentUserId, id);
             }
 
             // 如果组织ID为空，则设置为当前用户组织ID

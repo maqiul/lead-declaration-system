@@ -432,9 +432,12 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
         // 建立箱子ID到产品ID列表的映射
         Map<Long, List<Long>> cartonToProductsMap = new HashMap<>();
+        // 建立 (cartonId, productId) -> 每箱数量 的映射
+        Map<String, Integer> cartonProductQuantityMap = new HashMap<>();
         if (form.getCartonProducts() != null) {
             for (DeclarationCartonProduct cp : form.getCartonProducts()) {
                 cartonToProductsMap.computeIfAbsent(cp.getCartonId(), k -> new ArrayList<>()).add(cp.getProductId());
+                cartonProductQuantityMap.put(cp.getCartonId() + "_" + cp.getProductId(), cp.getQuantity());
             }
         }
 
@@ -477,7 +480,10 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                     ExportDataRequest.ProductInfo info = new ExportDataRequest.ProductInfo();
                     info.setProductName(p.getProductEnglishName());
                     info.setHsCode(p.getHsCode());
-                    info.setQuantity(p.getQuantity());
+                    // 使用每箱产品数量（如有），否则回退到产品总数量
+                    String qtyKey = carton.getId() + "_" + productId;
+                    Integer cartonQty = cartonProductQuantityMap.get(qtyKey);
+                    info.setQuantity(cartonQty != null ? cartonQty : p.getQuantity());
                     info.setUnit(unit);
                     info.setUnitPrice(p.getUnitPrice());
                     info.setAmount(p.getAmount() != null ? p.getAmount().toString() : "0.00");

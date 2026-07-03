@@ -499,7 +499,7 @@ const loadOrgTree = async () => {
 // 加载角色列表
 const loadRoleList = async () => {
   try {
-    const response = await getRoleList({ current: 1, size: 1000 })
+    const response = await getRoleList({ current: 1, size: 100})
     if (response.data?.code === 200) {
       roleOptions.value = response.data.data.records.map((role: any) => ({
         label: role.roleName,

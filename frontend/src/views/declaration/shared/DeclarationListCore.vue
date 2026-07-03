@@ -90,7 +90,7 @@
                   <template #icon><EditOutlined /></template>
                   编辑
                 </a-button>
-                <a-button type="link" size="small" @click="handleStatusSubmit(record as any)" v-permission="['business:declaration:submit']">
+                <a-button type="link" size="small" @click="handleStatusSubmit(record as any)" v-permission="['business:declaration:submit', 'business:declaration:submit:others']">
                   <template #icon><SendOutlined /></template>
                   提交
                 </a-button>

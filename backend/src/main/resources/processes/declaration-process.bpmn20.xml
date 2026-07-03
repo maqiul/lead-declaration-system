@@ -43,8 +43,8 @@
       </extensionElements>
     </serviceTask>
 
-    <!-- 4. 资料提交 (填报人) -->
-    <userTask id="materialSubmit" name="资料提交" flowable:assignee="${starterId}">
+    <!-- 4. 资料提交 (填报人 + 资料审核人可操作) -->
+    <userTask id="materialSubmit" name="资料提交" flowable:assignee="${starterId}" flowable:candidateGroups="MATERIAL_AUDITOR">
       <extensionElements>
         <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
         <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
@@ -62,8 +62,8 @@
     <!-- 资料审核结果网关 -->
     <exclusiveGateway id="gw2" name="资料审核结果" />
 
-    <!-- 6. 补充资料提交 (填报人) -->
-    <userTask id="supplementSubmit" name="补充资料提交" flowable:assignee="${starterId}">
+    <!-- 6. 补充资料提交 (填报人 + 补充资料审核人可操作) -->
+    <userTask id="supplementSubmit" name="补充资料提交" flowable:assignee="${starterId}" flowable:candidateGroups="SUPPLEMENT_AUDITOR">
       <extensionElements>
         <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
         <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
@@ -81,8 +81,8 @@
     <!-- 补充资料审核结果网关 -->
     <exclusiveGateway id="gw4" name="补充资料审核结果" />
 
-    <!-- 8. 申请开票金额 (填报人) -->
-    <userTask id="invoiceAmountSubmit" name="申请开票金额" flowable:assignee="${starterId}">
+    <!-- 8. 申请开票金额 (填报人 + 开票金额审核人可操作) -->
+    <userTask id="invoiceAmountSubmit" name="申请开票金额" flowable:assignee="${starterId}" flowable:candidateGroups="INVOICE_AMOUNT_AUDITOR">
       <extensionElements>
         <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
         <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
@@ -100,8 +100,8 @@
     <!-- 开票金额审核结果网关 -->
     <exclusiveGateway id="gw5" name="开票金额审核结果" />
 
-    <!-- 10. 业务发票提交 (填报人) -->
-    <userTask id="invoiceSubmit" name="业务发票提交" flowable:assignee="${starterId}">
+    <!-- 10. 业务发票提交 (填报人 + 业务发票审核人可操作) -->
+    <userTask id="invoiceSubmit" name="业务发票提交" flowable:assignee="${starterId}" flowable:candidateGroups="INVOICE_AUDITOR">
       <extensionElements>
         <flowable:taskListener event="create" delegateExpression="${declarationTaskListener}" />
         <flowable:taskListener event="complete" delegateExpression="${declarationTaskListener}" />
