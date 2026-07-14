@@ -33,7 +33,7 @@ import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.engine.runtime.Execution;
 import org.flowable.task.api.Task;
-// import org.springframework.jdbc.core.JdbcTemplate; // Removed unused
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -72,6 +72,7 @@ public class DeclarationFormController {
     private final InvoiceService invoiceService; // 新增发票服务
     private final DeclarationFlowMigrationService declarationFlowMigrationService;
     private final OrganizationService organizationService;
+    private final FlowTemplateService flowTemplateService;
 
     /**
      * 获取申报单统计数据
@@ -82,6 +83,23 @@ public class DeclarationFormController {
     public Result<DeclarationStatisticsDTO> getStatistics() {
         DeclarationStatisticsDTO statistics = declarationFormService.getStatistics();
         return Result.success(statistics);
+    }
+
+    /**
+     * 业务端：获取可用的流程模板列表（创建申报单时使用）
+     * 只返回启用状态的模板，不需要 system:flow-template:view 权限
+     */
+    @GetMapping("/flow-templates")
+    @Operation(summary = "获取可用流程模板列表（业务端）")
+    @RequiresPermissions("business:declaration:view")
+    public Result<List<FlowTemplate>> getFlowTemplates(
+            @Parameter(description = "流程类型过滤") @RequestParam(required = false, defaultValue = "declaration") String processType) {
+        List<FlowTemplate> list = flowTemplateService.listByProcessType(processType);
+        // 只返回启用状态的模板
+        list = list.stream()
+                .filter(t -> t.getStatus() != null && t.getStatus() == 1)
+                .collect(Collectors.toList());
+        return Result.success(list);
     }
 
     /**
@@ -568,8 +586,9 @@ public class DeclarationFormController {
         // balance -> balancePayment (业务员提交尾款凭证)
         // pickup -> pickupListUpload (业务员上传提货单)
         // finance/financeUpload -> financeUploadTask (财务补充完成)
-        // rejectHandler -> rejectHandler (驳回修改后重新提交)
+        // rejectHandler -> rejectHandler_N (驳回修改后重新提交，N=网关序号)
         String targetTaskKey = null;
+        boolean usePrefixMatch = false;
         switch (auditType) {
             case "deposit":
                 targetTaskKey = "depositPayment";
@@ -586,17 +605,28 @@ public class DeclarationFormController {
                 break;
             case "rejectHandler":
                 targetTaskKey = "rejectHandler";
+                usePrefixMatch = true;
                 break;
             default:
-                // 如果是直接传入 taskKey，也支持
+                // 如果是直接传入 taskKey，也支持（兼容 rejectHandler_0 等）
                 targetTaskKey = auditType;
         }
 
         Task activeTask = null;
-        for (Task t : activeTasks) {
-            if (targetTaskKey.equals(t.getTaskDefinitionKey())) {
-                activeTask = t;
-                break;
+        if (usePrefixMatch) {
+            // 前缀匹配（用于 rejectHandler_0, rejectHandler_1 等）
+            for (Task t : activeTasks) {
+                if (t.getTaskDefinitionKey() != null && t.getTaskDefinitionKey().startsWith(targetTaskKey)) {
+                    activeTask = t;
+                    break;
+                }
+            }
+        } else {
+            for (Task t : activeTasks) {
+                if (targetTaskKey.equals(t.getTaskDefinitionKey())) {
+                    activeTask = t;
+                    break;
+                }
             }
         }
 
@@ -829,16 +859,97 @@ public class DeclarationFormController {
     }
 
     /**
+     * 跳过补充资料阶段：将 status=4(待补充资料提交) / status=5(待补充资料审核) 的老数据自动完成 Flowable 任务，
+     * 流程流转到下一节点（申请开票金额）。
+     */
+    @PostMapping("/skip-supplement")
+    @Operation(summary = "跳过补充资料阶段（迁移老数据）")
+    @RequiresPermissions("business:declaration:resume:flow")
+    public Result<Map<String, Object>> skipSupplementStages(
+            @Parameter(description = "true=仅预览不执行") @RequestParam(defaultValue = "true") boolean dryRun) {
+        List<DeclarationForm> forms = declarationFormService.lambdaQuery()
+                .in(DeclarationForm::getStatus, 4, 5)
+                .list();
+
+        List<Map<String, Object>> details = new ArrayList<>();
+        int completed = 0;
+
+        for (DeclarationForm form : forms) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("formId", form.getId());
+            item.put("formNo", form.getFormNo());
+            item.put("status", form.getStatus());
+
+            List<org.flowable.task.api.Task> activeTasks = flowableTaskService.createTaskQuery()
+                    .processInstanceBusinessKey(String.valueOf(form.getId()))
+                    .list();
+
+            String taskKey = activeTasks.isEmpty() ? "无活跃任务" :
+                    activeTasks.stream().map(org.flowable.task.api.Task::getTaskDefinitionKey)
+                            .collect(java.util.stream.Collectors.joining(","));
+            item.put("activeTask", taskKey);
+
+            if (!dryRun) {
+                // 第一轮：完成 supplementSubmit / supplementAudit
+                for (var task : activeTasks) {
+                    String key = task.getTaskDefinitionKey();
+                    if ("supplementSubmit".equals(key) || "supplementAudit".equals(key)) {
+                        try {
+                            if (task.getAssignee() == null || task.getAssignee().isEmpty()) {
+                                flowableTaskService.setAssignee(task.getId(), "system");
+                            }
+                            Map<String, Object> vars = new HashMap<>();
+                            vars.put("approved", true);
+                            flowableTaskService.complete(task.getId(), vars);
+                            item.put("result", "已完成 " + key);
+                            completed++;
+                        } catch (Exception e) {
+                            item.put("result", "失败: " + e.getMessage());
+                        }
+                    }
+                }
+                // 第二轮：第一轮完成 supplementSubmit 后可能产生 supplementAudit
+                List<org.flowable.task.api.Task> newTasks = flowableTaskService.createTaskQuery()
+                        .processInstanceBusinessKey(String.valueOf(form.getId()))
+                        .taskDefinitionKey("supplementAudit")
+                        .list();
+                for (var task : newTasks) {
+                    try {
+                        if (task.getAssignee() == null || task.getAssignee().isEmpty()) {
+                            flowableTaskService.setAssignee(task.getId(), "system");
+                        }
+                        Map<String, Object> vars = new HashMap<>();
+                        vars.put("approved", true);
+                        flowableTaskService.complete(task.getId(), vars);
+                        item.put("result", (String) item.getOrDefault("result", "") + " + supplementAudit");
+                        completed++;
+                    } catch (Exception e) {
+                        item.put("result", "失败: " + e.getMessage());
+                    }
+                }
+            }
+            details.add(item);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("dryRun", dryRun);
+        result.put("total", forms.size());
+        result.put("completed", completed);
+        result.put("details", details);
+        return Result.success(result);
+    }
+
+    /**
      * 根据任务Key获取任务分类
      */
     private String getTaskCategory(String taskKey) {
         if (taskKey == null)
             return "unknown";
+        if (taskKey.startsWith("rejectHandler"))
+            return "驳回修改";
         switch (taskKey) {
             case "deptAudit":
                 return "初审";
-            case "rejectHandler":
-                return "驳回修改";
             case "depositPayment":
                 return "定金上传";
             case "depositAudit":
@@ -936,13 +1047,59 @@ public class DeclarationFormController {
 
             log.info("查询到 {} 个活跃任务", tasks.size());
 
+            // 当前用户信息，用于判断 myTasks
+            String currentUserId = StpUtil.isLogin() ? String.valueOf(StpUtil.getLoginIdAsLong()) : null;
+            List<String> userRoles = StpUtil.isLogin() ? StpUtil.getRoleList() : List.of();
+
+            // 查询当前用户可处理的任务 ID 集合
+            Set<String> myFlowableTaskIds = new HashSet<>();
+            if (currentUserId != null && !processInstanceIds.isEmpty()) {
+                // 1. assignee 匹配
+                flowableTaskService.createTaskQuery()
+                        .processInstanceIdIn(processInstanceIds)
+                        .taskAssignee(currentUserId)
+                        .list()
+                        .forEach(t -> myFlowableTaskIds.add(t.getId()));
+                // 2. candidateGroups 匹配（仅返回 ASSIGNEE_ IS NULL 的任务，审核节点正常匹配）
+                if (!userRoles.isEmpty()) {
+                    flowableTaskService.createTaskQuery()
+                            .processInstanceIdIn(processInstanceIds)
+                            .taskCandidateGroupIn(userRoles)
+                            .list()
+                            .forEach(t -> myFlowableTaskIds.add(t.getId()));
+                }
+                // 3. 补充：对于同时有 assignee + candidateGroups 的节点（如提交节点），
+                //    taskCandidateGroupIn 会跳过，需手动检查 identity link
+                Set<String> userRoleSet = new HashSet<>(userRoles);
+                for (Task task : tasks) {
+                    if (myFlowableTaskIds.contains(task.getId())) continue;
+                    if (task.getAssignee() != null && !userRoles.isEmpty()) {
+                        boolean groupMatch = flowableTaskService.getIdentityLinksForTask(task.getId())
+                                .stream()
+                                .anyMatch(l -> "candidate".equals(l.getType()) && userRoleSet.contains(l.getGroupId()));
+                        if (groupMatch) {
+                            myFlowableTaskIds.add(task.getId());
+                        }
+                    }
+                }
+                log.info("当前用户 {} 角色: {}, 可处理任务ID: {}", currentUserId, userRoles, myFlowableTaskIds);
+            }
+
             // 按 businessKey 分组，提取 taskDefinitionKey
+            Map<String, List<String>> myTaskMap = new HashMap<>();
             for (Task task : tasks) {
                 String businessKey = processInstanceToBusinessKey.get(task.getProcessInstanceId());
                 if (businessKey != null) {
                     taskMap.computeIfAbsent(businessKey, k -> new ArrayList<>())
                             .add(task.getTaskDefinitionKey());
-                    log.debug("任务映射: {} -> {}", businessKey, task.getTaskDefinitionKey());
+
+                    boolean isMine = myFlowableTaskIds.contains(task.getId());
+                    if (isMine) {
+                        myTaskMap.computeIfAbsent(businessKey, k -> new ArrayList<>())
+                                .add(task.getTaskDefinitionKey());
+                    }
+
+                    log.debug("任务映射: {} -> {} (mine={})", businessKey, task.getTaskDefinitionKey(), isMine);
                 }
             }
 
@@ -960,8 +1117,9 @@ public class DeclarationFormController {
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("tasks", taskMap);
+            payload.put("myTasks", myTaskMap);
             payload.put("migration", migrationMap);
-            log.info("最终结果 tasks={}, migration={}", taskMap, migrationMap);
+            log.info("最终结果 tasks={}, myTasks={}, migration={}", taskMap, myTaskMap, migrationMap);
             return Result.success(payload);
 
         } catch (Exception e) {
@@ -979,7 +1137,12 @@ public class DeclarationFormController {
             @Parameter(description = "状态") @RequestParam(required = false) Integer status,
             @Parameter(description = "状态列表（逗号分隔，如 0,1,9）") @RequestParam(required = false) String statusList,
             @Parameter(description = "排除的状态") @RequestParam(required = false) Integer excludeStatus,
-            @Parameter(description = "最小状态（>=，用于水单关联候选等场景）") @RequestParam(required = false) Integer minStatus) {
+            @Parameter(description = "最小状态（>=，用于水单关联候选等场景）") @RequestParam(required = false) Integer minStatus,
+            @Parameter(description = "收货人（模糊）") @RequestParam(required = false) String consignee,
+            @Parameter(description = "发货人（模糊）") @RequestParam(required = false) String shipper,
+            @Parameter(description = "发票号（模糊）") @RequestParam(required = false) String invoiceNo,
+            @Parameter(description = "申报人（模糊）") @RequestParam(required = false) String applicant,
+            @Parameter(description = "申报类型（SELF/EXTERNAL）") @RequestParam(required = false) String declarationType) {
 
         Page<DeclarationForm> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
 
@@ -1009,6 +1172,34 @@ public class DeclarationFormController {
             }
             if (minStatus != null) {
                 queryWrapper.ge(DeclarationForm::getStatus, minStatus);
+            }
+            if (consignee != null && !consignee.isEmpty()) {
+                queryWrapper.like(DeclarationForm::getConsigneeCompany, consignee);
+            }
+            if (shipper != null && !shipper.isEmpty()) {
+                queryWrapper.like(DeclarationForm::getShipperCompany, shipper);
+            }
+            if (invoiceNo != null && !invoiceNo.isEmpty()) {
+                queryWrapper.like(DeclarationForm::getInvoiceNo, invoiceNo);
+            }
+            if (applicant != null && !applicant.isEmpty()) {
+                // 通过用户名模糊匹配找到 createBy 候选 ID
+                List<User> matchedUsers = userService.list(
+                    new LambdaQueryWrapper<User>()
+                        .like(User::getNickname, applicant)
+                        .or()
+                        .like(User::getUsername, applicant)
+                );
+                if (matchedUsers.isEmpty()) {
+                    // 无匹配用户，直接返回空结果
+                    return Result.success(new Page<>(pageParam.getCurrent(), pageParam.getSize()));
+                }
+                List<Long> matchedIds = matchedUsers.stream().map(User::getId).collect(Collectors.toList());
+                queryWrapper.in(DeclarationForm::getCreateBy, matchedIds);
+            }
+            // 申报类型过滤
+            if (declarationType != null && !declarationType.isEmpty()) {
+                queryWrapper.eq(DeclarationForm::getDeclarationType, declarationType);
             }
 
             // 组织级数据权限隔离：有审核权限可查看所有数据
@@ -1328,33 +1519,60 @@ public class DeclarationFormController {
 
             // 启动 Flowable 流程
             try {
+                // 先关闭已有的运行中流程（驳回后重新提交场景）
+                String businessKey = String.valueOf(id);
+                List<org.flowable.engine.runtime.ProcessInstance> runningInstances = runtimeService
+                        .createProcessInstanceQuery()
+                        .processInstanceBusinessKey(businessKey)
+                        .list();
+                if (!runningInstances.isEmpty()) {
+                    for (org.flowable.engine.runtime.ProcessInstance oldInstance : runningInstances) {
+                        runtimeService.deleteProcessInstance(oldInstance.getId(), "驳回后重新提交，关闭旧流程");
+                        log.info("申报单 {} 已关闭旧流程实例: {}", form.getFormNo(), oldInstance.getId());
+                    }
+                }
+
                 Map<String, Object> variables = new HashMap<>();
                 variables.put("starterId", form.getCreateBy());
                 variables.put("orgId", form.getOrgId());
                 variables.put("formNo", form.getFormNo());
 
-                // 根据申报类型或组织类型确定流程分支
+                // 根据模板编码解析申报类型（内部/外部）
                 String declarationType = form.getDeclarationType();
-                if (declarationType == null || declarationType.isEmpty()) {
-                    // 自动根据组织类型判断（含祖先继承）
-                    if (form.getOrgId() != null && organizationService.isInternalOrg(form.getOrgId())) {
-                        declarationType = "SELF";
-                    }
-                    if (declarationType == null) {
-                        declarationType = "EXTERNAL";
-                    }
-                    // 回写到申报单
-                    form.setDeclarationType(declarationType);
-                    declarationFormService.updateById(form);
-                }
-                variables.put("declarationType", declarationType);
-                log.info("申报类型: {}, 流程变量: {}", declarationType, variables);
+                String templateCode = form.getTemplateCode();
 
-                log.info("准备启动流程：key={}, businessKey={}, variables={}", "declarationProcess", String.valueOf(id),
-                        variables);
+                // 优先从模板配置中读取申报类型
+                if (templateCode != null && !templateCode.isEmpty()) {
+                    try {
+                        List<FlowTemplate> templates = flowTemplateService.listByProcessType("declaration");
+                        for (FlowTemplate t : templates) {
+                            if (templateCode.equals(t.getCode()) && t.getDeclarationType() != null) {
+                                declarationType = t.getDeclarationType();
+                                break;
+                            }
+                        }
+                    } catch (Exception ex) {
+                        log.warn("查询模板申报类型失败，回退到表单值", ex);
+                    }
+                }
+
+                // 最终回退：未指定则默认 EXTERNAL
+                if (declarationType == null || declarationType.isEmpty()) {
+                    declarationType = "EXTERNAL";
+                }
+                form.setDeclarationType(declarationType);
+                declarationFormService.updateById(form);
+                variables.put("declarationType", declarationType);
+                log.info("申报类型: {}, 模板编码: {}, 流程变量: {}", declarationType, templateCode, variables);
+
+                // 优先使用前端选择的模板编码，回退到按 declarationType 匹配
+                String processKey = templateCode != null && !templateCode.isEmpty()
+                        ? templateCode
+                        : resolveProcessKey(declarationType);
+                log.info("准备启动流程：key={}, businessKey={}, variables={}", processKey, businessKey, variables);
 
                 com.declaration.entity.ProcessInstance processInstance = processInstanceService
-                        .startProcessInstance("declarationProcess", String.valueOf(id), variables);
+                        .startProcessInstance(processKey, businessKey, variables);
 
                 log.info("申报单 {} 流程启动成功，instanceId={}", form.getFormNo(), processInstance.getInstanceId());
             } catch (Exception e) {
@@ -1404,6 +1622,13 @@ public class DeclarationFormController {
         if (products != null && !products.isEmpty()) {
             for (int i = 0; i < products.size(); i++) {
                 DeclarationProduct product = products.get(i);
+                // 校验毛重必须大于净重
+                if (product.getGrossWeight() != null && product.getNetWeight() != null
+                        && product.getGrossWeight().compareTo(product.getNetWeight()) <= 0) {
+                    String name = product.getProductChineseName() != null ? product.getProductChineseName()
+                            : (product.getProductEnglishName() != null ? product.getProductEnglishName() : "第" + (i + 1) + "个产品");
+                    return Result.fail("产品「" + name + "」的毛重必须大于净重");
+                }
                 // 如果是新填产品，清除临时ID由数据库生成真实ID
                 if (product.getId() != null && product.getId() < 100000) {
                     product.setId(null);
@@ -1484,6 +1709,17 @@ public class DeclarationFormController {
     @Operation(summary = "保存箱子产品关联")
     @RequiresPermissions("business:declaration:update")
     public Result<Void> saveCartonProducts(@Valid @RequestBody List<DeclarationCartonProduct> cartonProducts) {
+
+        // 校验每个箱子产品明细的毛重必须大于净重
+        if (cartonProducts != null && !cartonProducts.isEmpty()) {
+            for (int i = 0; i < cartonProducts.size(); i++) {
+                DeclarationCartonProduct cp = cartonProducts.get(i);
+                if (cp.getGrossWeight() != null && cp.getNetWeight() != null
+                        && cp.getGrossWeight().compareTo(cp.getNetWeight()) <= 0) {
+                    return Result.fail("箱子产品明细第" + (i + 1) + "项的毛重必须大于净重");
+                }
+            }
+        }
 
         // 先删除原有关联
         if (cartonProducts != null && !cartonProducts.isEmpty()) {
@@ -2045,5 +2281,60 @@ public class DeclarationFormController {
     public Result<Void> deleteBusinessInvoice(@PathVariable Long invoiceId) {
         invoiceService.removeById(invoiceId);
         return Result.success();
+    }
+
+    /**
+     * 根据申报类型解析对应的流程 processKey
+     * 查找 processType='declaration' 的启用模板，按 declarationType 匹配
+     */
+    private String resolveProcessKey(String declarationType) {
+        try {
+            List<FlowTemplate> templates = flowTemplateService.listByProcessType("declaration");
+            List<FlowTemplate> enabled = templates.stream()
+                    .filter(t -> t.getStatus() != null && t.getStatus() == 1)
+                    .collect(java.util.stream.Collectors.toList());
+
+            if (enabled.isEmpty()) {
+                // 兆底：没有启用模板时用默认 key
+                log.warn("未找到启用的申报流程模板，使用默认 processKey: declarationProcess");
+                return "declarationProcess";
+            }
+
+            if (enabled.size() == 1) {
+                // 只有一个模板，直接使用
+                return enabled.get(0).getCode();
+            }
+
+            // 多个模板时，按 code 模糊匹配 declarationType
+            String typeHint = declarationType != null ? declarationType.toLowerCase() : "external";
+            for (FlowTemplate t : enabled) {
+                if (t.getCode() != null && t.getCode().toLowerCase().contains(typeHint)) {
+                    return t.getCode();
+                }
+            }
+            // 匹配不到时返回第一个
+            log.warn("未找到匹配 declarationType={} 的模板，使用第一个：{}", declarationType, enabled.get(0).getCode());
+            return enabled.get(0).getCode();
+        } catch (Exception e) {
+            log.error("查找流程模板失败，使用默认 processKey", e);
+            return "declarationProcess";
+        }
+    }
+
+    /**
+     * 校验资料完整性（用于资料提交阶段自动检测）
+     */
+    @GetMapping("/{id}/validate-material-completeness")
+    @Operation(summary = "校验资料完整性")
+    @RequiresPermissions("business:declaration:view")
+    public Result<java.util.Map<String, Object>> validateMaterialCompleteness(
+            @Parameter(description = "申报单 ID") @PathVariable Long id) {
+        try {
+            java.util.Map<String, Object> result = declarationFormService.validateMaterialCompleteness(id);
+            return Result.success(result);
+        } catch (Exception e) {
+            log.error("校验资料完整性失败", e);
+            return Result.fail("校验失败：" + e.getMessage());
+        }
     }
 }

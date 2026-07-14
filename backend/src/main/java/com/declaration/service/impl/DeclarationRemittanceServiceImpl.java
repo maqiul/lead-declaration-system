@@ -325,6 +325,8 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
             map.put("bankFeeRate", remittance.getBankFeeRate());
             map.put("internalBankFee", remittance.getInternalBankFee());
             map.put("creditedAmount", remittance.getCreditedAmount());
+            map.put("remarks", remittance.getRemarks());
+            map.put("photoUrl", remittance.getPhotoUrl());
             map.put("relationType", relationMap.get(remittance.getId()).getRelationType());
             map.put("relationAmount", relationMap.get(remittance.getId()).getRelationAmount());
             return map;
@@ -537,5 +539,27 @@ public class DeclarationRemittanceServiceImpl extends ServiceImpl<DeclarationRem
             }
         }
         return result;
+    }
+
+    @Override
+    public boolean hasApprovedRemittance(Long formId) {
+        // 查询关联表中该申报单关联的所有收汇水单 ID
+        LambdaQueryWrapper<RemittanceFormRelation> relWrapper = new LambdaQueryWrapper<>();
+        relWrapper.eq(RemittanceFormRelation::getFormId, formId);
+        List<RemittanceFormRelation> relations = relationDao.selectList(relWrapper);
+
+        if (relations.isEmpty()) {
+            return false;
+        }
+
+        List<Long> remittanceIds = relations.stream()
+                .map(RemittanceFormRelation::getRemittanceId)
+                .collect(Collectors.toList());
+
+        // 查询是否有 status=2（已审核）的收汇水单
+        LambdaQueryWrapper<DeclarationRemittance> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(DeclarationRemittance::getId, remittanceIds)
+               .eq(DeclarationRemittance::getStatus, 2);
+        return count(wrapper) > 0;
     }
 }

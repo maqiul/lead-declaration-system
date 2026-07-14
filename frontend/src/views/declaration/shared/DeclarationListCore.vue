@@ -3,11 +3,14 @@
     <!-- 搜索区域 -->
     <a-card class="search-card">
       <a-form :model="searchForm" layout="inline">
+        <a-form-item label="发票号">
+          <a-input v-model:value="searchForm.invoiceNo" placeholder="发票号" style="width: 140px" />
+        </a-form-item>
         <a-form-item label="申报单号">
-          <a-input-search 
+          <a-input 
             v-model:value="searchForm.formNo" 
             placeholder="搜索申报单号" 
-            @search="loadData"
+            style="width: 160px"
           />
         </a-form-item>
         <a-form-item label="状态" v-if="showStatusSelect">
@@ -23,6 +26,12 @@
             </a-select-option>
           </a-select>
         </a-form-item>
+        <a-form-item label="发货人">
+          <a-input v-model:value="searchForm.shipper" placeholder="发货人" style="width: 140px" />
+        </a-form-item>
+        <a-form-item label="收货人">
+          <a-input v-model:value="searchForm.consignee" placeholder="收货人" style="width: 140px" />
+        </a-form-item>
         <a-form-item label="日期">
           <a-range-picker 
             v-model:value="searchForm.dateRange" 
@@ -30,19 +39,17 @@
             @change="loadData"
           />
         </a-form-item>
-        <a-form-item>
-          <a-space>
-            <a-button type="primary" @click="loadData" v-permission="['business:declaration:view']">
-              <template #icon><SearchOutlined /></template>
-              查询
-            </a-button>
-            <a-button @click="resetSearch">
-              <template #icon><ReloadOutlined /></template>
-              重置
-            </a-button>
-          </a-space>
-        </a-form-item>
       </a-form>
+      <div class="search-btn-row">
+        <a-button type="primary" @click="loadData" v-permission="['business:declaration:view']">
+          <template #icon><SearchOutlined /></template>
+          查询
+        </a-button>
+        <a-button @click="resetSearch">
+          <template #icon><ReloadOutlined /></template>
+          重置
+        </a-button>
+      </div>
     </a-card>
 
     <!-- 操作按钮 -->
@@ -65,7 +72,7 @@
         :columns="columns" 
         :loading="loading"
         :pagination="pagination"
-        :scroll="{ x: 1500 }"
+        :scroll="{ x: 1720 }"
         rowKey="id"
         @change="handleTableChange"
         class="ui-table"
@@ -97,72 +104,72 @@
               </template>
 
               <!-- 待初审状态: 初审按钮 -->
-              <template v-if="record.status === 1">
-                <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'deptAudit')" v-permission="['business:declaration:audit:initial']">
+              <template v-if="hasMyTaskForStatus(record, 1, 'deptAudit')">
+                <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'deptAudit')">
                   <template #icon><CheckCircleOutlined /></template>
                   初审
                 </a-button>
               </template>
 
               <!-- 待资料提交状态: 提交资料按钮 -->
-              <template v-if="record.status === 2">
-                <a-button type="link" size="small" style="color: #1677ff;" @click="handleMaterialSubmit(record as any)" v-permission="['business:declaration:material:submit']">
+              <template v-if="hasMyTaskForStatus(record, 2, 'materialSubmit')">
+                <a-button type="link" size="small" style="color: #1677ff;" @click="handleMaterialSubmit(record as any)">
                   <template #icon><UploadOutlined /></template>
                   提交资料
                 </a-button>
               </template>
 
               <!-- 待资料审核状态: 资料审核按钮 -->
-              <template v-if="record.status === 3">
-                <a-button type="link" size="small" style="color: #52c41a;" @click="handleMaterialAudit(record as any)" v-permission="['business:declaration:audit:material']">
+              <template v-if="hasMyTaskForStatus(record, 3, 'materialAudit')">
+                <a-button type="link" size="small" style="color: #52c41a;" @click="handleMaterialAudit(record as any)">
                   <template #icon><CheckCircleOutlined /></template>
                   资料审核
                 </a-button>
               </template>
 
               <!-- 待补充资料提交: 提交补充资料按钮 -->
-              <template v-if="record.status === 4">
-                <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoMode(record as any, 'supplement')" v-permission="['business:declaration:supplement:submit']">
+              <template v-if="hasMyTaskForStatus(record, 4, 'supplementSubmit')">
+                <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoMode(record as any, 'supplement')">
                   <template #icon><UploadOutlined /></template>
                   补充资料
                 </a-button>
               </template>
 
               <!-- 待补充资料审核: 补充审核按钮 -->
-              <template v-if="record.status === 5">
-                <a-button type="link" size="small" style="color: #52c41a;" @click="handleGoMode(record as any, 'supplementAudit')" v-permission="['business:declaration:audit:supplement']">
+              <template v-if="hasMyTaskForStatus(record, 5, 'supplementAudit')">
+                <a-button type="link" size="small" style="color: #52c41a;" @click="handleGoMode(record as any, 'supplementAudit')">
                   <template #icon><CheckCircleOutlined /></template>
                   补充审核
                 </a-button>
               </template>
 
               <!-- 待开票金额提交: 申请开票金额按钮 -->
-              <template v-if="record.status === 6">
-                <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoMode(record as any, 'invoiceAmount')" v-permission="['business:declaration:invoice-amount:submit']">
+              <template v-if="hasMyTaskForStatus(record, 6, 'invoiceAmountSubmit')">
+                <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoMode(record as any, 'invoiceAmount')">
                   <template #icon><MoneyCollectOutlined /></template>
                   开票金额
                 </a-button>
               </template>
 
               <!-- 待开票金额审核: 金额审核按钮 -->
-              <template v-if="record.status === 7">
-                <a-button type="link" size="small" style="color: #52c41a;" @click="handleGoMode(record as any, 'invoiceAmountAudit')" v-permission="['business:declaration:audit:invoice-amount']">
+              <template v-if="hasMyTaskForStatus(record, 7, 'invoiceAmountAudit')">
+                <a-button type="link" size="small" style="color: #52c41a;" @click="handleGoMode(record as any, 'invoiceAmountAudit')">
                   <template #icon><CheckCircleOutlined /></template>
                   金额审核
                 </a-button>
               </template>
 
               <!-- 待发票提交状态: 提交发票按钮 -->
-              <template v-if="record.status === 8">
-                <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoSubmitInvoice(record as any)" v-permission="['business:declaration:invoice:submit']">
+              <template v-if="hasMyTaskForStatus(record, 8, 'invoiceSubmit')">
+                <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoSubmitInvoice(record as any)">
                   <template #icon><UploadOutlined /></template>
                   提交发票
                 </a-button>
               </template>
 
               <!-- 待发票审核状态: 发票审核按钮 -->
-              <template v-if="record.status === 9">
-                <a-button type="link" size="small" style="color: #52c41a;" @click="handleInvoiceAudit(record as any)" v-permission="['business:declaration:audit:invoice']">
+              <template v-if="hasMyTaskForStatus(record, 9, 'invoiceAudit')">
+                <a-button type="link" size="small" style="color: #52c41a;" @click="handleInvoiceAudit(record as any)">
                   <template #icon><CheckCircleOutlined /></template>
                   发票审核
                 </a-button>
@@ -175,18 +182,6 @@
                   退回审核
                 </a-button>
               </template>
-
-              <!-- 旧版流程：列表直接迁移（不进详情各模块） -->
-              <a-button
-                v-if="canShowFlowMigration(record as any)"
-                type="link"
-                size="small"
-                danger
-                @click="handleResumeFlow(record as any)"
-              >
-                <template #icon><ReloadOutlined /></template>
-                迁移新版流程
-              </a-button>
 
               <!-- 更多操作菜单 -->
               <a-dropdown>
@@ -456,6 +451,9 @@
 
     <!-- 文件预览弹窗 -->
     <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
+
+    <!-- 流程预览弹窗 -->
+    <BpmnPreviewModal v-model:visible="bpmnPreviewVisible" :templateId="previewTemplateId" />
   </div>
 </template>
 
@@ -465,6 +463,8 @@ import { message, Modal } from 'ant-design-vue'
 import { useRouter, useRoute } from 'vue-router'
 import { DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, SearchOutlined, CloseOutlined, AuditOutlined, UndoOutlined, EyeOutlined } from '@ant-design/icons-vue'
 import { checkPermission } from '@/directives/permission'
+import { getEnabledTransportModes } from '@/api/system/transportMode'
+import { getAvailableFlowTemplates } from '@/api/business/declaration'
 import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList, deleteDeclaration as deleteDeclarationApi, getDeclarationDetail,
@@ -476,6 +476,7 @@ import { getEnabledTemplates, generateContract, downloadContract, getContractsBy
 import MaterialAuditModal from '../material/components/MaterialAuditModal.vue'
 import InvoiceAuditModal from '../material/components/InvoiceAuditModal.vue'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
+import BpmnPreviewModal from '@/components/BpmnPreviewModal.vue'
 
 // Props
 const props = withDefaults(defineProps<{
@@ -484,6 +485,7 @@ const props = withDefaults(defineProps<{
   showExportButton?: boolean
   showStatusSelect?: boolean
   statusOptions?: { value: number; label: string }[]
+  declarationType?: string  // SELF/EXTERNAL，不传则从 route query 读取
 }>(), {
   showAddButton: false,
   showExportButton: true,
@@ -494,18 +496,33 @@ const props = withDefaults(defineProps<{
     { value: 6, label: '待开票金额提交' }, { value: 7, label: '待开票金额审核' },
     { value: 8, label: '待发票提交' }, { value: 9, label: '待发票审核' },
     { value: 10, label: '已完成' }, { value: 11, label: '退回待审' }
-  ]
+  ],
+  declarationType: undefined
 })
 
 const router = useRouter()
 const route = useRoute()
-const searchForm = reactive({ formNo: '', status: '', dateRange: undefined as [Dayjs, Dayjs] | undefined })
+const searchForm = reactive({ formNo: '', status: '', consignee: '', shipper: '', invoiceNo: '', dateRange: undefined as [Dayjs, Dayjs] | undefined })
+
+/** 根据 props / query / 路径前缀 确定 declarationType */
+const currentDeclarationType = computed(() => {
+  if (props.declarationType) return props.declarationType
+  if (route.query.declarationType) return route.query.declarationType as string
+  if (route.path.startsWith('/declaration-self')) return 'SELF'
+  if (route.path.startsWith('/declaration-external')) return 'EXTERNAL'
+  return 'EXTERNAL'
+})
+
+/** 根据 declarationType 确定路由前缀 */
+const declarationPrefix = computed(() => {
+  return currentDeclarationType.value === 'SELF' ? '/declaration-self' : '/declaration-external'
+})
 
 interface DeclarationRecord {
   id: number; formNo: string; shipperCompany?: string; consigneeCompany?: string
   declarationDate?: string; totalAmount?: number; totalCartons?: number; status: number
   createTime?: string; financeUploadPending?: boolean; attachments?: any[]
-  hasContract?: boolean; regenerateButtons?: any[]; activeTasks?: string[]
+  hasContract?: boolean; regenerateButtons?: any[]; activeTasks?: string[]; myTasks?: string[]
   needsFlowMigration?: boolean; pendingRollback?: boolean
 }
 
@@ -513,11 +530,67 @@ const dataSource = ref<DeclarationRecord[]>([])
 const loading = ref(false)
 const pagination = reactive({ current: 1, pageSize: 10, total: 0, showSizeChanger: true, showQuickJumper: true, showTotal: (total: number) => `共 ${total} 条记录` })
 
+// 新增申报单 - 直接跳转表单页
+
+const handleAdd = async () => {
+  try {
+    const [flowRes, transportRes] = await Promise.all([
+      getAvailableFlowTemplates('declaration'),
+      getEnabledTransportModes()
+    ])
+
+    let templates: any[] = []
+    if (flowRes.data?.code === 200) {
+      templates = (flowRes.data.data || []).filter((t: any) => t.status === 1)
+      // 权限控制：有权限显示全部流程，无权限只显示默认流程
+      if (!checkPermission(['business:declaration:template:select'])) {
+        const defaultFlows = templates.filter((t: any) => t.isDefault === 1)
+        if (defaultFlows.length > 0) templates = defaultFlows
+      }
+    }
+
+    if (templates.length === 0) {
+      message.warning('没有可用的流程模板，请联系管理员配置')
+      return
+    }
+
+    // 优先选择与当前页面 declarationType 匹配的默认模板
+    const currentDt = currentDeclarationType.value
+    const matchedTemplates = currentDt
+      ? templates.filter((t: any) => (t.declarationType || 'EXTERNAL') === currentDt)
+      : templates
+    const pool = matchedTemplates.length > 0 ? matchedTemplates : templates
+    const tpl = pool.find((t: any) => t.isDefault === 1) || pool[0]
+
+    // 运输方式：自动选择第一个（如果只有一个）
+    let transport = ''
+    if (transportRes.data?.code === 200) {
+      const modes = (transportRes.data.data || []).map((t: any) => t.name)
+      if (modes.length === 1) transport = modes[0]
+    }
+
+    const params = new URLSearchParams()
+    params.set('template', tpl.code)
+    params.set('type', tpl.declarationType || 'EXTERNAL')
+    if (transport) params.set('transport', transport)
+    if (currentDt) params.set('declarationType', currentDt)
+    router.push(`${declarationPrefix.value}/form-v2?${params.toString()}`)
+  } catch {
+    message.warning('加载流程模板失败')
+  }
+}
+
+// 流程预览
+const bpmnPreviewVisible = ref(false)
+const previewTemplateId = ref<number | null>(null)
+
 const columns = [
   { title: '申报单号', dataIndex: 'formNo', key: 'formNo', width: 160 },
   { title: '申报人', dataIndex: 'applicantName', key: 'applicantName', width: 100 },
   { title: '发货人', dataIndex: 'shipperCompany', key: 'shipperCompany', width: 150 },
   { title: '收货人', dataIndex: 'consigneeCompany', key: 'consigneeCompany', width: 150 },
+  { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo', width: 120 },
+  { title: '贸易国', dataIndex: 'tradeCountry', key: 'tradeCountry', width: 100 },
   { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate', width: 120 },
   { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', width: 100 },
   { title: '总箱数', dataIndex: 'totalCartons', key: 'totalCartons', width: 80 },
@@ -575,8 +648,14 @@ const loadData = async () => {
     loading.value = true
     const params: any = {
       current: pagination.current, size: pagination.pageSize,
-      formNo: searchForm.formNo || undefined
+      formNo: searchForm.formNo || undefined,
+      consignee: searchForm.consignee || undefined,
+      shipper: searchForm.shipper || undefined,
+      invoiceNo: searchForm.invoiceNo || undefined
     }
+    // declarationType 过滤：优先用 prop，其次读 route query，最后从路径推断
+    const dt = currentDeclarationType.value
+    if (dt) params.declarationType = dt
     // 多状态过滤优先
     if (props.statusFilter && props.statusFilter.length > 0) {
       if (searchForm.status !== '') {
@@ -619,9 +698,11 @@ const loadData = async () => {
           if (taskRes.data?.code === 200 && taskRes.data.data) {
             const payload = taskRes.data.data
             const taskMap = payload.tasks ?? payload
+            const myTaskMap = payload.myTasks ?? {}
             const migrationMap = payload.migration ?? {}
             dataSource.value.forEach((r: any) => {
               r.activeTasks = taskMap[String(r.id)] || []
+              r.myTasks = myTaskMap[String(r.id)] || []
               r.needsFlowMigration = migrationMap[String(r.id)] === true
             })
           }
@@ -657,9 +738,14 @@ const startAutoRefresh = () => {
     if (processingIds.length > 0) {
       getBatchActiveTasks(processingIds.join(',')).then(taskRes => {
         if (taskRes.data?.code === 200 && taskRes.data.data) {
+          const payload = taskRes.data.data
+          const taskMap = payload.tasks ?? payload
+          const myTaskMap = payload.myTasks ?? {}
           dataSource.value.forEach((r: any) => {
-            const newTasks = taskRes.data.data[String(r.id)] || []
+            const newTasks = taskMap[String(r.id)] || []
+            const newMyTasks = myTaskMap[String(r.id)] || []
             if (JSON.stringify(r.activeTasks || []) !== JSON.stringify(newTasks)) r.activeTasks = newTasks
+            if (JSON.stringify(r.myTasks || []) !== JSON.stringify(newMyTasks)) r.myTasks = newMyTasks
           })
         }
       }).catch(() => {})
@@ -668,19 +754,18 @@ const startAutoRefresh = () => {
 }
 const stopAutoRefresh = () => { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null } }
 
-const resetSearch = () => { searchForm.formNo = ''; searchForm.status = ''; searchForm.dateRange = undefined; pagination.current = 1; loadData() }
+const resetSearch = () => { searchForm.formNo = ''; searchForm.status = ''; searchForm.consignee = ''; searchForm.shipper = ''; searchForm.invoiceNo = ''; searchForm.dateRange = undefined; pagination.current = 1; loadData() }
 const handleTableChange = (pag: any) => { pagination.current = pag.current; pagination.pageSize = pag.pageSize; loadData() }
-const handleAdd = () => { router.push('/declaration/form') }
-const handleView = (record: DeclarationRecord) => { router.push(`/declaration/form?id=${record.id}&readonly=true&status=${record.status}`) }
+const handleView = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&readonly=true&status=${record.status}`) }
 const handleStatusSubmit = async (record: DeclarationRecord) => {
   try { loading.value = true; const res = await submitDeclaration(record.id)
     if (res.data?.code === 200) { message.success('流程启动完成'); loadData() } else message.error('提交失败: ' + (res.data?.message || '未知错误'))
   } catch (e: any) { message.error('提交操作失败: ' + (e.message || '网络错误')) } finally { loading.value = false }
 }
-const handleEdit = (record: DeclarationRecord) => { if (record.status !== 0) { message.warning('只有草稿状态可编辑'); return }; router.push(`/declaration/form?id=${record.id}&status=${record.status}`) }
-const handleAudit = (record: DeclarationRecord, taskKey?: string) => { const q: any = { id: record.id, mode: 'audit' }; if (taskKey) q.taskKey = taskKey; router.push({ path: '/declaration/form', query: q }) }
-const handleMaterialSubmit = (record: DeclarationRecord) => { router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=material&scrollTo=material`) }
-const handleMaterialAudit = (record: DeclarationRecord) => { router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=materialAudit&scrollTo=material`) }
+const handleEdit = (record: DeclarationRecord) => { if (record.status !== 0) { message.warning('只有草稿状态可编辑'); return }; router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}`) }
+const handleAudit = (record: DeclarationRecord, taskKey?: string) => { const q: any = { id: record.id, mode: 'audit' }; if (taskKey) q.taskKey = taskKey; router.push({ path: `${declarationPrefix.value}/form-v2`, query: q }) }
+const handleMaterialSubmit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&scrollTo=material`) }
+const handleMaterialAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=materialAudit&scrollTo=material`) }
 const handleGoMode = (record: DeclarationRecord, mode: string) => {
   // 根据 mode 确定滚动位置
   const scrollMap: Record<string, string> = {
@@ -692,17 +777,10 @@ const handleGoMode = (record: DeclarationRecord, mode: string) => {
     'invoiceAudit': 'invoice'
   }
   const scrollTo = scrollMap[mode] || ''
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=${mode}${scrollTo ? '&scrollTo=' + scrollTo : ''}`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=${mode}${scrollTo ? '&scrollTo=' + scrollTo : ''}`)
 }
-const handleGoSubmitInvoice = (record: DeclarationRecord) => { router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceUpload&scrollTo=invoice`) }
-const handleInvoiceAudit = (record: DeclarationRecord) => { router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceAudit&scrollTo=invoice`) }
-/** 列表行内：旧版流程需迁移到新版 */
-const canShowFlowMigration = (record: DeclarationRecord) => {
-  if (!record.needsFlowMigration) return false
-  if (record.status == null || record.status < 1 || record.status > 9) return false
-  return checkPermission(['business:declaration:resume:flow'])
-}
-
+const handleGoSubmitInvoice = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceUpload&scrollTo=invoice`) }
+const handleInvoiceAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceAudit&scrollTo=invoice`) }
 /** 更多菜单：无活跃任务时恢复流程（非迁移场景） */
 const canShowResumeFlow = (record: DeclarationRecord) => {
   if (record.needsFlowMigration) return false
@@ -826,6 +904,15 @@ const handleConfirmGenerate = async () => {
 
 const getStatusText = (s: number) => ({ 0: '草稿', 1: '待初审', 2: '待资料提交', 3: '待资料审核', 4: '待补充资料提交', 5: '待补充资料审核', 6: '待开票金额提交', 7: '待开票金额审核', 8: '待发票提交', 9: '待发票审核', 10: '已完成', 11: '退回待审' }[s] || '未知')
 const getStatusColor = (s: number) => ({ 0: 'default', 1: 'processing', 2: 'blue', 3: 'purple', 4: 'cyan', 5: 'lime', 6: 'gold', 7: 'geekblue', 8: 'geekblue', 9: 'magenta', 10: 'success', 11: 'warning' }[s] || 'default')
+
+/** 判断当前用户是否有该状态对应的 Flowable 任务 */
+const hasMyTaskForStatus = (record: any, status: number, taskKey: string): boolean => {
+  if (record.status !== status) return false
+  // myTasks 已加载时，精确匹配 Flowable 任务
+  if (Array.isArray(record.myTasks)) return record.myTasks.includes(taskKey)
+  // myTasks 未加载时不显示按钮，避免普通用户误看到审批入口
+  return false
+}
 const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('zh-CN') : ''
 const isDocumentFile = (f: string) => ['.pdf','.doc','.docx','.xls','.xlsx','.ppt','.pptx','.txt'].some(e => f.toLowerCase().endsWith(e))
 const isImageFile = (f: string) => ['.jpg','.jpeg','.png','.gif','.bmp','.webp','.svg'].some(e => f.toLowerCase().endsWith(e))
@@ -914,13 +1001,21 @@ const viewReturnHistory = async (r: DeclarationRecord) => {
 
 onMounted(() => {
   loadData(); startAutoRefresh()
-  if (route.query.action === 'audit' && route.query.id) { const id = Number(route.query.id); if (!isNaN(id)) setTimeout(() => router.push(`/declaration/form?id=${id}&mode=audit`), 300) }
+  if (route.query.action === 'audit' && route.query.id) { const id = Number(route.query.id); if (!isNaN(id)) setTimeout(() => router.push(`${declarationPrefix.value}/form-v2?id=${id}&mode=audit`), 300) }
 })
+
+// 监听申报类型变化（从 SELF 切到 EXTERNAL 或反之），重新加载数据
+watch(currentDeclarationType, () => {
+  pagination.current = 1
+  loadData()
+})
+
 onUnmounted(() => { stopAutoRefresh() })
 </script>
 
 <style scoped>
 .declaration-manage { height: 100%; overflow-x: hidden; }
+.search-btn-row { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
 .attachment-title { display: flex; align-items: center; font-weight: 500; }
 .attachment-info { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .file-size { font-size: 12px; color: #888; }

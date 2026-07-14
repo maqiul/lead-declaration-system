@@ -18,7 +18,7 @@ export default defineConfig({
     }),
     Components({
       dts: 'src/components.d.ts',
-      resolvers: [AntDesignVueResolver({ importStyle: 'less' })]
+      resolvers: [AntDesignVueResolver({ importStyle: 'less', exclude: ['AutoComplete'] })]
     })
   ],
   resolve: {

@@ -45,6 +45,7 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
     private final BankAccountConfigService bankAccountConfigService;
     private final BankAccountConfigDao bankAccountConfigDao;
     private final ProductTypeConfigService productTypeConfigService;
+    private final CurrencyInfoService currencyInfoService;
 
     @Value("${file.upload.contract-path:/uploads/contracts}")
     private String contractUploadPath;
@@ -148,7 +149,7 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             // 金额信息
             String totalAmount = declarationForm.getTotalAmount() != null ? 
                 declarationForm.getTotalAmount().toString() : "0";
-            String currency = declarationForm.getCurrency() != null ? declarationForm.getCurrency() : "USD";
+            String currency = declarationForm.getCurrency() != null ? declarationForm.getCurrency() : getDefaultCurrency();
             
             templateData.put("totalAmount", totalAmount);
             templateData.put("currency", currency);
@@ -362,6 +363,21 @@ public class ContractGenerateServiceImpl implements ContractGenerateService {
             case "RMB": return "整";
             default: return "整";
         }
+    }
+
+    /**
+     * 从配置获取默认币种，不再写死 USD
+     */
+    private String getDefaultCurrency() {
+        try {
+            var list = currencyInfoService.getEnabledList();
+            if (list != null && !list.isEmpty()) {
+                return list.get(0).getCurrencyCode();
+            }
+        } catch (Exception e) {
+            log.warn("获取默认币种配置失败，回退 USD", e);
+        }
+        return "USD";
     }
     
     /**

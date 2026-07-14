@@ -133,7 +133,7 @@ public class RemittanceController {
 
     @GetMapping("/form/{formId}")
     @Operation(summary = "获取申报单关联的所有水单")
-    @RequiresPermissions("business:remittance:view")
+    @RequiresPermissions(value = {"business:remittance:view", "business:declaration:view"}, logical = RequiresPermissions.Logical.OR)
     public Result<List<Map<String, Object>>> getRemittancesByFormId(
             @Parameter(description = "申报单ID") @PathVariable Long formId) {
         List<Map<String, Object>> remittances = remittanceService.getRemittancesByFormId(formId);

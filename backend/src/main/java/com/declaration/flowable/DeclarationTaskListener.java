@@ -5,9 +5,11 @@ import com.declaration.entity.DeclarationAttachment;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.DeclarationAttachmentService;
 import com.declaration.service.DeclarationMaterialItemService;
+import com.declaration.service.FlowNodeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RuntimeService;
+import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.TaskListener;
 import org.flowable.engine.delegate.ExecutionListener;
 import org.flowable.engine.delegate.DelegateExecution;
@@ -47,7 +49,9 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
     private final DeclarationFormService declarationFormService;
     private final DeclarationAttachmentService attachmentService;
     private final DeclarationMaterialItemService materialItemService;
+    private final FlowNodeService flowNodeService;
     private final RuntimeService runtimeService;
+    private final RepositoryService repositoryService;
     private final DeclarationProcessVersionHelper processVersionHelper;
 
     @Override
@@ -136,53 +140,32 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
             }
         }
 
-        // 任务创建事件 - 处理任务到达时的状态更新
-        if (newStatus == null) {
-            switch (taskKey) {
-                case "genPreEntryTask":          // 生成预录入表单 (ServiceTask)
-                    break;
-                case "deptAudit":                // 初审
-                    newStatus = 1;
-                    break;
-                case "rejectHandler":            // 驳回修改
-                    newStatus = 0;
-                    break;
-                case "genCustomsDoc":            // 生成海关报关单 (ServiceTask create)
-                    break;
-                case "materialSubmit":           // 资料提交
-                    newStatus = 2;
-                    // 懒创建：进入资料提交节点时不再预先同步模板，由前端 viewByFormId 合并模板虚拟项展示；
-                    // 用户真正上传/编辑时调 /items/ensure 升格为真实记录
-                    break;
-                case "materialAudit":            // 资料审核
-                    newStatus = 3;
-                    break;
-                case "supplementSubmit":         // 补充资料提交
-                    newStatus = 4;
-                    break;
-                case "supplementAudit":          // 补充资料审核
-                    newStatus = 5;
-                    break;
-                case "invoiceAmountSubmit":      // 申请开票金额
-                    newStatus = 6;
-                    break;
-                case "invoiceAmountAudit":       // 开票金额审核
-                    newStatus = 7;
-                    break;
-                case "invoiceSubmit":            // 业务发票提交
-                    // 旧版 BPMN 资料审通过后直达 invoiceSubmit，业务上应先走补充资料(status=4)
-                    if (isLegacyProcessDefinition(delegateTask)) {
-                        newStatus = 4;
-                    } else {
-                        newStatus = 8;
-                    }
-                    break;
-                case "invoiceAudit":             // 业务发票审核
-                    newStatus = 9;
-                    break;
-                case "endEvent":                 // 流程完成
-                    newStatus = 10;
-                    break;
+        // 任务创建事件 - 优先从节点库读取 targetStatus，回退到硬编码
+        if (newStatus == null && ("create".equals(eventName) || "end".equals(eventName) || "complete".equals(eventName))) {
+            // 特殊节点仍然硬编码（系统 serviceTask）
+            if (taskKey != null && taskKey.startsWith("rejectHandler")) {
+                // 驳回修改节点：根据 BPMN 路由目标从节点库读取正确的 targetStatus
+                newStatus = resolveRejectTargetStatus(delegateTask);
+                log.info("驳回节点 {} 路由目标状态: {}", taskKey, newStatus);
+            } else {
+                switch (taskKey) {
+                    case "genPreEntryTask":
+                        break;
+                    case "genCustomsDoc":
+                        break;
+                    case "endEvent":
+                        if (newStatus == null) newStatus = 10;
+                        break;
+                    default:
+                        // 从节点库读取 targetStatus
+                        newStatus = flowNodeService.getTargetStatusByNodeKey(taskKey);
+                        break;
+                }
+            }
+
+            // 兼容旧版流程：invoiceSubmit 在旧版 BPMN 中应映射到 status=4
+            if ("invoiceSubmit".equals(taskKey) && newStatus != null && isLegacyProcessDefinition(delegateTask)) {
+                newStatus = 4;
             }
         }
 
@@ -212,6 +195,41 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
             log.warn("判断流程版本失败: {}", e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * 从 BPMN 模型中解析 rejectHandler 的路由目标节点，并返回该节点的 targetStatus
+     * rejectHandler → (sequenceFlow) → targetNode
+     */
+    private Integer resolveRejectTargetStatus(DelegateTask delegateTask) {
+        try {
+            if (delegateTask == null) return null;
+            String processDefinitionId = delegateTask.getProcessDefinitionId();
+            String taskDefKey = delegateTask.getTaskDefinitionKey();
+            org.flowable.bpmn.model.BpmnModel bpmnModel = repositoryService.getBpmnModel(processDefinitionId);
+            if (bpmnModel != null) {
+                org.flowable.bpmn.model.FlowElement element = bpmnModel.getFlowElement(taskDefKey);
+                if (element instanceof org.flowable.bpmn.model.UserTask userTask) {
+                    var outgoing = userTask.getOutgoingFlows();
+                    if (outgoing != null && !outgoing.isEmpty()) {
+                        String targetRef = outgoing.get(0).getTargetRef();
+                        if (targetRef != null && !targetRef.isEmpty()) {
+                            // 路由目标是审核节点（自循环，如初审驳回 → deptAudit），应回草稿
+                            if (targetRef.endsWith("Audit")) {
+                                log.info("rejectHandler 路由目标为审核节点: {}，回到草稿", targetRef);
+                                return 0;
+                            }
+                            Integer status = flowNodeService.getTargetStatusByNodeKey(targetRef);
+                            log.info("rejectHandler 路由目标: {} → targetStatus={}", targetRef, status);
+                            return status;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("解析 rejectHandler 路由目标失败: {}", e.getMessage());
+        }
+        return null;
     }
 
     /**
@@ -268,12 +286,10 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
         }
 
         // 退回上一步：下一阶段 → 上一审核节点（数值减小，但不是驳回）
-        // 4→3(supplementSubmit→materialAudit)
-        // 6→5(invoiceAmountSubmit→supplementAudit)
-        // 8→7(invoiceSubmit→invoiceAmountAudit)
-        if (newStatus == 3 && currentStatus == 4) return true;
-        if (newStatus == 5 && currentStatus == 6) return true;
-        if (newStatus == 7 && currentStatus == 8) return true;
+        // 动态适配：支持跳过阶段的流程模板（如 8→5、8→3 等）
+        if (newStatus > 0 && newStatus < currentStatus) {
+            return true;
+        }
 
         // 正常推进: 0→1→2→3→4→5→6
         if (newStatus > currentStatus) {

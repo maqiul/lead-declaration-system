@@ -83,6 +83,9 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     @Autowired
     private EntityConfigService entityConfigService;
 
+    @Autowired
+    private CurrencyInfoService currencyInfoService;
+
     @Override
     public DeclarationAttachment generateAndSaveExportDocuments(DeclarationForm form) throws IOException {
         log.info("[生成单据] formNo={}, entityId={}, shipperCompany={}", form.getFormNo(), form.getEntityId(), form.getShipperCompany());
@@ -432,12 +435,17 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
         // 建立箱子ID到产品ID列表的映射
         Map<Long, List<Long>> cartonToProductsMap = new HashMap<>();
-        // 建立 (cartonId, productId) -> 每箱数量 的映射
+        // 建立 (cartonId, productId) -> 每箱数量/毛重/净重 的映射（从箱子产品明细读取）
         Map<String, Integer> cartonProductQuantityMap = new HashMap<>();
+        Map<String, java.math.BigDecimal> cartonProductGrossWeightMap = new HashMap<>();
+        Map<String, java.math.BigDecimal> cartonProductNetWeightMap = new HashMap<>();
         if (form.getCartonProducts() != null) {
             for (DeclarationCartonProduct cp : form.getCartonProducts()) {
                 cartonToProductsMap.computeIfAbsent(cp.getCartonId(), k -> new ArrayList<>()).add(cp.getProductId());
-                cartonProductQuantityMap.put(cp.getCartonId() + "_" + cp.getProductId(), cp.getQuantity());
+                String key = cp.getCartonId() + "_" + cp.getProductId();
+                cartonProductQuantityMap.put(key, cp.getQuantity());
+                cartonProductGrossWeightMap.put(key, cp.getGrossWeight());
+                cartonProductNetWeightMap.put(key, cp.getNetWeight());
             }
         }
 
@@ -480,15 +488,17 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                     ExportDataRequest.ProductInfo info = new ExportDataRequest.ProductInfo();
                     info.setProductName(p.getProductEnglishName());
                     info.setHsCode(p.getHsCode());
-                    // 使用每箱产品数量（如有），否则回退到产品总数量
-                    String qtyKey = carton.getId() + "_" + productId;
-                    Integer cartonQty = cartonProductQuantityMap.get(qtyKey);
+                    // 优先从箱子产品明细读取数量/毛重/净重，否则回退到产品主表
+                    String cpKey = carton.getId() + "_" + productId;
+                    Integer cartonQty = cartonProductQuantityMap.get(cpKey);
+                    java.math.BigDecimal cartonGw = cartonProductGrossWeightMap.get(cpKey);
+                    java.math.BigDecimal cartonNw = cartonProductNetWeightMap.get(cpKey);
                     info.setQuantity(cartonQty != null ? cartonQty : p.getQuantity());
                     info.setUnit(unit);
                     info.setUnitPrice(p.getUnitPrice());
                     info.setAmount(p.getAmount() != null ? p.getAmount().toString() : "0.00");
-                    info.setGrossWeight(p.getGrossWeight());
-                    info.setNetWeight(p.getNetWeight());
+                    info.setGrossWeight(cartonGw != null ? cartonGw : p.getGrossWeight());
+                    info.setNetWeight(cartonNw != null ? cartonNw : p.getNetWeight());
                     info.setVolume(p.getVolume());
                     info.setCurrency(form.getCurrency());
                     info.setCartons(p.getCartons());
@@ -586,6 +596,21 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     }
 
     /**
+     * 从配置获取默认币种，不再写死 USD
+     */
+    private String getDefaultCurrency() {
+        try {
+            var list = currencyInfoService.getEnabledList();
+            if (list != null && !list.isEmpty()) {
+                return list.get(0).getCurrencyCode();
+            }
+        } catch (Exception e) {
+            log.warn("获取默认币种配置失败，回退 USD", e);
+        }
+        return "USD";
+    }
+
+    /**
      * 金额转英文大写
      */
     private String convertAmountToWords(double amount,String currency) {
@@ -617,7 +642,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             result.append("ZERO");
         }
 
-        result.append(" ").append(currency != null ? currency : "USD").append(" ONLY");
+        result.append(" ").append(currency != null ? currency : getDefaultCurrency()).append(" ONLY");
         return result.toString();
     }
 
@@ -1248,9 +1273,23 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         if (form.getProducts() != null) {
             // 建立产品ID到箱子ID列表的映射（一个产品可能对应多个箱子）
             Map<Long, List<Long>> productToCartonsMap = new HashMap<>();
+            // 建立产品ID -> 箱子产品明细累加的数量/毛重/净重（从 cartonProducts 读取）
+            Map<Long, Integer> productCartonQtyMap = new HashMap<>();
+            Map<Long, java.math.BigDecimal> productCartonGwMap = new HashMap<>();
+            Map<Long, java.math.BigDecimal> productCartonNwMap = new HashMap<>();
             if (form.getCartonProducts() != null) {
                 for (com.declaration.entity.DeclarationCartonProduct cp : form.getCartonProducts()) {
                     productToCartonsMap.computeIfAbsent(cp.getProductId(), k -> new ArrayList<>()).add(cp.getCartonId());
+                    // 累加每个产品的数量/毛重/净重
+                    if (cp.getQuantity() != null) {
+                        productCartonQtyMap.merge(cp.getProductId(), cp.getQuantity(), Integer::sum);
+                    }
+                    if (cp.getGrossWeight() != null) {
+                        productCartonGwMap.merge(cp.getProductId(), cp.getGrossWeight(), java.math.BigDecimal::add);
+                    }
+                    if (cp.getNetWeight() != null) {
+                        productCartonNwMap.merge(cp.getProductId(), cp.getNetWeight(), java.math.BigDecimal::add);
+                    }
                 }
             }
 
@@ -1303,10 +1342,14 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                     group.specAndModel = specStr;
                 }
                 group.products.add(p);
-                group.totalQuantity += (p.getQuantity() != null ? p.getQuantity() : 0);
+                // 优先从箱子产品明细累加数量/毛重/净重，否则回退到产品主表
+                Integer cpQty = productCartonQtyMap.get(p.getId());
+                java.math.BigDecimal cpGw = productCartonGwMap.get(p.getId());
+                java.math.BigDecimal cpNw = productCartonNwMap.get(p.getId());
+                group.totalQuantity += (cpQty != null ? cpQty : (p.getQuantity() != null ? p.getQuantity() : 0));
                 group.totalAmount = addBd(group.totalAmount, p.getAmount());
-                group.totalGrossWeight = addBd(group.totalGrossWeight, p.getGrossWeight());
-                group.totalNetWeight = addBd(group.totalNetWeight, p.getNetWeight());
+                group.totalGrossWeight = addBd(group.totalGrossWeight, cpGw != null ? cpGw : p.getGrossWeight());
+                group.totalNetWeight = addBd(group.totalNetWeight, cpNw != null ? cpNw : p.getNetWeight());
                 group.totalVolume = addBd(group.totalVolume, p.getVolume());
                 group.allCartonIds.addAll(cartonIds);
             }

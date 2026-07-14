@@ -12,7 +12,9 @@ import com.declaration.entity.*;
 import com.declaration.dao.BusinessAuditRecordDao;
 import com.declaration.service.*;
 import org.flowable.engine.RuntimeService;
+import org.flowable.engine.RepositoryService;
 import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.bpmn.model.BpmnModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -55,8 +57,28 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     private final OperationLogService operationLogService;
     private final BusinessAuditRecordDao auditRecordDao;
     private final RuntimeService runtimeService;
+    private final RepositoryService repositoryService;
     private final UserService userService;
     private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
+
+    /**
+     * 流程阶段定义：submitStatus → (提交活动ID, 审核活动ID, 退回后目标状态)
+     * 用于动态计算「退回上一步」的目标节点
+     */
+    private static final Map<Integer, String[]> ROLLBACK_STAGE_MAP = Map.of(
+            4, new String[]{"supplementSubmit",    "materialAudit",       "3"},
+            6, new String[]{"invoiceAmountSubmit", "supplementAudit",     "5"},
+            8, new String[]{"invoiceSubmit",       "invoiceAmountAudit",  "7"}
+    );
+
+    /**
+     * 按 status 降序排列的阶段列表，用于向前回溯查找最近存在的审核节点
+     */
+    private static final List<int[]> ROLLBACK_STAGES_DESC = List.of(
+            new int[]{8, 7},  // invoiceSubmit → invoiceAmountAudit
+            new int[]{6, 5},  // invoiceAmountSubmit → supplementAudit
+            new int[]{4, 3}   // supplementSubmit → materialAudit
+    );
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -413,6 +435,8 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                     newCartonProduct.setCartonId(realCartonId);
                     newCartonProduct.setProductId(realProductId);
                     newCartonProduct.setQuantity(cartonProduct.getQuantity());
+                    newCartonProduct.setGrossWeight(cartonProduct.getGrossWeight());
+                    newCartonProduct.setNetWeight(cartonProduct.getNetWeight());
                     newCartonProducts.add(newCartonProduct);
                 }
             }
@@ -992,28 +1016,14 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                         + "，申请时: " + currentStatus + "），请刷新后重新审核");
             }
 
-            // 计算回退目标
-            String currentActivity, targetActivity;
-            int targetStatus;
-            switch (currentStatus) {
-                case 4:
-                    currentActivity = "supplementSubmit";
-                    targetActivity = "materialAudit";
-                    targetStatus = 3;
-                    break;
-                case 6:
-                    currentActivity = "invoiceAmountSubmit";
-                    targetActivity = "supplementAudit";
-                    targetStatus = 5;
-                    break;
-                case 8:
-                    currentActivity = "invoiceSubmit";
-                    targetActivity = "invoiceAmountAudit";
-                    targetStatus = 7;
-                    break;
-                default:
-                    throw new RuntimeException("状态异常，无法退回 (当前状态: " + currentStatus + ")");
+            // 动态计算回退目标：从 BPMN 模型中查找实际存在的审核节点
+            String[] mapping = ROLLBACK_STAGE_MAP.get(currentStatus);
+            if (mapping == null) {
+                throw new RuntimeException("状态异常，无法退回 (当前状态: " + currentStatus + ")");
             }
+            String currentActivity = mapping[0];
+            String targetActivity = mapping[1];
+            int targetStatus = Integer.parseInt(mapping[2]);
 
             // 查询 Flowable 流程实例
             List<ProcessInstance> instances = runtimeService.createProcessInstanceQuery()
@@ -1023,6 +1033,27 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
                 throw new RuntimeException("未找到活跃流程");
             }
             ProcessInstance pi = instances.get(0);
+
+            // 获取 BPMN 模型，动态查找目标节点
+            BpmnModel bpmnModel = repositoryService.getBpmnModel(pi.getProcessDefinitionId());
+            if (bpmnModel.getFlowElement(targetActivity) == null) {
+                // 目标审核节点不存在于当前流程定义，向前回溯查找最近存在的审核节点
+                String resolved = null;
+                int resolvedStatus = -1;
+                for (int[] stage : ROLLBACK_STAGES_DESC) {
+                    if (stage[1] < currentStatus && bpmnModel.getFlowElement(getAuditActivity(stage[1])) != null) {
+                        resolved = getAuditActivity(stage[1]);
+                        resolvedStatus = stage[1];
+                        break;
+                    }
+                }
+                if (resolved == null) {
+                    throw new RuntimeException("当前流程定义中无可退回的审核节点");
+                }
+                targetActivity = resolved;
+                targetStatus = resolvedStatus;
+                log.info("申报单 {} 原始目标节点 {} 不存在，动态回退至 {}", id, mapping[1], targetActivity);
+            }
 
             // moveActivityIdTo：移动 token 到上一个审核节点
             runtimeService.createChangeActivityStateBuilder()
@@ -1071,7 +1102,20 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             DeclarationFormServiceImpl.log.warn("记录审核日志失败：{}", e.getMessage());
         }
     }
-    
+
+    /**
+     * 根据审核状态编号获取对应的 BPMN 审核活动ID
+     */
+    private String getAuditActivity(int auditStatus) {
+        return switch (auditStatus) {
+            case 3 -> "materialAudit";
+            case 5 -> "supplementAudit";
+            case 7 -> "invoiceAmountAudit";
+            case 9 -> "invoiceAudit";
+            default -> null;
+        };
+    }
+
     @Override
     public void saveAuditRecord(BusinessAuditRecord record) {
         try {
@@ -1081,5 +1125,20 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             log.error("保存审核历史记录失败", e);
             throw new RuntimeException("保存审核历史记录失败：" + e.getMessage());
         }
+    }
+
+    @Override
+    public java.util.Map<String, Object> validateMaterialCompleteness(Long formId) {
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("complete", true);
+        result.put("missingItems", new java.util.ArrayList<>());
+        result.put("amountShortage", null);
+
+        // TODO: 实现完整的资料完整性校验
+        // 1. 查询资料模板项，检查必填项是否有附件
+        // 2. 检查发票金额合计是否 >= 申报金额
+        log.info("资料完整性校验 - 申报单 ID: {}, 结果：{}", formId, result.get("complete"));
+
+        return result;
     }
 }

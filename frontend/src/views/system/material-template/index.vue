@@ -29,7 +29,7 @@
           style="width: 160px"
           @change="loadList"
         >
-          <a-select-option v-for="s in MATERIAL_STAGES" :key="s.value" :value="s.value">
+          <a-select-option v-for="s in stageOptions" :key="s.value" :value="s.value">
             {{ s.label }}
           </a-select-option>
         </a-select>
@@ -43,20 +43,36 @@
         :columns="columns"
         :loading="loading"
         :pagination="false"
-        :scroll="{ x: 1160 }"
+        :scroll="{ x: 1320 }"
         rowKey="id"
         class="ui-table"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'stage'">
-            <a-tag :color="MATERIAL_STAGE_COLOR[record.stage as MaterialStage] || 'default'" class="ui-tag">
-              {{ MATERIAL_STAGE_LABEL[record.stage as MaterialStage] || record.stage || '未设置' }}
+            <a-tag :color="stageColorMap[record.stage] || 'default'" class="ui-tag">
+              {{ stageLabelMap[record.stage] || record.stage || '未设置' }}
             </a-tag>
           </template>
           <template v-else-if="column.key === 'invoiceMode'">
             <a-tag :color="record.invoiceMode === 1 ? 'orange' : 'default'" class="ui-tag">
               {{ record.invoiceMode === 1 ? '发票式' : '普通' }}
             </a-tag>
+          </template>
+          <template v-else-if="column.key === 'invoiceCategory'">
+            <template v-if="record.invoiceMode === 1">
+              <a-tag :color="record.invoiceCategory === 'DEDUCTION' ? 'volcano' : 'cyan'" class="ui-tag">
+                {{ record.invoiceCategory === 'DEDUCTION' ? '扣款' : record.invoiceCategory === 'INPUT' ? '进项' : '未设置' }}
+              </a-tag>
+            </template>
+            <span v-else class="text-gray-300">—</span>
+          </template>
+          <template v-else-if="column.key === 'bindings'">
+            <template v-if="record.bindings && record.bindings.length > 0">
+              <a-tag v-for="(b, i) in record.bindings" :key="i" color="geekblue" class="ui-tag">
+                {{ formatBinding(b) }}
+              </a-tag>
+            </template>
+            <span v-else class="text-gray-400 text-xs">全部</span>
           </template>
           <template v-else-if="column.key === 'required'">
             <a-tag :color="record.required === 1 ? 'red' : 'default'" class="ui-tag">
@@ -138,7 +154,7 @@
           <a-col :span="12">
             <a-form-item label="所属环节" name="stage">
               <a-select v-model:value="formData.stage" placeholder="选择所属环节">
-                <a-select-option v-for="s in MATERIAL_STAGES" :key="s.value" :value="s.value">
+                <a-select-option v-for="s in stageOptions" :key="s.value" :value="s.value">
                   {{ s.label }}
                 </a-select-option>
               </a-select>
@@ -163,6 +179,14 @@
               </a-radio-group>
             </a-form-item>
           </a-col>
+          <a-col :span="12" v-if="formData.invoiceMode === 1">
+            <a-form-item label="发票分类" name="invoiceCategory">
+              <a-radio-group v-model:value="formData.invoiceCategory" button-style="solid">
+                <a-radio value="DEDUCTION">扣款</a-radio>
+                <a-radio value="INPUT">进项</a-radio>
+              </a-radio-group>
+            </a-form-item>
+          </a-col>
         </a-row>
 
         <a-row :gutter="16">
@@ -172,6 +196,57 @@
             </a-form-item>
           </a-col>
         </a-row>
+
+        <a-form-item label="绑定规则（流程 + 运输方式）">
+          <div class="mb-2">
+            <a-space>
+              <a-button size="small" type="dashed" @click="addBindingRule">
+                <template #icon><PlusOutlined /></template>
+                添加规则
+              </a-button>
+              <a-button size="small" danger ghost @click="bindingRules.splice(0)" v-if="bindingRules.length">
+                清空
+              </a-button>
+              <a-tooltip title="不添加规则 = 全部流程 + 全部运输方式都适用。添加后任一行匹配即显示。">
+                <question-circle-outlined class="text-gray-400" />
+              </a-tooltip>
+            </a-space>
+          </div>
+          <div v-if="!bindingRules.length" class="text-gray-400 text-xs py-3 text-center border border-dashed rounded">
+            未设置绑定规则，该资料项对所有流程和运输方式都适用。
+          </div>
+          <div v-else class="binding-rules-list">
+            <div v-for="(rule, idx) in bindingRules" :key="idx" class="binding-rule-row">
+              <a-select
+                v-model:value="rule.flowTemplateCode"
+                placeholder="任意流程"
+                allowClear
+                style="width: 180px"
+                :options="flowTemplateOptions.map(f => ({ label: f.name, value: f.code }))"
+              />
+              <span class="mx-2 text-gray-400">+</span>
+              <a-select
+                v-model:value="rule.transportModeCode"
+                placeholder="任意运输"
+                allowClear
+                style="width: 160px"
+                :options="transportModeOptions.map(t => ({ label: t.chineseName || t.name, value: t.name }))"
+              />
+              <a-tooltip title="不设置则使用模板默认值">
+                <a-select
+                  v-model:value="rule.required"
+                  placeholder="默认"
+                  allowClear
+                  style="width: 90px; margin-left: 8px"
+                  :options="[{ label: '必填', value: 1 }, { label: '选填', value: 0 }]"
+                />
+              </a-tooltip>
+              <a-button type="link" size="small" danger @click="bindingRules.splice(idx, 1)" class="ml-2">
+                <template #icon><DeleteOutlined /></template>
+              </a-button>
+            </div>
+          </div>
+        </a-form-item>
 
         <a-form-item label="说明 / 填报指引" name="remark">
           <a-textarea v-model:value="formData.remark" placeholder="对申报人展示的说明" :rows="3" :maxlength="500" />
@@ -305,8 +380,19 @@ import {
   MATERIAL_STAGE_COLOR,
   type MaterialTemplate,
   type MaterialSchemaField,
-  type MaterialStage
+  type MaterialStage,
+  type MaterialTemplateBinding
 } from '@/api/system/materialTemplate'
+import { getEnabledDictItems } from '@/api/system/dict'
+import { getEnabledTransportModes, type TransportMode } from '@/api/system/transportMode'
+import { getAvailableFlowTemplates } from '@/api/business/declaration'
+import type { FlowTemplate } from '@/api/system/flowTemplate'
+
+interface StageOption {
+  value: string
+  label: string
+  color: string
+}
 
 interface SchemaFieldRow extends MaterialSchemaField {
   _rid: number
@@ -327,12 +413,108 @@ const list = ref<MaterialTemplate[]>([])
 const loading = ref(false)
 const filterStage = ref<MaterialStage | undefined>(undefined)
 
+// 环节选项（字典驱动，fallback 为硬编码 MATERIAL_STAGES）
+const stageOptions = ref<StageOption[]>([...MATERIAL_STAGES])
+// 动态标签/颜色映射
+const stageLabelMap = ref<Record<string, string>>({ ...MATERIAL_STAGE_LABEL })
+const stageColorMap = ref<Record<string, string>>({ ...MATERIAL_STAGE_COLOR })
+
+const loadStageOptions = async () => {
+  try {
+    const res = await getEnabledDictItems('form_section')
+    const items = res.data?.data || []
+    const options: StageOption[] = []
+    const labels: Record<string, string> = {}
+    const colors: Record<string, string> = {}
+    const colorPalette = ['green', 'orange', 'blue', 'purple', 'cyan', 'magenta', 'red', 'geekblue']
+    for (const item of items) {
+      if (!item.remark) continue
+      try {
+        const config = JSON.parse(item.remark)
+        if (!config.templateStage) continue
+        const label = config.sectionTitle || item.itemLabel || item.itemValue
+        const color = config.btnColor ? undefined : colorPalette[options.length % colorPalette.length]
+        options.push({
+          value: config.templateStage,
+          label,
+          color: color || colorPalette[options.length % colorPalette.length]
+        })
+        labels[config.templateStage] = label
+        colors[config.templateStage] = options[options.length - 1].color
+      } catch {
+        // remark 非 JSON，跳过
+      }
+    }
+    if (options.length > 0) {
+      stageOptions.value = options
+      stageLabelMap.value = labels
+      stageColorMap.value = colors
+    }
+  } catch (e) {
+    console.warn('加载环节字典失败，使用默认选项', e)
+  }
+}
+
+// 运输方式选项
+const transportModeOptions = ref<TransportMode[]>([])
+// 流程模板选项
+const flowTemplateOptions = ref<FlowTemplate[]>([])
+// 绑定规则编辑
+const bindingRules = ref<MaterialTemplateBinding[]>([])
+
+const loadTransportModes = async () => {
+  try {
+    const res = await getEnabledTransportModes()
+    if (res.data?.code === 200) {
+      transportModeOptions.value = res.data.data || []
+    }
+  } catch (e) {
+    console.warn('加载运输方式失败', e)
+  }
+}
+
+const loadFlowTemplates = async () => {
+  try {
+    const res = await getAvailableFlowTemplates()
+    if (res.data?.code === 200) {
+      flowTemplateOptions.value = res.data.data || []
+    }
+  } catch (e) {
+    console.warn('加载流程模板失败', e)
+  }
+}
+
+// 根据运输方式 code 获取中文名
+const getTransportLabel = (code: string) => {
+  const tm = transportModeOptions.value.find(t => t.name === code)
+  return tm ? tm.chineseName || tm.name : code
+}
+
+// 根据流程模板 code 获取名称
+const getFlowLabel = (code: string) => {
+  const ft = flowTemplateOptions.value.find(f => f.code === code)
+  return ft ? ft.name : code
+}
+
+const addBindingRule = () => {
+  bindingRules.value.push({ flowTemplateCode: undefined, transportModeCode: undefined, required: undefined })
+}
+
+const formatBinding = (b: MaterialTemplateBinding): string => {
+  const flow = b.flowTemplateCode ? getFlowLabel(b.flowTemplateCode) : '全部流程'
+  const transport = b.transportModeCode ? getTransportLabel(b.transportModeCode) : '全部运输'
+  const req = b.required === 1 ? ' [必填]' : b.required === 0 ? ' [选填]' : ''
+  return `${flow} + ${transport}${req}`
+}
+
 const columns = [
   { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
   { title: '编码', dataIndex: 'code', key: 'code', width: 200 },
   { title: '名称', dataIndex: 'name', key: 'name', width: 200 },
   { title: '所属环节', dataIndex: 'stage', key: 'stage', width: 120 },
   { title: '发票模式', dataIndex: 'invoiceMode', key: 'invoiceMode', width: 100 },
+  { title: '发票分类', dataIndex: 'invoiceCategory', key: 'invoiceCategory', width: 100 },
+  { title: '绑定规则', dataIndex: 'bindings', key: 'bindings', width: 200 },
   { title: '必填', dataIndex: 'required', key: 'required', width: 100 },
   { title: '启用', dataIndex: 'enabled', key: 'enabled', width: 100 },
   { title: '说明', dataIndex: 'remark', key: 'remark', ellipsis: true },
@@ -353,7 +535,9 @@ const defaultForm = (): MaterialTemplate => ({
   formSchema: '',
   enabled: 1,
   stage: 'MATERIAL_SUBMIT' as MaterialStage,
-  invoiceMode: 0
+  invoiceMode: 0,
+  invoiceCategory: 'DEDUCTION',
+  bindings: []
 })
 
 const formData = reactive<MaterialTemplate>(defaultForm())
@@ -454,7 +638,9 @@ const loadList = async () => {
 const openAddModal = () => {
   editingId.value = null
   Object.assign(formData, defaultForm())
+  delete (formData as any).id  // 清除编辑残留的id，新增时不应带id
   schemaFields.value = []
+  bindingRules.value = []
   modalVisible.value = true
 }
 
@@ -462,6 +648,7 @@ const openEditModal = (record: MaterialTemplate) => {
   editingId.value = record.id ?? null
   Object.assign(formData, defaultForm(), record)
   schemaFields.value = schemaToRows(record.formSchema)
+  bindingRules.value = (record.bindings || []).map(b => ({ ...b }))
   modalVisible.value = true
 }
 
@@ -491,6 +678,14 @@ const handleSave = async () => {
       }
     }
     formData.formSchema = rowsToSchema(schemaFields.value)
+    // 同步绑定规则
+    formData.bindings = bindingRules.value
+      .filter(r => r.flowTemplateCode || r.transportModeCode)
+      .map(r => ({
+        flowTemplateCode: r.flowTemplateCode || undefined,
+        transportModeCode: r.transportModeCode || undefined,
+        required: r.required
+      }))
 
     saving.value = true
 
@@ -498,7 +693,7 @@ const handleSave = async () => {
     if (editingId.value) {
       response = await updateMaterialTemplate({ ...formData, id: editingId.value })
     } else {
-      response = await addMaterialTemplate({ ...formData })
+      response = await addMaterialTemplate({ ...formData, id: undefined })
     }
 
     if (response.data?.code === 200) {
@@ -557,10 +752,25 @@ const clearSchema = () => {
 }
 
 onMounted(() => {
+  loadStageOptions()
   loadList()
+  loadTransportModes()
+  loadFlowTemplates()
 })
 </script>
 
 <style scoped>
-/* 页面特有样式已由全局 index.less 覆盖 */
+.binding-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.binding-rule-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
 </style>

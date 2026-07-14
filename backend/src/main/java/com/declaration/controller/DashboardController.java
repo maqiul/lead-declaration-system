@@ -3,12 +3,17 @@ package com.declaration.controller;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.declaration.common.Result;
+import com.declaration.dao.RoleMenuDao;
 import com.declaration.entity.CurrencyInfo;
 import com.declaration.entity.DeclarationForm;
+import com.declaration.entity.Menu;
+import com.declaration.entity.RoleMenu;
 import com.declaration.entity.TaxRefundApplication;
 import com.declaration.entity.User;
 import com.declaration.service.CurrencyInfoService;
 import com.declaration.service.DeclarationFormService;
+import com.declaration.service.MenuService;
+import com.declaration.service.PermissionService;
 import com.declaration.service.TaxRefundApplicationService;
 import com.declaration.service.TaskService;
 import com.declaration.service.UserService;
@@ -21,11 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -42,6 +43,9 @@ public class DashboardController {
     private final TaskService taskService;
     private final UserService userService;
     private final CurrencyInfoService currencyInfoService;
+    private final MenuService menuService;
+    private final PermissionService permissionService;
+    private final RoleMenuDao roleMenuDao;
 
     @GetMapping("/stats")
     @Operation(summary = "获取工作台统计卡片数据")
@@ -222,46 +226,66 @@ public class DashboardController {
 
     /**
      * 申报菜单统计 + 30天预警
+     * 根据用户角色配置的菜单动态显示统计项
      */
     @GetMapping("/declaration-stats")
     @Operation(summary = "获取申报菜单统计和30天预警数据")
     public Result<Map<String, Object>> getDeclarationStats() {
         Map<String, Object> result = new HashMap<>();
 
-        // 菜单统计配置：菜单名、路由路径、状态过滤、图标
-        List<List<Integer>> statusFilters = Arrays.asList(
-                Arrays.asList(1, 11),    // 申报录入
-                Arrays.asList(2, 3),     // 资料提交
-                Arrays.asList(4, 5),     // 补充资料
-                Arrays.asList(6, 7),     // 开票金额
-                Arrays.asList(8, 9),     // 发票提交
-                Arrays.asList(10)        // 归档查询
-        );
-        String[] menuNames = {"申报录入", "资料提交", "补充资料", "开票金额", "发票提交", "归档查询"};
-        String[] menuPaths = {"/declaration/entry", "/declaration/material", "/declaration/supplement",
-                "/declaration/invoice-amount", "/declaration/invoice", "/declaration/archive"};
-        String[] menuIcons = {"EditOutlined", "UploadOutlined", "FileSearchOutlined",
-                "DollarOutlined", "FileTextOutlined", "FolderOpenOutlined"};
-        String[] menuThemes = {"blue", "green", "orange", "purple", "cyan", "default"};
+        // 判断用户权限：管理员看全部，view-internal/view-external 分别控制可见性
+        Long userId = StpUtil.getLoginIdAsLong();
+        boolean isAdmin = userId == 1L;
+        boolean hasInternalPermission = StpUtil.hasPermission("business:declaration:view-internal");
+        boolean hasExternalPermission = StpUtil.hasPermission("business:declaration:view-external");
+        boolean canViewInternal = isAdmin || hasInternalPermission;
+        boolean canViewExternal = isAdmin || hasExternalPermission;
 
-        List<Map<String, Object>> menuStats = new ArrayList<>();
-        for (int i = 0; i < menuNames.length; i++) {
-            LambdaQueryWrapper<DeclarationForm> wrapper = new LambdaQueryWrapper<>();
-            wrapper.in(DeclarationForm::getStatus, statusFilters.get(i));
-            applyDeclarationDataPermission(wrapper);
-            long count = declarationFormService.count(wrapper);
+        result.put("canViewInternal", canViewInternal);
+        result.put("canViewExternal", canViewExternal);
 
-            Map<String, Object> item = new HashMap<>();
-            item.put("menuName", menuNames[i]);
-            item.put("path", menuPaths[i]);
-            item.put("icon", menuIcons[i]);
-            item.put("theme", menuThemes[i]);
-            item.put("count", count);
-            menuStats.add(item);
+        // ========== 动态菜单统计：根据用户角色配置的菜单显示 ==========
+
+        // 1. 获取用户可访问的菜单ID集合
+        Set<Long> accessibleMenuIds = getUserAccessibleMenuIds(userId, isAdmin);
+
+        // 2. 查询申报子菜单（parent_id in 900, 901），只取启用+显示的
+        List<Menu> allDeclMenus = menuService.list(new LambdaQueryWrapper<Menu>()
+                .in(Menu::getParentId, Arrays.asList(900L, 901L))
+                .eq(Menu::getMenuType, 2)
+                .eq(Menu::getStatus, 1)
+                .eq(Menu::getIsShow, 1)
+                .orderByAsc(Menu::getSort));
+
+        // 如果没有新菜单（迁移未执行），回退到旧菜单(200)
+        if (allDeclMenus.isEmpty()) {
+            allDeclMenus = menuService.list(new LambdaQueryWrapper<Menu>()
+                    .eq(Menu::getParentId, 200L)
+                    .eq(Menu::getMenuType, 2)
+                    .eq(Menu::getStatus, 1)
+                    .eq(Menu::getIsShow, 1)
+                    .orderByAsc(Menu::getSort));
         }
-        result.put("menuStats", menuStats);
 
-        // 30天预警：创建时间距今≥30天且未完成(status != 10)且非草稿(status != 0)的记录
+        // 3. 按用户权限过滤菜单
+        List<Menu> selfMenus = new ArrayList<>();
+        List<Menu> extMenus = new ArrayList<>();
+        for (Menu m : allDeclMenus) {
+            if (!accessibleMenuIds.contains(m.getId())) continue;
+            String code = m.getMenuCode();
+            if (code == null) continue;
+            if (code.startsWith("declaration-self-")) selfMenus.add(m);
+            else if (code.startsWith("declaration-ext-")) extMenus.add(m);
+        }
+
+        // 4. 菜单统计配置表（key = menuCode 后缀）
+        Map<String, MenuStatConfig> menuConfigMap = buildMenuConfigMap();
+
+        // 5. 构建内部/外部统计
+        result.put("internalMenuStats", buildMenuStats(selfMenus, menuConfigMap, "SELF"));
+        result.put("externalMenuStats", buildMenuStats(extMenus, menuConfigMap, "EXTERNAL"));
+
+        // 30天预警
         LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
         LambdaQueryWrapper<DeclarationForm> warningWrapper = new LambdaQueryWrapper<>();
         warningWrapper.lt(DeclarationForm::getCreateTime, thirtyDaysAgo);
@@ -305,6 +329,7 @@ public class DashboardController {
             item.put("destinationCountry", form.getDestinationCountry());
             item.put("declarantName", form.getCreateBy() != null
                     ? userNameMap.getOrDefault(form.getCreateBy(), "未知用户") : "未知用户");
+            item.put("declarationType", form.getDeclarationType());
             return item;
         }).collect(Collectors.toList());
 
@@ -312,5 +337,71 @@ public class DashboardController {
         result.put("warningList", warningItems);
 
         return Result.success(result);
+    }
+
+    /** 获取用户可访问的菜单ID集合 */
+    private Set<Long> getUserAccessibleMenuIds(Long userId, boolean isAdmin) {
+        if (isAdmin) {
+            return menuService.list(new LambdaQueryWrapper<Menu>()
+                    .eq(Menu::getStatus, 1)
+                    .eq(Menu::getIsShow, 1))
+                    .stream().map(Menu::getId).collect(Collectors.toSet());
+        }
+        List<Long> roleIds = permissionService.getUserRoleIds(userId);
+        if (roleIds == null || roleIds.isEmpty()) return Collections.emptySet();
+        return roleMenuDao.selectList(new LambdaQueryWrapper<RoleMenu>()
+                .in(RoleMenu::getRoleId, roleIds))
+                .stream().map(RoleMenu::getMenuId).collect(Collectors.toSet());
+    }
+
+    /** 菜单统计配置表（仅流程环节，不含财务单证/申报管理/申报统计） */
+    private Map<String, MenuStatConfig> buildMenuConfigMap() {
+        Map<String, MenuStatConfig> map = new LinkedHashMap<>();
+        map.put("entry",          new MenuStatConfig(Arrays.asList(1, 11), "blue"));
+        map.put("material",       new MenuStatConfig(Arrays.asList(2, 3), "green"));
+        map.put("supplement",     new MenuStatConfig(Arrays.asList(4, 5), "orange"));
+        map.put("invoice-amount", new MenuStatConfig(Arrays.asList(6, 7), "purple"));
+        map.put("invoice",        new MenuStatConfig(Arrays.asList(8, 9), "cyan"));
+        map.put("archive",        new MenuStatConfig(Arrays.asList(10), "default"));
+        return map;
+    }
+
+    /** 根据用户可访问的菜单列表构建统计 */
+    private List<Map<String, Object>> buildMenuStats(List<Menu> menus,
+            Map<String, MenuStatConfig> configMap, String declarationType) {
+        List<Map<String, Object>> stats = new ArrayList<>();
+        for (Menu menu : menus) {
+            String code = menu.getMenuCode();
+            if (code == null) continue;
+            // 提取后缀：declaration-self-entry → entry, declaration-ext-invoice-amount → invoice-amount
+            String suffix = code.replaceFirst("^declaration-(self|ext)-", "");
+            MenuStatConfig config = configMap.get(suffix);
+            if (config == null) continue;
+
+            LambdaQueryWrapper<DeclarationForm> wrapper = new LambdaQueryWrapper<>();
+            wrapper.in(DeclarationForm::getStatus, config.statusFilter);
+            wrapper.eq(DeclarationForm::getDeclarationType, declarationType);
+            applyDeclarationDataPermission(wrapper);
+            long count = declarationFormService.count(wrapper);
+
+            Map<String, Object> item = new HashMap<>();
+            item.put("menuName", menu.getMenuName());
+            item.put("path", "/declaration/" + suffix);
+            item.put("icon", menu.getIcon());
+            item.put("theme", config.theme);
+            item.put("count", count);
+            stats.add(item);
+        }
+        return stats;
+    }
+
+    /** 菜单统计配置（状态过滤器 + 主题色） */
+    private static class MenuStatConfig {
+        final List<Integer> statusFilter;
+        final String theme;
+        MenuStatConfig(List<Integer> statusFilter, String theme) {
+            this.statusFilter = statusFilter;
+            this.theme = theme;
+        }
     }
 }

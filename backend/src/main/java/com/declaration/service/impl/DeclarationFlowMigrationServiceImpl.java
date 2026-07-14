@@ -5,10 +5,13 @@ import com.declaration.dao.BusinessAuditRecordDao;
 import com.declaration.entity.BusinessAuditRecord;
 import com.declaration.entity.DeclarationForm;
 import com.declaration.entity.DeclarationMaterialItem;
+import com.declaration.entity.FlowTemplate;
+import com.declaration.entity.FlowTemplateNode;
 import com.declaration.flowable.DeclarationProcessVersionHelper;
 import com.declaration.service.DeclarationFlowMigrationService;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.DeclarationMaterialItemService;
+import com.declaration.service.FlowTemplateService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RepositoryService;
@@ -47,6 +50,7 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
     private final DeclarationFormService declarationFormService;
     private final DeclarationMaterialItemService materialItemService;
     private final BusinessAuditRecordDao auditRecordDao;
+    private final FlowTemplateService flowTemplateService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -55,7 +59,15 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
         if (form == null) {
             throw new IllegalArgumentException("申报单不存在");
         }
-        ProcessDefinition latestDef = requireLatestNewProcessDefinition();
+        // 优先按表单的 templateCode 获取对应模板的最新流程定义，避免多模板时随机取到错误的流程
+        ProcessDefinition latestDef = null;
+        String templateCode = form.getTemplateCode();
+        if (templateCode != null && !templateCode.isEmpty()) {
+            latestDef = processVersionHelper.getLatestDefinition(templateCode);
+        }
+        if (latestDef == null) {
+            latestDef = requireLatestNewProcessDefinition();
+        }
         ActiveProcessSnapshot active = findActiveProcess(formId);
         MigrationTarget target = resolveTarget(form, active);
         if (target == null) {
@@ -65,6 +77,18 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
 
         if (active != null) {
             if (active.newVersion) {
+                // 检查流程定义 key 是否与表单 templateCode 一致
+                String runningKey = active.processDefinitionId != null && active.processDefinitionId.contains(":")
+                        ? active.processDefinitionId.substring(0, active.processDefinitionId.indexOf(':'))
+                        : null;
+                if (runningKey != null && !runningKey.equals(latestDef.getKey())) {
+                    // 流程定义 key 不匹配，需终止错误流程并重新启动
+                    log.warn("申报单 {} 流程定义不匹配: 运行中={}, 应为={}, 将终止并重新启动",
+                            formId, runningKey, latestDef.getKey());
+                    runtimeService.deleteProcessInstance(active.processInstanceId,
+                            "resume-flow: 流程定义不匹配(" + runningKey + "→" + latestDef.getKey() + ")");
+                    return startNewVersionInstance(form, formId, statusBefore, target, latestDef, "REPLACE_WRONG_KEY_THEN_START");
+                }
                 return syncNewVersionInstance(form, formId, statusBefore, target, active, latestDef);
             }
             // 旧版流程仍在运行：终止后按新版重建
@@ -101,11 +125,19 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
                     continue;
                 }
                 if (active != null && active.newVersion && target.activityId.equals(active.currentActivityId)) {
-                    Map<String, Object> skip = row(form, "已是新版流程且当前节点正确");
-                    skip.put("processDefinitionVersion", active.version);
-                    skip.put("currentActivityId", active.currentActivityId);
-                    skipped.add(skip);
-                    continue;
+                    // 额外检查流程定义 key 是否与表单 templateCode 一致
+                    String tmplCode = form.getTemplateCode();
+                    String runKey = active.processDefinitionId != null && active.processDefinitionId.contains(":")
+                            ? active.processDefinitionId.substring(0, active.processDefinitionId.indexOf(':'))
+                            : null;
+                    if (tmplCode == null || tmplCode.isEmpty() || runKey == null || tmplCode.equals(runKey)) {
+                        Map<String, Object> skip = row(form, "已是新版流程且当前节点正确");
+                        skip.put("processDefinitionVersion", active.version);
+                        skip.put("currentActivityId", active.currentActivityId);
+                        skipped.add(skip);
+                        continue;
+                    }
+                    // key 不匹配，不跳过，继续执行迁移
                 }
                 if (dryRun) {
                     Map<String, Object> preview = row(form, target.reason);
@@ -115,7 +147,16 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
                         preview.put("currentActivityId", active.currentActivityId);
                         preview.put("processDefinitionVersion", active.version);
                         preview.put("processDefinitionIsNew", active.newVersion);
-                        preview.put("migrationAction", active.newVersion ? "SYNC_NODE" : "REPLACE_OLD_THEN_START");
+                        // 检查 key 是否匹配，决定迁移操作类型
+                        String tmplKey = form.getTemplateCode();
+                        String activeKey = active.processDefinitionId != null && active.processDefinitionId.contains(":")
+                                ? active.processDefinitionId.substring(0, active.processDefinitionId.indexOf(':')) : null;
+                        if (active.newVersion && activeKey != null && tmplKey != null && !tmplKey.equals(activeKey)) {
+                            preview.put("migrationAction", "REPLACE_WRONG_KEY_THEN_START");
+                            preview.put("reason", "流程定义不匹配(" + activeKey + "→" + tmplKey + ")");
+                        } else {
+                            preview.put("migrationAction", active.newVersion ? "SYNC_NODE" : "REPLACE_OLD_THEN_START");
+                        }
                     } else {
                         preview.put("migrationAction", "START_NEW");
                     }
@@ -160,6 +201,11 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
         }
         ActiveProcessSnapshot active = findActiveProcess(formId);
         MigrationTarget target = resolveTarget(form, active);
+        log.info("迁移检查 formId={}, status={}, active={}, target={}",
+                formId, form.getStatus(),
+                active != null ? "{newVersion=" + active.newVersion + ", procDefId=" + active.processDefinitionId
+                        + ", activity=" + active.currentActivityId + ", version=" + active.version + "}" : "null",
+                target != null ? target.activityId : "null");
         if (target == null) {
             hint.put("needsMigration", false);
             return hint;
@@ -181,6 +227,19 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
             hint.put("needsMigration", true);
             hint.put("hint", buildLegacyMigrationHint(form.getStatus(), active.currentActivityId));
             return hint;
+        }
+        // 检查流程定义 key 是否与表单的 templateCode 一致
+        String templateCode = form.getTemplateCode();
+        if (templateCode != null && !templateCode.isEmpty() && active.processDefinitionId != null) {
+            String runningKey = active.processDefinitionId.contains(":")
+                    ? active.processDefinitionId.substring(0, active.processDefinitionId.indexOf(':'))
+                    : active.processDefinitionId;
+            if (!templateCode.equals(runningKey)) {
+                hint.put("needsMigration", true);
+                hint.put("hint", "流程定义不匹配：表单关联「" + templateCode + "」但实际运行「" + runningKey + "」，建议恢复以切换到正确的流程");
+                hint.put("processKeyMismatch", true);
+                return hint;
+            }
         }
         boolean needs = !target.activityId.equals(active.currentActivityId);
         hint.put("needsMigration", needs);
@@ -323,16 +382,72 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
         return data;
     }
 
+    /**
+     * 校验目标节点是否存在于流程定义的 BPMN 中。
+     * 若不存在，从模板节点配置（flow_template_node）动态查找下一个启用且 targetStatus 更大的节点作为回退目标。
+     */
+    private MigrationTarget resolveValidTarget(
+            ProcessDefinition latestDef, MigrationTarget originalTarget, Integer currentStatus) {
+        var bpmnModel = repositoryService.getBpmnModel(latestDef.getId());
+        if (bpmnModel == null || bpmnModel.getMainProcess() == null) {
+            return originalTarget;
+        }
+        // 收集 BPMN 中所有 UserTask 节点 ID
+        var availableIds = new java.util.HashSet<String>();
+        bpmnModel.getMainProcess().findFlowElementsOfType(org.flowable.bpmn.model.UserTask.class)
+                .forEach(ut -> availableIds.add(ut.getId()));
+
+        if (availableIds.contains(originalTarget.activityId)) {
+            return originalTarget;
+        }
+
+        // 目标节点在 BPMN 中不存在，从模板节点配置动态查找回退目标
+        log.warn("节点 {} 在流程定义 {} 中不存在，尝试从模板配置回退", originalTarget.activityId, latestDef.getKey());
+
+        FlowTemplate template = flowTemplateService.lambdaQuery()
+                .eq(FlowTemplate::getCode, latestDef.getKey())
+                .one();
+        if (template == null) {
+            log.warn("未找到模板 code={}，无法回退", latestDef.getKey());
+            return originalTarget;
+        }
+
+        // 获取模板启用的节点列表（按 sortOrder 排序，含 flow_node 关联信息）
+        List<FlowTemplateNode> templateNodes = flowTemplateService.getTemplateNodes(template.getId());
+        for (FlowTemplateNode tn : templateNodes) {
+            if (tn.getEnabled() == null || tn.getEnabled() != 1) continue;
+            if (tn.getNode() == null) continue;
+            String nodeKey = tn.getNode().getNodeKey();
+            Integer targetStatus = tn.getNode().getTargetStatus();
+            // 找第一个在 BPMN 中存在、且 targetStatus > 当前状态的启用节点
+            if (targetStatus != null && targetStatus > currentStatus && availableIds.contains(nodeKey)) {
+                log.info("回退节点: {} → {} (targetStatus={})", originalTarget.activityId, nodeKey, targetStatus);
+                return target(nodeKey, targetStatus, originalTarget.syncTemplates,
+                        originalTarget.reason + "(节点回退)");
+            }
+        }
+        // 兜底：返回 BPMN 中第一个可用节点
+        String fallback = availableIds.stream().findFirst().orElse(null);
+        if (fallback != null) {
+            log.info("兜底回退: {} → {}", originalTarget.activityId, fallback);
+            return target(fallback, currentStatus, originalTarget.syncTemplates, originalTarget.reason + "(兜底回退)");
+        }
+        return originalTarget;
+    }
+
     /** 启动新版流程并跳转到目标节点 */
     private Map<String, Object> startNewVersionInstance(
             DeclarationForm form, Long formId, Integer statusBefore,
             MigrationTarget target, ProcessDefinition latestDef, String action) {
         ProcessInstance pi = null;
         try {
+            // 校验并修正目标节点（流程定义可能不包含某些节点）
+            target = resolveValidTarget(latestDef, target, form.getStatus());
+
             Map<String, Object> vars = new HashMap<>();
             vars.put("starterId", form.getCreateBy() != null ? String.valueOf(form.getCreateBy()) : "system");
             vars.put("resumeMode", true);
-            pi = runtimeService.startProcessInstanceByKey(DeclarationProcessVersionHelper.PROCESS_KEY, String.valueOf(formId), vars);
+            pi = runtimeService.startProcessInstanceByKey(latestDef.getKey(), String.valueOf(formId), vars);
 
             String currentActivity = resolveCurrentActivityId(pi.getId());
             if (!currentActivity.equals(target.activityId)) {
@@ -392,7 +507,7 @@ public class DeclarationFlowMigrationServiceImpl implements DeclarationFlowMigra
     private ProcessDefinition requireLatestNewProcessDefinition() {
         ProcessDefinition latest = processVersionHelper.getLatestDefinition();
         if (latest == null) {
-            throw new IllegalStateException("未找到流程定义 " + DeclarationProcessVersionHelper.PROCESS_KEY + "，请先部署 BPMN");
+            throw new IllegalStateException("未找到启用的流程定义，请先部署 BPMN");
         }
         if (!processVersionHelper.isNewVersionDefinition(latest.getId())) {
             throw new IllegalStateException(

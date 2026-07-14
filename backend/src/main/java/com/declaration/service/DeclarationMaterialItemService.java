@@ -72,4 +72,18 @@ public interface DeclarationMaterialItemService extends IService<DeclarationMate
      * 业务发票审核：完成 invoiceAudit 任务
      */
     void auditInvoice(Long formId, boolean approved, String remark, Long auditorId);
+
+    /**
+     * 通用阶段提交：根据 stage（Flowable taskKey）完成对应任务
+     * 支持 materialSubmit / supplementSubmit / invoiceSubmit 等
+     * 与 form_section 字典的 submitKey 配合使用
+     */
+    void submitStage(Long formId, String stage, Long currentUserId);
+
+    /**
+     * 通用阶段审核：根据 stage（Flowable auditTaskKey）完成对应审核任务
+     * 支持 materialAudit / supplementAudit / invoiceAudit 等
+     * 与 form_section 字典的 auditTaskKey 配合使用
+     */
+    void auditStage(Long formId, String stage, boolean approved, String remark, Long auditorId);
 }

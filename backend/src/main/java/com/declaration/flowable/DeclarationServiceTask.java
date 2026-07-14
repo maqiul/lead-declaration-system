@@ -26,6 +26,7 @@ public class DeclarationServiceTask implements JavaDelegate {
     private final ExcelExportService excelExportService;
     private final ContractGenerateService contractGenerateService;
     private final BankAccountConfigService bankAccountConfigService;
+    private final CurrencyInfoService currencyInfoService;
 
     @Override
     public void execute(DelegateExecution execution) {
@@ -153,7 +154,7 @@ public class DeclarationServiceTask implements JavaDelegate {
         data.put("quantityUnit", quantityUnit);
         
         String totalAmount = form.getTotalAmount() != null ? form.getTotalAmount().toPlainString() : "0";
-        String currency = nullSafe(form.getCurrency(), "USD");
+        String currency = nullSafe(form.getCurrency(), getDefaultCurrency());
         data.put("totalAmount", totalAmount);
         data.put("currency", currency);
         data.put("currencyCn", getCurrencyCnPrefix(currency));
@@ -192,6 +193,21 @@ public class DeclarationServiceTask implements JavaDelegate {
         if ("EUR".equalsIgnoreCase(currency)) return "欧元";
         if ("CNY".equalsIgnoreCase(currency) || "RMB".equalsIgnoreCase(currency)) return "元";
         return "";
+    }
+
+    /**
+     * 从配置获取默认币种，不再写死 USD
+     */
+    private String getDefaultCurrency() {
+        try {
+            var list = currencyInfoService.getEnabledList();
+            if (list != null && !list.isEmpty()) {
+                return list.get(0).getCurrencyCode();
+            }
+        } catch (Exception e) {
+            log.warn("获取默认币种配置失败，回退 USD", e);
+        }
+        return "USD";
     }
     
     /**

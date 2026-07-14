@@ -149,6 +149,11 @@ public class DeclarationForm {
     private String declarationType;
 
     /**
+     * 所选流程模板编码（对应 flow_template.code）
+     */
+    private String templateCode;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

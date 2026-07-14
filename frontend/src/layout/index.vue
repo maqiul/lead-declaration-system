@@ -154,7 +154,29 @@ import {
   ThunderboltOutlined,
   BankOutlined,
   GlobalOutlined,
-  DollarOutlined
+  DollarOutlined,
+  FileProtectOutlined,
+  FileTextOutlined,
+  AccountBookOutlined,
+  UnorderedListOutlined,
+  FileSearchOutlined,
+  PlusOutlined,
+  UploadOutlined,
+  FileAddOutlined,
+  FolderOpenOutlined,
+  ContainerOutlined,
+  PayCircleOutlined,
+  CarOutlined,
+  MoneyCollectOutlined,
+  DashboardOutlined,
+  EnvironmentOutlined,
+  ShopOutlined,
+  BookOutlined,
+  ClockCircleOutlined,
+  LinkOutlined,
+  AuditOutlined,
+  HistoryOutlined,
+  BarChartOutlined
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
@@ -195,13 +217,13 @@ const getConfigValue = (key: string, defaultValue: string = ''): string => {
 }
 
 // 监听路由变化更新选中菜单和展开的菜单
-watch(() => route.path, (path) => {
+watch(() => route.fullPath, (path) => {
   selectedKeys.value = [path]
   
   // 自动判断并展开父级菜单
-  const parentPath = path.substring(0, path.lastIndexOf('/'))
+  const pathOnly = path.split('?')[0]
+  const parentPath = pathOnly.substring(0, pathOnly.lastIndexOf('/'))
   if (parentPath && parentPath !== '/') {
-    // 只有不在已展开的列表中时，我们将其覆盖为主展开项（实现加载时和点击跳转时的手风琴效果）
     if (!openKeys.value.includes(parentPath)) {
       openKeys.value = [parentPath]
     }
@@ -287,8 +309,7 @@ const getDefaultMenu = () => [
       { id: 5, menuName: '组织管理', path: '/system/org', icon: 'ApartmentOutlined', isShow: 1 },
       { id: 6, menuName: '菜单管理', path: '/system/menu', icon: 'MenuOutlined', isShow: 1 },
       { id: 13, menuName: '银行账户', path: '/system/bank-account', icon: 'BankOutlined', isShow: 1 },
-      { id: 14, menuName: '国家信息', path: '/system/country', icon: 'GlobalOutlined', isShow: 1 },
-      { id: 15, menuName: '税务退费', path: '/tax-refund', icon: 'DollarOutlined', isShow: 1 }
+      { id: 14, menuName: '国家信息', path: '/system/country', icon: 'GlobalOutlined', isShow: 1 }
     ]
   },
   {
@@ -321,8 +342,8 @@ const menuItems = computed(() => {
         const isVisible = menu?.isShow !== 0 && menu?.is_show !== 0
         return menu?.status === 1 && menu?.menuType !== 3 && isVisible
       })
-      .map(menu => {
-        if (!menu) return null
+      .flatMap(menu => {
+        if (!menu) return []
 
         // 计算完整绝对路径，作为唯一的 Key
         let fullPath = menu.path
@@ -340,9 +361,11 @@ const menuItems = computed(() => {
             }
         }
 
+        const menuName = menu?.menuName || '未知菜单'
+
         const menuItem: any = {
-          key: fullPath, // 使用完整路径作为 Key，避免冲突
-          label: menu?.menuName || '未知菜单'
+          key: fullPath,
+          label: menuName
         }
 
         // 安全地处理图标
@@ -374,7 +397,7 @@ const menuItems = computed(() => {
           }
         }
 
-        return menuItem
+        return [menuItem]
       })
       .filter(item => item !== null)
   }
@@ -401,7 +424,29 @@ const getIconComponent = (iconName: string) => {
     'ApiOutlined': ApiOutlined,
     'BankOutlined': BankOutlined,
     'GlobalOutlined': GlobalOutlined,
-    'DollarOutlined': DollarOutlined
+    'DollarOutlined': DollarOutlined,
+    'FileProtectOutlined': FileProtectOutlined,
+    'FileTextOutlined': FileTextOutlined,
+    'AccountBookOutlined': AccountBookOutlined,
+    'UnorderedListOutlined': UnorderedListOutlined,
+    'FileSearchOutlined': FileSearchOutlined,
+    'PlusOutlined': PlusOutlined,
+    'UploadOutlined': UploadOutlined,
+    'FileAddOutlined': FileAddOutlined,
+    'FolderOpenOutlined': FolderOpenOutlined,
+    'ContainerOutlined': ContainerOutlined,
+    'PayCircleOutlined': PayCircleOutlined,
+    'CarOutlined': CarOutlined,
+    'MoneyCollectOutlined': MoneyCollectOutlined,
+    'DashboardOutlined': DashboardOutlined,
+    'EnvironmentOutlined': EnvironmentOutlined,
+    'ShopOutlined': ShopOutlined,
+    'BookOutlined': BookOutlined,
+    'ClockCircleOutlined': ClockCircleOutlined,
+    'LinkOutlined': LinkOutlined,
+    'AuditOutlined': AuditOutlined,
+    'HistoryOutlined': HistoryOutlined,
+    'BarChartOutlined': BarChartOutlined
   }
   return iconMap[iconName] || MenuUnfoldOutlined
 }
@@ -536,7 +581,6 @@ onMounted(() => {
 }
 
 .sider {
-  overflow: hidden;
   height: 100vh;
   position: fixed;
   left: 0;
@@ -547,6 +591,7 @@ onMounted(() => {
   border-right: 1px solid #E2E8F0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* 品牌区域 */
@@ -737,15 +782,33 @@ onMounted(() => {
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 16px;
+  min-height: 0;
+}
+
+:deep(.modern-menu::-webkit-scrollbar) {
+  width: 4px;
+}
+
+:deep(.modern-menu::-webkit-scrollbar-track) {
+  background: transparent;
+}
+
+:deep(.modern-menu::-webkit-scrollbar-thumb) {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 2px;
+}
+
+:deep(.modern-menu::-webkit-scrollbar-thumb:hover) {
+  background: rgba(0, 0, 0, 0.25);
 }
 
 :deep(.modern-menu .ant-menu-item) {
-  margin: 4px 0 !important;
+  margin: 2px 0 !important;
   width: 100% !important;
   border-radius: 0 !important;
   transition: all 0.3s !important;
-  height: 40px !important;
-  line-height: 40px !important;
+  height: 36px !important;
+  line-height: 36px !important;
   color: rgba(0, 0, 0, 0.65) !important;
 }
 
@@ -770,12 +833,12 @@ onMounted(() => {
 }
 
 :deep(.modern-menu .ant-menu-submenu-title) {
-  margin: 4px 0 !important;
+  margin: 2px 0 !important;
   width: 100% !important;
   border-radius: 0 !important;
   transition: all 0.3s !important;
-  height: 40px !important;
-  line-height: 40px !important;
+  height: 36px !important;
+  line-height: 36px !important;
   color: rgba(0, 0, 0, 0.65) !important;
 }
 

@@ -36,6 +36,16 @@ public class DeclarationCartonProduct {
     private Integer quantity;
 
     /**
+     * 该产品在该箱中的毛重(KGS)
+     */
+    private java.math.BigDecimal grossWeight;
+
+    /**
+     * 该产品在该箱中的净重(KGS)
+     */
+    private java.math.BigDecimal netWeight;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

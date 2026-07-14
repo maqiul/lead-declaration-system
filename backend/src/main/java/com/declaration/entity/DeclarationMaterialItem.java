@@ -36,6 +36,9 @@ public class DeclarationMaterialItem implements Serializable {
     /** 发票模式: 0-普通附件 1-附件级金额/发票号/日期（从模板克隆时同步） */
     private Integer invoiceMode;
 
+    /** 发票分类: DEDUCTION-扣款 INPUT-进项（从模板克隆时同步） */
+    private String invoiceCategory;
+
     /** 资料编码 */
     private String code;
 

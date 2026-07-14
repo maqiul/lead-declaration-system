@@ -10,6 +10,7 @@ export interface DeclarationQueryParams {
   excludeStatus?: number
   startTime?: string
   endTime?: string
+  declarationType?: string  // SELF/EXTERNAL
 }
 
 export interface DeclarationForm {
@@ -707,6 +708,17 @@ export function getRemittancesByFormId(formId: number) {
   return request({
     url: `/v1/remittances/form/${formId}`,
     method: 'get'
+  })
+}
+
+/**
+ * 业务端：获取可用流程模板列表（创建申报单时用，只需 business:declaration:view 权限）
+ */
+export function getAvailableFlowTemplates(processType?: string) {
+  return request({
+    url: '/v1/declarations/flow-templates',
+    method: 'get',
+    params: processType ? { processType } : {}
   })
 }
 

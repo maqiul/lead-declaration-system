@@ -395,6 +395,42 @@ public class DeclarationMaterialItemController {
         }
     }
 
+    /** 通用阶段提交（字典驱动，stage = form_section 字典的 submitKey） */
+    @PostMapping("/stage/submit")
+    @Operation(summary = "通用阶段提交")
+    public Result<String> submitStage(@RequestParam Long formId, @RequestParam String stage) {
+        Long userId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
+        try {
+            itemService.submitStage(formId, stage, userId);
+            return Result.success("提交成功");
+        } catch (Exception e) {
+            log.warn("阶段提交失败 formId={} stage={} : {}", formId, stage, e.getMessage());
+            return Result.fail(e.getMessage());
+        }
+    }
+
+    /** 通用阶段审核（字典驱动，stage = form_section 字典的 auditTaskKey） */
+    @PostMapping("/stage/audit")
+    @Operation(summary = "通用阶段审核")
+    public Result<String> auditStage(@RequestBody Map<String, Object> body) {
+        Object formIdObj = body.get("formId");
+        if (formIdObj == null) return Result.fail("formId 不能为空");
+        Long formId = Long.valueOf(formIdObj.toString());
+        String stage = body.get("stage") == null ? null : body.get("stage").toString();
+        if (stage == null || stage.isEmpty()) return Result.fail("stage 不能为空");
+        Object resultObj = body.get("result"); // 1=通过 2=驳回
+        boolean approved = resultObj != null && "1".equals(resultObj.toString());
+        String remark = body.get("remark") == null ? "" : body.get("remark").toString();
+        Long auditorId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
+        try {
+            itemService.auditStage(formId, stage, approved, remark, auditorId);
+            return Result.success(approved ? "审核通过" : "审核驳回");
+        } catch (Exception e) {
+            log.warn("阶段审核失败 formId={} stage={} : {}", formId, stage, e.getMessage());
+            return Result.fail(e.getMessage());
+        }
+    }
+
     /** 业务发票审核（完成 invoiceAudit 任务） */
     @PostMapping("/invoice/audit")
     @Operation(summary = "业务发票审核")

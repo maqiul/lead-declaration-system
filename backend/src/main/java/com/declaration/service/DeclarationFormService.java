@@ -153,4 +153,11 @@ public interface DeclarationFormService extends IService<DeclarationForm> {
      * @param record 审核记录
      */
     void saveAuditRecord(BusinessAuditRecord record);
+
+    /**
+     * 校验资料完整性（用于资料提交阶段自动检测）
+     * @param formId 申报单 ID
+     * @return 校验结果：{complete: boolean, missingItems: [...], amountShortage: ...}
+     */
+    java.util.Map<String, Object> validateMaterialCompleteness(Long formId);
 }

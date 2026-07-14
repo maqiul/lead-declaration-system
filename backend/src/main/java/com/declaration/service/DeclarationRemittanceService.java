@@ -73,4 +73,9 @@ public interface DeclarationRemittanceService extends IService<DeclarationRemitt
      * 获取当前待审核任务列表
      */
     List<Map<String, Object>> getPendingAuditTasks();
+
+    /**
+     * 检查申报单是否已关联至少一条已审核的收汇水单
+     */
+    boolean hasApprovedRemittance(Long formId);
 }

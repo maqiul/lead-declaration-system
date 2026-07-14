@@ -3,11 +3,14 @@
     <!-- 搜索区域 -->
     <a-card class="search-card">
       <a-form :model="searchForm" layout="inline">
+        <a-form-item label="发票号">
+          <a-input v-model:value="searchForm.invoiceNo" placeholder="发票号" style="width: 140px" />
+        </a-form-item>
         <a-form-item label="申报单号">
-          <a-input-search 
+          <a-input 
             v-model:value="searchForm.formNo" 
             placeholder="搜索申报单号" 
-            @search="loadData"
+            style="width: 160px"
           />
         </a-form-item>
         <a-form-item label="状态">
@@ -32,6 +35,12 @@
             <a-select-option :value="11">退回待审</a-select-option>
           </a-select>
         </a-form-item>
+        <a-form-item label="发货人">
+          <a-input v-model:value="searchForm.shipper" placeholder="发货人" style="width: 140px" />
+        </a-form-item>
+        <a-form-item label="收货人">
+          <a-input v-model:value="searchForm.consignee" placeholder="收货人" style="width: 140px" />
+        </a-form-item>
         <a-form-item label="日期">
           <a-range-picker 
             v-model:value="searchForm.dateRange" 
@@ -39,19 +48,17 @@
             @change="loadData"
           />
         </a-form-item>
-        <a-form-item>
-          <a-space>
-            <a-button type="primary" @click="loadData" v-permission="['business:declaration:view']">
-              <template #icon><SearchOutlined /></template>
-              查询
-            </a-button>
-            <a-button @click="resetSearch">
-              <template #icon><ReloadOutlined /></template>
-              重置
-            </a-button>
-          </a-space>
-        </a-form-item>
       </a-form>
+      <div class="search-btn-row">
+        <a-button type="primary" @click="loadData" v-permission="['business:declaration:view']">
+          <template #icon><SearchOutlined /></template>
+          查询
+        </a-button>
+        <a-button @click="resetSearch">
+          <template #icon><ReloadOutlined /></template>
+          重置
+        </a-button>
+      </div>
     </a-card>
 
     <!-- 操作按钮 -->
@@ -74,7 +81,7 @@
         :columns="columns" 
         :loading="loading"
         :pagination="pagination"
-        :scroll="{ x: 1500 }"
+        :scroll="{ x: 1720 }"
         rowKey="id"
         @change="handleTableChange"
         class="ui-table"
@@ -188,17 +195,6 @@
                   退回审核
                 </a-button>
               </template>
-
-              <a-button
-                v-if="canShowFlowMigration(record as any)"
-                type="link"
-                size="small"
-                danger
-                @click="handleResumeFlow(record as any)"
-              >
-                <template #icon><ReloadOutlined /></template>
-                迁移新版流程
-              </a-button>
 
               <!-- 更多操作菜单 -->
               <a-dropdown>
@@ -554,13 +550,7 @@
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="币种">
-              <a-select v-model:value="remittanceFormData.currency">
-                <a-select-option value="USD">USD - 美元</a-select-option>
-                <a-select-option value="CNY">CNY - 人民币</a-select-option>
-                <a-select-option value="EUR">EUR - 欧元</a-select-option>
-                <a-select-option value="GBP">GBP - 英镑</a-select-option>
-                <a-select-option value="JPY">JPY - 日元</a-select-option>
-              </a-select>
+              <a-select v-model:value="remittanceFormData.currency" :options="currencyOptions" placeholder="请选择币种" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
@@ -697,6 +687,9 @@
 
     <!-- 文件预览弹窗 -->
     <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
+
+    <!-- 流程预览弹窗 -->
+    <BpmnPreviewModal v-model:visible="bpmnPreviewVisible" :templateId="previewTemplateId" />
   </div>
 </template>
 
@@ -731,15 +724,25 @@ import { h } from 'vue'
 // import { hasPermission } from '@/utils/permission'
 
 import { useRoute } from 'vue-router'
+import { getEnabledTransportModes } from '@/api/system/transportMode'
+import { getAvailableFlowTemplates } from '@/api/business/declaration'
+import { getEnabledCurrencies } from '@/api/system/currency'
 
 import FinanceModal from '../finance/components/FinanceModal.vue'
 import RemittanceRelationModal from './components/RemittanceRelationModal.vue'
 import MaterialAuditModal from '../material/components/MaterialAuditModal.vue'
 import InvoiceAuditModal from '../material/components/InvoiceAuditModal.vue'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
+import BpmnPreviewModal from '@/components/BpmnPreviewModal.vue'
 
 const router = useRouter()
 const route = useRoute()
+
+/** 根据 route query 中的 declarationType 确定路由前缀 */
+const declarationPrefix = computed(() => {
+  const dt = (route.query.declarationType as string) || 'EXTERNAL'
+  return dt === 'SELF' ? '/declaration-self' : '/declaration-external'
+})
 
 // 文件预览
 const previewVisible = ref(false)
@@ -749,6 +752,9 @@ const handlePreviewContract = (id: number) => { previewUrl.value = getContractDo
 const searchForm = reactive({
   formNo: '',
   status: '',
+  consignee: '',
+  shipper: '',
+  invoiceNo: '',
   dateRange: undefined as [Dayjs, Dayjs] | undefined
 })
 
@@ -790,6 +796,8 @@ const columns = [
   { title: '申报人', dataIndex: 'applicantName', key: 'applicantName', width: 100 },
   { title: '发货人', dataIndex: 'shipperCompany', key: 'shipperCompany', width: 150 },
   { title: '收货人', dataIndex: 'consigneeCompany', key: 'consigneeCompany', width: 150 },
+  { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo', width: 120 },
+  { title: '贸易国', dataIndex: 'tradeCountry', key: 'tradeCountry', width: 100 },
   { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate', width: 120 },
   { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', width: 100 },
   { title: '总箱数', dataIndex: 'totalCartons', key: 'totalCartons', width: 80 },
@@ -836,6 +844,26 @@ const remittanceRelationVisible = ref(false)
 const currentFormIdForRemittance = ref<number>(0)
 const currentFormNoForRemittance = ref<string>('')
 
+// 币种选项（从配置加载）
+const currencyOptions = ref<any[]>([])
+const defaultCurrency = ref('USD')
+
+const loadCurrencies = async () => {
+  try {
+    const response = await getEnabledCurrencies()
+    if (response.data.code === 200 && response.data.data.length > 0) {
+      currencyOptions.value = response.data.data.map((item: any) => ({
+        label: `${item.currencyCode} - ${item.chineseName || item.currencyName}`,
+        value: item.currencyCode
+      }))
+      defaultCurrency.value = currencyOptions.value[0]?.value || 'USD'
+      remittanceFormData.currency = defaultCurrency.value
+    }
+  } catch (error) {
+    console.warn('加载货币数据失败:', error)
+  }
+}
+
 // 创建水单弹窗
 const createRemittanceVisible = ref(false)
 const createRemittanceLoading = ref(false)
@@ -843,7 +871,7 @@ const remittanceFormData = reactive({
   remittanceName: '',
   remittanceDate: undefined as Dayjs | string | undefined,
   remittanceAmount: undefined as number | undefined,
-  currency: 'USD',
+  currency: undefined as string | undefined,
   remarks: '',
   photoUrl: '',
   fileList: [] as any[]
@@ -901,7 +929,10 @@ const loadData = async () => {
       current: pagination.current,
       size: pagination.pageSize,
       formNo: searchForm.formNo || undefined,
-      status: searchForm.status !== '' ? Number(searchForm.status) : undefined
+      status: searchForm.status !== '' ? Number(searchForm.status) : undefined,
+      consignee: searchForm.consignee || undefined,
+      shipper: searchForm.shipper || undefined,
+      invoiceNo: searchForm.invoiceNo || undefined
     }
     
     const response = await getDeclarationList(params)
@@ -1045,6 +1076,9 @@ const stopAutoRefresh = () => {
 const resetSearch = () => {
   searchForm.formNo = ''
   searchForm.status = ''
+  searchForm.consignee = ''
+  searchForm.shipper = ''
+  searchForm.invoiceNo = ''
   searchForm.dateRange = undefined
   pagination.current = 1
   loadData()
@@ -1057,14 +1091,56 @@ const handleTableChange = (pag: any) => {
   loadData()
 }
 
-// 新增申报单
-const handleAdd = () => {
-  router.push('/declaration/form')
+// 新增申报单 - 直接跳转表单页
+
+const handleAdd = async () => {
+  try {
+    const [flowRes, transportRes] = await Promise.all([
+      getAvailableFlowTemplates('declaration'),
+      getEnabledTransportModes()
+    ])
+
+    let templates: any[] = []
+    if (flowRes.data?.code === 200) {
+      templates = (flowRes.data.data || []).filter((t: any) => t.status === 1)
+      if (!checkPermission(['business:declaration:template:select'])) {
+        const defaultFlows = templates.filter((t: any) => t.isDefault === 1)
+        if (defaultFlows.length > 0) templates = defaultFlows
+      }
+    }
+
+    if (templates.length === 0) {
+      message.warning('没有可用的流程模板，请联系管理员配置')
+      return
+    }
+
+    // 选择默认模板（或第一个）
+    const tpl = templates.find((t: any) => t.isDefault === 1) || templates[0]
+
+    // 运输方式：自动选择第一个（如果只有一个）
+    let transport = ''
+    if (transportRes.data?.code === 200) {
+      const modes = (transportRes.data.data || []).map((t: any) => t.name)
+      if (modes.length === 1) transport = modes[0]
+    }
+
+    const params = new URLSearchParams()
+    params.set('template', tpl.code)
+    params.set('type', tpl.declarationType || 'EXTERNAL')
+    if (transport) params.set('transport', transport)
+    router.push(`${declarationPrefix.value}/form-v2?${params.toString()}`)
+  } catch {
+    message.warning('加载流程模板失败')
+  }
 }
+
+// 流程预览
+const bpmnPreviewVisible = ref(false)
+const previewTemplateId = ref<number | null>(null)
 
 // 查看详情
 const handleView = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&readonly=true&status=${record.status}`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&readonly=true&status=${record.status}`)
 }
 
 // 提交操作 (从列表直接触发流程启动)
@@ -1092,7 +1168,7 @@ const handleEdit = (record: DeclarationRecord) => {
     message.warning('只有草稿状态的申报单可以编辑')
     return
   }
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}`)
 }
 
 // 付款操作（定金/尾款）- 跳转到水单提交模式
@@ -1105,14 +1181,14 @@ const handleEdit = (record: DeclarationRecord) => {
 //   }
 //   if (type) query.type = type
 //   console.log('Router push query:', query)
-//   router.push({ path: '/declaration/form', query })
+//   router.push({ path: `${declarationPrefix.value}/form-v2`, query })
 // }
 
 // 审核申报单
 const handleAudit = (record: DeclarationRecord, taskKey?: string) => {
   const query: Record<string, any> = { id: record.id, mode: 'audit' }
   if (taskKey) query.taskKey = taskKey
-  router.push({ path: '/declaration/form', query })
+  router.push({ path: `${declarationPrefix.value}/form-v2`, query })
 }
 
 // 财务补充 - 弹窗模式（有数据则编辑，无数据则新增）
@@ -1123,48 +1199,42 @@ const handleFinanceUpload = (record: DeclarationRecord) => {
 
 // 提交申报资料——跳转到主表单 mode=material
 const handleMaterialSubmit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=material`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material`)
 }
 
 // 资料审核（跳转到详情页审核）
 const handleMaterialAudit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=materialAudit`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=materialAudit`)
 }
 
 // 提交业务发票——跳转到主表单 mode=invoiceUpload
 const handleGoSubmitInvoice = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceUpload&scrollTo=invoice`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceUpload&scrollTo=invoice`)
 }
 
 // 发票审核（跳转到详情页审核）
 const handleInvoiceAudit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceAudit&scrollTo=invoice`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceAudit&scrollTo=invoice`)
 }
 
 // 补充资料提交（跳转到详情页）
 const handleSupplementSubmit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=supplement&scrollTo=supplement`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=supplement&scrollTo=supplement`)
 }
 
 // 补充资料审核（跳转到详情页审核）
 const handleSupplementAudit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=supplementAudit`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=supplementAudit`)
 }
 
 // 申请开票金额提交（跳转到详情页）
 const handleInvoiceAmountSubmit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceAmount`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceAmount`)
 }
 
 // 开票金额审核（跳转到详情页审核）
 const handleInvoiceAmountAudit = (record: DeclarationRecord) => {
-  router.push(`/declaration/form?id=${record.id}&status=${record.status}&mode=invoiceAmountAudit`)
-}
-
-const canShowFlowMigration = (record: DeclarationRecord) => {
-  if (!record.needsFlowMigration) return false
-  if (record.status == null || record.status < 1 || record.status > 9) return false
-  return checkPermission(['business:declaration:resume:flow'])
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceAmountAudit`)
 }
 
 const canShowResumeFlow = (record: DeclarationRecord) => {
@@ -1236,7 +1306,7 @@ const handleCreateAndRelateRemittance = (record: DeclarationRecord) => {
   remittanceFormData.remittanceName = ''
   remittanceFormData.remittanceDate = undefined
   remittanceFormData.remittanceAmount = undefined
-  remittanceFormData.currency = 'USD'
+  remittanceFormData.currency = defaultCurrency.value
   remittanceFormData.remarks = ''
   remittanceFormData.photoUrl = ''
   remittanceFormData.fileList = []
@@ -2063,6 +2133,7 @@ const viewReturnHistory = async (record: DeclarationRecord) => {
 // 页面加载
 onMounted(() => {
   loadData()
+  loadCurrencies()
   startAutoRefresh() // 启动自动刷新
   
   // 拦截来自工作台待办任务的特定参数，并自动开启审核弹窗/进入审核流程
@@ -2071,7 +2142,7 @@ onMounted(() => {
     if (!isNaN(id)) {
       // 稍微延迟确保数据渲染，不过我们这是路由跳转，此时直接用 params 跳表单详情即可
       setTimeout(() => {
-        router.push(`/declaration/form?id=${id}&mode=audit`)
+        router.push(`${declarationPrefix.value}/form-v2?id=${id}&mode=audit`)
       }, 300)
     }
   }
@@ -2086,6 +2157,14 @@ onUnmounted(() => {
 .declaration-manage {
   height: 100%;
   overflow-x: hidden;
+}
+
+.search-btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
 }
 
 /* 附件列表样式 */

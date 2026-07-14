@@ -85,6 +85,7 @@ public class FinancialSupplementController {
     private final com.declaration.service.SystemConfigService systemConfigService;
     private final EntityConfigService entityConfigService;
     private final InvoiceSplitItemMapper splitItemMapper;
+    private final com.declaration.service.CurrencyInfoService currencyInfoService;
 
     @Value("${file.upload-path:uploads/exports/}")
     private String uploadPath;
@@ -95,7 +96,8 @@ public class FinancialSupplementController {
             DeclarationAttachmentService attachmentService,
             com.declaration.service.SystemConfigService systemConfigService,
             EntityConfigService entityConfigService,
-            InvoiceSplitItemMapper splitItemMapper) {
+            InvoiceSplitItemMapper splitItemMapper,
+            com.declaration.service.CurrencyInfoService currencyInfoService) {
         this.supplementService = supplementService;
         this.formService = formService;
         this.remittanceService = remittanceService;
@@ -103,6 +105,7 @@ public class FinancialSupplementController {
         this.systemConfigService = systemConfigService;
         this.entityConfigService = entityConfigService;
         this.splitItemMapper = splitItemMapper;
+        this.currencyInfoService = currencyInfoService;
     }
 
     @GetMapping("/form/{formId}")
@@ -345,7 +348,7 @@ public class FinancialSupplementController {
                     BigDecimal cny = (BigDecimal) d.get("cnyAmount");
                     BigDecimal bankFeeCny = (BigDecimal) d.get("bankFeeCny");
                     BigDecimal internalFeeCny = (BigDecimal) d.get("internalBankFee");
-                    String currency = d.get("currency") != null ? d.get("currency").toString() : "USD";
+                    String currency = d.get("currency") != null ? d.get("currency").toString() : getDefaultCurrency();
                     createDataRow(sheet, rowNum++, name.isEmpty() ? "水单" : name,
                             String.format("%1$,.2f %2$s × %3$s = %4$,.2f CNY，银行手续费: %5$,.2f CNY，内部操作费: %6$,.2f CNY", amt, currency, rate, cny, bankFeeCny, internalFeeCny), headerStyle);
                 }
@@ -407,23 +410,6 @@ public class FinancialSupplementController {
 
             createDataRow(sheet, rowNum++, "开票金额(CNY)", String.format("%,.2f", calcDetail.get("invoiceAmount")), headerStyle);
             
-            rowNum++;
-            
-            // 完整计算公式展示
-            XSSFRow formulaRow = sheet.createRow(rowNum++);
-            formulaRow.createCell(0).setCellValue("计算公式详解");
-            formulaRow.getCell(0).setCellStyle(headerStyle);
-            sheet.addMergedRegion(new CellRangeAddress(rowNum-1, rowNum-1, 0, 3));
-            
-            @SuppressWarnings("unchecked")
-            List<String> steps = (List<String>) calcDetail.get("calculationSteps");
-            if (steps != null) {
-                int stepNo = 1;
-                for (String step : steps) {
-                    createDataRow(sheet, rowNum++, "步骤" + stepNo++, step, headerStyle);
-                }
-            }
-
             rowNum++;
 
             // 商品明细
@@ -681,17 +667,18 @@ public class FinancialSupplementController {
                     String pName = pd.get("productName") != null ? pd.get("productName").toString() : "-";
                     Integer qty = pd.get("quantity") != null ? ((Number) pd.get("quantity")).intValue() : null;
                     String unit = pd.get("unit") != null ? pd.get("unit").toString() : "个";
-                    BigDecimal cnyAmt = pd.get("cnyAmount") instanceof BigDecimal ? (BigDecimal) pd.get("cnyAmount") : BigDecimal.ZERO;
-                    BigDecimal unitPrice = (qty != null && qty > 0 && cnyAmt.compareTo(BigDecimal.ZERO) > 0)
-                            ? cnyAmt.divide(new BigDecimal(qty), 2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+                    // 使用退税加成后金额作为含税金额，与开票金额一致
+                    BigDecimal inclTaxAmt = pd.get("amountWithTaxRefund") instanceof BigDecimal ? (BigDecimal) pd.get("amountWithTaxRefund") : BigDecimal.ZERO;
+                    BigDecimal unitPrice = (qty != null && qty > 0 && inclTaxAmt.compareTo(BigDecimal.ZERO) > 0)
+                            ? inclTaxAmt.divide(new BigDecimal(qty), 10, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
 
                     pRow.createCell(0).setCellValue(pName);
                     pRow.createCell(1).setCellValue("-");
                     pRow.createCell(2).setCellValue(qty != null ? qty : 0);
                     pRow.createCell(3).setCellValue(unit);
                     pRow.createCell(4).setCellValue(unitPrice.doubleValue());
-                    pRow.createCell(5).setCellValue(cnyAmt.doubleValue());
-                    totalAmount = totalAmount.add(cnyAmt);
+                    pRow.createCell(5).setCellValue(inclTaxAmt.doubleValue());
+                    totalAmount = totalAmount.add(inclTaxAmt);
                 }
             }
 
@@ -703,42 +690,35 @@ public class FinancialSupplementController {
 
             rowNum++; // 空行
 
-            // === 4) 开票金额计算框 ===
-            BigDecimal invoiceAmount = calcDetail.get("invoiceAmount") instanceof BigDecimal
-                    ? (BigDecimal) calcDetail.get("invoiceAmount") : BigDecimal.ZERO;
-            BigDecimal totalOriginalAmount = calcDetail.get("totalOriginalAmount") instanceof BigDecimal
-                    ? (BigDecimal) calcDetail.get("totalOriginalAmount") : BigDecimal.ZERO;
-            BigDecimal totalCny = calcDetail.get("totalCny") instanceof BigDecimal
-                    ? (BigDecimal) calcDetail.get("totalCny") : BigDecimal.ZERO;
-            BigDecimal weightedRate = calcDetail.get("weightedExchangeRate") instanceof BigDecimal
-                    ? (BigDecimal) calcDetail.get("weightedExchangeRate") : BigDecimal.ZERO;
+            // === 4) 开票金额计算（文件内应用80%基数） ===
+            BigDecimal amountWithTaxRefund = calcDetail.get("amountWithTaxRefund") instanceof BigDecimal
+                    ? (BigDecimal) calcDetail.get("amountWithTaxRefund") : BigDecimal.ZERO;
+            BigDecimal invoiceBase = amountWithTaxRefund.multiply(new BigDecimal("0.8")).setScale(2, java.math.RoundingMode.HALF_UP);
             BigDecimal totalDeduction = calcDetail.get("totalInvoiceDeduction") instanceof BigDecimal
                     ? (BigDecimal) calcDetail.get("totalInvoiceDeduction") : BigDecimal.ZERO;
+            BigDecimal totalFeeAmount = calcDetail.get("totalFeeAmount") instanceof BigDecimal
+                    ? (BigDecimal) calcDetail.get("totalFeeAmount") : BigDecimal.ZERO;
+            BigDecimal deductTotal = totalDeduction.add(totalFeeAmount);
+            BigDecimal fileInvoiceAmt = invoiceBase.subtract(deductTotal).setScale(2, java.math.RoundingMode.HALF_UP);
 
             XSSFRow calcTitle = sheet.createRow(rowNum++);
             calcTitle.createCell(0).setCellValue("开票金额计算");
             calcTitle.getCell(0).setCellStyle(boldLeft);
 
-            XSSFRow calcFormula = sheet.createRow(rowNum++);
-            String formula = String.format("开票金额: %.2f = (%.2f - %.2f / %s * %s * 1.13)",
-                    invoiceAmount.doubleValue(),
-                    totalOriginalAmount.doubleValue(),
-                    totalDeduction.doubleValue(),
-                    weightedRate.toPlainString(),
-                    weightedRate.toPlainString());
-            calcFormula.createCell(0).setCellValue(formula);
+            XSSFRow taxRefundRow = sheet.createRow(rowNum++);
+            taxRefundRow.createCell(0).setCellValue(String.format("退税加成合计: %.2f CNY", amountWithTaxRefund.doubleValue()));
 
-            XSSFRow usdRow = sheet.createRow(rowNum++);
-            usdRow.createCell(0).setCellValue(String.format("收汇美元总额: %.2f", totalOriginalAmount.doubleValue()));
+            XSSFRow baseRow = sheet.createRow(rowNum++);
+            baseRow.createCell(0).setCellValue(String.format("开票基数(80%%): %.2f CNY", invoiceBase.doubleValue()));
 
-            XSSFRow cnyRow = sheet.createRow(rowNum++);
-            cnyRow.createCell(0).setCellValue(String.format("收汇折人民币总额: %.2f", totalCny.doubleValue()));
+            XSSFRow deductRow = sheet.createRow(rowNum++);
+            deductRow.createCell(0).setCellValue(String.format("扣款合计: %.2f CNY (扣款项: %.2f + 手续费: %.2f)",
+                    deductTotal.doubleValue(), totalDeduction.doubleValue(), totalFeeAmount.doubleValue()));
 
-            XSSFRow feeRow = sheet.createRow(rowNum++);
-            feeRow.createCell(0).setCellValue(String.format("人民币费用: %.2f", totalDeduction.doubleValue()));
-
-            XSSFRow rateRow = sheet.createRow(rowNum++);
-            rateRow.createCell(0).setCellValue("汇率: " + weightedRate.toPlainString());
+            XSSFRow invoiceRow = sheet.createRow(rowNum++);
+            invoiceRow.createCell(0).setCellValue(String.format("开票金额: %.2f - %.2f = %.2f CNY",
+                    invoiceBase.doubleValue(), deductTotal.doubleValue(), fileInvoiceAmt.doubleValue()));
+            invoiceRow.getCell(0).setCellStyle(boldLeft);
 
             rowNum++; // 空行
 
@@ -934,10 +914,20 @@ public class FinancialSupplementController {
                 }
             }
 
+            // === 计算原始开票金额（统一基数） ===
+            BigDecimal origAmountWithTaxRefund = calcDetail.get("amountWithTaxRefund") instanceof BigDecimal
+                    ? (BigDecimal) calcDetail.get("amountWithTaxRefund") : BigDecimal.ZERO;
+            BigDecimal origDeduction = calcDetail.get("totalInvoiceDeduction") instanceof BigDecimal
+                    ? (BigDecimal) calcDetail.get("totalInvoiceDeduction") : BigDecimal.ZERO;
+            BigDecimal origFee = calcDetail.get("totalFeeAmount") instanceof BigDecimal
+                    ? (BigDecimal) calcDetail.get("totalFeeAmount") : BigDecimal.ZERO;
+            BigDecimal originalInvoiceAmount = origAmountWithTaxRefund.subtract(origDeduction).subtract(origFee)
+                    .setScale(2, java.math.RoundingMode.HALF_UP);
+
             // === 构建80% calcDetail ===
-            Map<String, Object> calcDetail80 = buildScaledCalcDetail(calcDetail, new BigDecimal("0.8"));
+            Map<String, Object> calcDetail80 = buildScaledCalcDetail(calcDetail, new BigDecimal("0.8"), originalInvoiceAmount);
             // === 构建20% calcDetail ===
-            Map<String, Object> calcDetail20 = buildCustomCalcDetail(calcDetail, splitProducts);
+            Map<String, Object> calcDetail20 = buildCustomCalcDetail(calcDetail, splitProducts, originalInvoiceAmount);
 
             // 1) 80% 开票通知书
             byte[] notification80 = generateNotificationWord(form, calcDetail80);
@@ -978,103 +968,146 @@ public class FinancialSupplementController {
         }
     }
 
-    /** 构建按比例缩放的 calcDetail（用于80%文档） */
-    private Map<String, Object> buildScaledCalcDetail(Map<String, Object> original, BigDecimal scale) {
+    /** 构建按比例缩放的 calcDetail（用于80%文档）
+     *  统一基数：originalInvoiceAmount × scale
+     *  产品含税合计 = 开票金额（扣减不吸收进产品，仅用于展示）
+     */
+    private Map<String, Object> buildScaledCalcDetail(Map<String, Object> original, BigDecimal scale, BigDecimal originalInvoiceAmount) {
         Map<String, Object> result = new java.util.LinkedHashMap<>(original);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> products = (List<Map<String, Object>>) original.get("productTaxDetails");
         if (products != null && !products.isEmpty()) {
-            // 计算基准比例: invoiceAmount / totalGoodsAmount
-            BigDecimal totalGoods = BigDecimal.ZERO;
-            for (Map<String, Object> pd : products) {
-                BigDecimal cny = pd.get("cnyAmount") instanceof BigDecimal ? (BigDecimal) pd.get("cnyAmount") : BigDecimal.ZERO;
-                totalGoods = totalGoods.add(cny);
-            }
-            BigDecimal invoiceAmount = original.get("invoiceAmount") instanceof BigDecimal ? (BigDecimal) original.get("invoiceAmount") : totalGoods;
-            // 如果 invoiceAmount 和 totalGoods 都大于0，用 invoiceAmount 作为基准分配
-            BigDecimal baseAmount = (invoiceAmount.compareTo(BigDecimal.ZERO) > 0 && totalGoods.compareTo(BigDecimal.ZERO) > 0)
-                    ? invoiceAmount : totalGoods;
+            // 目标开票金额 = 原始开票金额 × scale
+            BigDecimal targetInvoiceAmount = originalInvoiceAmount.multiply(scale).setScale(2, java.math.RoundingMode.HALF_UP);
+            // 80%的扣减 + 全额手续费（仅用于展示）
+            BigDecimal origDeduction = original.get("totalInvoiceDeduction") instanceof BigDecimal
+                    ? (BigDecimal) original.get("totalInvoiceDeduction") : BigDecimal.ZERO;
+            BigDecimal scaledDeduction = origDeduction.multiply(scale).setScale(2, java.math.RoundingMode.HALF_UP);
+            BigDecimal fullFeeAmount = original.get("totalFeeAmount") instanceof BigDecimal
+                    ? (BigDecimal) original.get("totalFeeAmount") : BigDecimal.ZERO;
+            // 产品含税合计 = 开票金额
+            BigDecimal productTarget = targetInvoiceAmount;
+
+            BigDecimal originalAmountWithTaxRefund = original.get("amountWithTaxRefund") instanceof BigDecimal
+                    ? (BigDecimal) original.get("amountWithTaxRefund") : BigDecimal.ZERO;
 
             List<Map<String, Object>> scaledProducts = new ArrayList<>();
             BigDecimal totalCnyAmount = BigDecimal.ZERO;
             BigDecimal totalAmountWithTaxRefund = BigDecimal.ZERO;
-            BigDecimal targetTotal = baseAmount.multiply(scale).setScale(2, java.math.RoundingMode.HALF_UP);
 
             for (int i = 0; i < products.size(); i++) {
                 Map<String, Object> pd = products.get(i);
                 Map<String, Object> sp = new java.util.LinkedHashMap<>(pd);
-                BigDecimal cnyAmt = pd.get("cnyAmount") instanceof BigDecimal ? (BigDecimal) pd.get("cnyAmount") : BigDecimal.ZERO;
-                BigDecimal amtWithTax = pd.get("amountWithTaxRefund") instanceof BigDecimal ? (BigDecimal) pd.get("amountWithTaxRefund") : cnyAmt;
-                // 按比例分配: 最后一个产品补齐舍入差额
-                BigDecimal scaledCny;
+                BigDecimal amtWithTax = pd.get("amountWithTaxRefund") instanceof BigDecimal ? (BigDecimal) pd.get("amountWithTaxRefund") : BigDecimal.ZERO;
+                BigDecimal cnyAmt = pd.get("cnyAmount") instanceof BigDecimal ? (BigDecimal) pd.get("cnyAmount") : amtWithTax;
+
+                // 按比例分配 productTarget，最后一个产品差额补齐
+                BigDecimal finalAmtWithTax;
                 if (i == products.size() - 1) {
-                    scaledCny = targetTotal.subtract(totalCnyAmount);
+                    finalAmtWithTax = productTarget.subtract(totalAmountWithTaxRefund);
                 } else {
-                    BigDecimal ratio = totalGoods.compareTo(BigDecimal.ZERO) > 0
-                            ? cnyAmt.divide(totalGoods, 10, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
-                    scaledCny = targetTotal.multiply(ratio).setScale(2, java.math.RoundingMode.HALF_UP);
+                    BigDecimal ratio = originalAmountWithTaxRefund.compareTo(BigDecimal.ZERO) > 0
+                            ? amtWithTax.divide(originalAmountWithTaxRefund, 10, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+                    finalAmtWithTax = productTarget.multiply(ratio).setScale(2, java.math.RoundingMode.HALF_UP);
                 }
-                // amountWithTaxRefund 同样按比例
-                BigDecimal ratioWT = (amtWithTax.compareTo(BigDecimal.ZERO) > 0 && cnyAmt.compareTo(BigDecimal.ZERO) > 0)
-                        ? amtWithTax.divide(cnyAmt, 10, java.math.RoundingMode.HALF_UP) : BigDecimal.ONE;
-                BigDecimal scaledAmtWithTax = scaledCny.multiply(ratioWT).setScale(2, java.math.RoundingMode.HALF_UP);
+
+                // cnyAmount 按同比缩放
+                BigDecimal ratioCny = (amtWithTax.compareTo(BigDecimal.ZERO) > 0)
+                        ? cnyAmt.divide(amtWithTax, 10, java.math.RoundingMode.HALF_UP) : BigDecimal.ONE;
+                BigDecimal scaledCny = finalAmtWithTax.multiply(ratioCny).setScale(2, java.math.RoundingMode.HALF_UP);
 
                 sp.put("cnyAmount", scaledCny);
-                sp.put("amountWithTaxRefund", scaledAmtWithTax);
+                sp.put("amountWithTaxRefund", finalAmtWithTax);
                 Number qtyNum = pd.get("quantity") instanceof Number ? (Number) pd.get("quantity") : 0;
                 BigDecimal qtyBD = new BigDecimal(qtyNum.toString());
                 if (qtyBD.compareTo(BigDecimal.ZERO) > 0) {
-                    sp.put("unitPrice", scaledCny.divide(qtyBD, 2, java.math.RoundingMode.HALF_UP));
+                    sp.put("unitPrice", finalAmtWithTax.divide(qtyBD, 10, java.math.RoundingMode.HALF_UP));
                 }
                 scaledProducts.add(sp);
                 totalCnyAmount = totalCnyAmount.add(scaledCny);
-                totalAmountWithTaxRefund = totalAmountWithTaxRefund.add(scaledAmtWithTax);
+                totalAmountWithTaxRefund = totalAmountWithTaxRefund.add(finalAmtWithTax);
             }
             result.put("productTaxDetails", scaledProducts);
             result.put("totalGoodsAmount", totalCnyAmount);
             result.put("amountWithTaxRefund", totalAmountWithTaxRefund);
             result.put("totalCny", totalCnyAmount);
-            // 缩放扣减项
-            if (original.get("totalInvoiceDeduction") instanceof BigDecimal)
-                result.put("totalInvoiceDeduction", ((BigDecimal) original.get("totalInvoiceDeduction")).multiply(scale).setScale(2, java.math.RoundingMode.HALF_UP));
-            if (original.get("totalFeeAmount") instanceof BigDecimal)
-                result.put("totalFeeAmount", ((BigDecimal) original.get("totalFeeAmount")).multiply(scale).setScale(2, java.math.RoundingMode.HALF_UP));
-            if (original.get("bankFeeAmount") instanceof BigDecimal)
-                result.put("bankFeeAmount", ((BigDecimal) original.get("bankFeeAmount")).multiply(scale).setScale(2, java.math.RoundingMode.HALF_UP));
-            if (original.get("internalBankFee") instanceof BigDecimal)
-                result.put("internalBankFee", ((BigDecimal) original.get("internalBankFee")).multiply(scale).setScale(2, java.math.RoundingMode.HALF_UP));
-            if (original.get("invoiceAmount") instanceof BigDecimal)
-                result.put("invoiceAmount", ((BigDecimal) original.get("invoiceAmount")).multiply(scale).setScale(2, java.math.RoundingMode.HALF_UP));
+            // 扣减和手续费仅用于文档展示
+            result.put("totalInvoiceDeduction", scaledDeduction);
+            result.put("totalFeeAmount", fullFeeAmount);
+            result.put("bankFeeAmount", original.get("bankFeeAmount") instanceof BigDecimal ? (BigDecimal) original.get("bankFeeAmount") : BigDecimal.ZERO);
+            result.put("internalBankFee", original.get("internalBankFee") instanceof BigDecimal ? (BigDecimal) original.get("internalBankFee") : BigDecimal.ZERO);
             if (original.get("totalOriginalAmount") instanceof BigDecimal)
                 result.put("totalOriginalAmount", ((BigDecimal) original.get("totalOriginalAmount")).multiply(scale).setScale(2, java.math.RoundingMode.HALF_UP));
+            result.put("invoiceAmount", targetInvoiceAmount);
         }
         return result;
     }
 
-    /** 构建自定义产品的 calcDetail（用于20%文档） */
-    private Map<String, Object> buildCustomCalcDetail(Map<String, Object> original, List<Map<String, Object>> customProducts) {
+    /** 构建自定义产品的 calcDetail（用于20%文档）
+     *  统一基数：originalInvoiceAmount × 0.2
+     *  用户产品按比例缩放，产品合计 = 开票金额（扣减仅用于展示）
+     */
+    private Map<String, Object> buildCustomCalcDetail(Map<String, Object> original, List<Map<String, Object>> customProducts, BigDecimal originalInvoiceAmount) {
         Map<String, Object> result = new java.util.LinkedHashMap<>(original);
+        // 目标开票金额 = 原始开票金额 × 0.2
+        BigDecimal targetInvoiceAmount = originalInvoiceAmount.multiply(new BigDecimal("0.2")).setScale(2, java.math.RoundingMode.HALF_UP);
+        // 20%的扣减（仅用于展示）
+        BigDecimal origDeduction = original.get("totalInvoiceDeduction") instanceof BigDecimal
+                ? (BigDecimal) original.get("totalInvoiceDeduction") : BigDecimal.ZERO;
+        BigDecimal scaledDeduction = origDeduction.multiply(new BigDecimal("0.2")).setScale(2, java.math.RoundingMode.HALF_UP);
+        // 产品合计目标 = 开票金额（不吸收扣减）
+        BigDecimal productTarget = targetInvoiceAmount;
+
+        // 计算用户产品原始合计
+        BigDecimal userProductTotal = BigDecimal.ZERO;
+        if (customProducts != null) {
+            for (Map<String, Object> pd : customProducts) {
+                BigDecimal amt = pd.get("cnyAmount") instanceof BigDecimal ? (BigDecimal) pd.get("cnyAmount") : BigDecimal.ZERO;
+                userProductTotal = userProductTotal.add(amt);
+            }
+        }
+        // 缩放比例：使产品合计 = productTarget
+        BigDecimal scaleRatio = userProductTotal.compareTo(BigDecimal.ZERO) > 0
+                ? productTarget.divide(userProductTotal, 10, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+
         List<Map<String, Object>> products = new ArrayList<>();
         BigDecimal totalCnyAmount = BigDecimal.ZERO;
         if (customProducts != null) {
-            for (Map<String, Object> pd : customProducts) {
+            for (int i = 0; i < customProducts.size(); i++) {
+                Map<String, Object> pd = customProducts.get(i);
                 Map<String, Object> sp = new java.util.LinkedHashMap<>(pd);
                 BigDecimal cnyAmt = pd.get("cnyAmount") instanceof BigDecimal ? (BigDecimal) pd.get("cnyAmount") : BigDecimal.ZERO;
-                sp.put("amountWithTaxRefund", cnyAmt);
+
+                // 按比例缩放，最后一个产品差额补齐
+                BigDecimal scaledAmt;
+                if (i == customProducts.size() - 1) {
+                    scaledAmt = productTarget.subtract(totalCnyAmount);
+                } else {
+                    scaledAmt = cnyAmt.multiply(scaleRatio).setScale(2, java.math.RoundingMode.HALF_UP);
+                }
+
+                sp.put("cnyAmount", scaledAmt);
+                sp.put("amountWithTaxRefund", scaledAmt);
                 sp.put("taxRefundRate", BigDecimal.ZERO);
+                Number qtyNum = pd.get("quantity") instanceof Number ? (Number) pd.get("quantity") : 0;
+                BigDecimal qtyBD = new BigDecimal(qtyNum.toString());
+                if (qtyBD.compareTo(BigDecimal.ZERO) > 0) {
+                    sp.put("unitPrice", scaledAmt.divide(qtyBD, 10, java.math.RoundingMode.HALF_UP));
+                }
                 products.add(sp);
-                totalCnyAmount = totalCnyAmount.add(cnyAmt);
+                totalCnyAmount = totalCnyAmount.add(scaledAmt);
             }
         }
         result.put("productTaxDetails", products);
         result.put("totalGoodsAmount", totalCnyAmount);
         result.put("amountWithTaxRefund", totalCnyAmount);
         result.put("totalCny", totalCnyAmount);
-        result.put("totalInvoiceDeduction", BigDecimal.ZERO);
+        // 扣减仅用于文档展示
+        result.put("totalInvoiceDeduction", scaledDeduction);
         result.put("totalFeeAmount", BigDecimal.ZERO);
         result.put("bankFeeAmount", BigDecimal.ZERO);
         result.put("internalBankFee", BigDecimal.ZERO);
-        result.put("invoiceAmount", totalCnyAmount);
+        result.put("invoiceAmount", targetInvoiceAmount);
         result.put("totalOriginalAmount", totalCnyAmount);
         return result;
     }
@@ -1134,41 +1167,34 @@ public class FinancialSupplementController {
                     Number qtyNum = pd.get("quantity") instanceof Number ? (Number) pd.get("quantity") : null;
                     BigDecimal qtyBD = qtyNum != null ? new BigDecimal(qtyNum.toString()) : BigDecimal.ZERO;
                     String unit = pd.get("unit") != null ? pd.get("unit").toString() : "个";
-                    BigDecimal cnyAmt = pd.get("cnyAmount") instanceof BigDecimal ? (BigDecimal) pd.get("cnyAmount") : BigDecimal.ZERO;
-                    BigDecimal unitPrice = pd.get("unitPrice") instanceof BigDecimal ? (BigDecimal) pd.get("unitPrice") :
-                            (qtyBD.compareTo(BigDecimal.ZERO) > 0 ? cnyAmt.divide(qtyBD, 2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO);
+                    // 使用退税加成后金额作为含税金额，与开票金额一致
+                    BigDecimal inclTaxAmt = pd.get("amountWithTaxRefund") instanceof BigDecimal ? (BigDecimal) pd.get("amountWithTaxRefund") : BigDecimal.ZERO;
+                    BigDecimal unitPrice = qtyBD.compareTo(BigDecimal.ZERO) > 0
+                            ? inclTaxAmt.divide(qtyBD, 10, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
                     setCellText(pRow.getCell(0), pName, false, 10);
                     setCellText(pRow.getCell(1), spec, false, 10);
                     setCellText(pRow.getCell(2), qtyBD.stripTrailingZeros().toPlainString(), false, 10);
                     setCellText(pRow.getCell(3), unit, false, 10);
                     setCellText(pRow.getCell(4), unitPrice.toPlainString(), false, 10);
-                    setCellText(pRow.getCell(5), cnyAmt.toPlainString(), false, 10);
-                    totalAmount = totalAmount.add(cnyAmt);
+                    setCellText(pRow.getCell(5), inclTaxAmt.toPlainString(), false, 10);
+                    totalAmount = totalAmount.add(inclTaxAmt);
                 }
             }
             addWordParagraph(doc, "", false, 6, ParagraphAlignment.LEFT);
             addWordParagraph(doc, "合计金额(大写): " + convertAmountToChineseWords(totalAmount), true, 12, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "", false, 10, ParagraphAlignment.LEFT);
 
-            // 开票金额计算（真实公式：退税加成 - 发票扣减 - 手续费 = 开票金额）
-            BigDecimal invoiceAmount = calcDetail.get("invoiceAmount") instanceof BigDecimal ? (BigDecimal) calcDetail.get("invoiceAmount") : BigDecimal.ZERO;
-            BigDecimal amountWithTaxRefund = calcDetail.get("amountWithTaxRefund") instanceof BigDecimal ? (BigDecimal) calcDetail.get("amountWithTaxRefund") : BigDecimal.ZERO;
-            BigDecimal totalInvoiceDeduction = calcDetail.get("totalInvoiceDeduction") instanceof BigDecimal ? (BigDecimal) calcDetail.get("totalInvoiceDeduction") : BigDecimal.ZERO;
-            BigDecimal totalFeeAmount = calcDetail.get("totalFeeAmount") instanceof BigDecimal ? (BigDecimal) calcDetail.get("totalFeeAmount") : BigDecimal.ZERO;
-            BigDecimal bankFeeAmt = calcDetail.get("bankFeeAmount") instanceof BigDecimal ? (BigDecimal) calcDetail.get("bankFeeAmount") : BigDecimal.ZERO;
-            BigDecimal internalBankFeeAmt = calcDetail.get("internalBankFee") instanceof BigDecimal ? (BigDecimal) calcDetail.get("internalBankFee") : BigDecimal.ZERO;
-            BigDecimal totalOrig = calcDetail.get("totalOriginalAmount") instanceof BigDecimal ? (BigDecimal) calcDetail.get("totalOriginalAmount") : BigDecimal.ZERO;
-            BigDecimal rate = calcDetail.get("weightedExchangeRate") instanceof BigDecimal ? (BigDecimal) calcDetail.get("weightedExchangeRate") : BigDecimal.ZERO;
-
-            addWordParagraph(doc, "开票金额计算", true, 12, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, String.format("退税加成合计: %.2f CNY", amountWithTaxRefund.doubleValue()), false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, String.format("减 发票扣减: -%.2f CNY", totalInvoiceDeduction.doubleValue()), false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, String.format("减 手续费: -%.2f CNY (银行手续费: %.2f + 内部操作费: %.2f)", totalFeeAmount.doubleValue(), bankFeeAmt.doubleValue(), internalBankFeeAmt.doubleValue()), false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, String.format("开票金额: %.2f - %.2f - %.2f = %.2f CNY", amountWithTaxRefund.doubleValue(), totalInvoiceDeduction.doubleValue(), totalFeeAmount.doubleValue(), invoiceAmount.doubleValue()), true, 11, ParagraphAlignment.LEFT);
+            // 收入与扣款摘要
+            BigDecimal totalDeductionAmt = calcDetail.get("totalInvoiceDeduction") instanceof BigDecimal ? (BigDecimal) calcDetail.get("totalInvoiceDeduction") : BigDecimal.ZERO;
+            BigDecimal totalFeeAmt = calcDetail.get("totalFeeAmount") instanceof BigDecimal ? (BigDecimal) calcDetail.get("totalFeeAmount") : BigDecimal.ZERO;
+            BigDecimal deductTotal = totalDeductionAmt.add(totalFeeAmt);
+            BigDecimal fileInvoiceAmt = calcDetail.get("invoiceAmount") instanceof BigDecimal ? (BigDecimal) calcDetail.get("invoiceAmount") : BigDecimal.ZERO;
             addWordParagraph(doc, "", false, 6, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, String.format("收汇美元总额: %.2f", totalOrig.doubleValue()), false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "汇率: " + rate.toPlainString(), false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "", false, 10, ParagraphAlignment.LEFT);
+            if (deductTotal.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal beforeDeduction = fileInvoiceAmt.add(deductTotal);
+                addWordParagraph(doc, String.format("扣款前金额: %.2f CNY", beforeDeduction.doubleValue()), false, 10, ParagraphAlignment.LEFT);
+                addWordParagraph(doc, String.format("扣款合计: -%.2f CNY", deductTotal.doubleValue()), false, 10, ParagraphAlignment.LEFT);
+            }
+            addWordParagraph(doc, String.format("开票金额: %.2f CNY", fileInvoiceAmt.doubleValue()), true, 11, ParagraphAlignment.LEFT);
 
             // 外销发票号 + 注意事项
             addWordParagraph(doc, "外销发票号: " + (form.getInvoiceNo() != null ? form.getInvoiceNo() : "-"), true, 12, ParagraphAlignment.LEFT);
@@ -1240,17 +1266,18 @@ public class FinancialSupplementController {
                     Number qtyNum = pd.get("quantity") instanceof Number ? (Number) pd.get("quantity") : null;
                     BigDecimal qtyBD = qtyNum != null ? new BigDecimal(qtyNum.toString()) : BigDecimal.ZERO;
                     String unit = pd.get("unit") != null ? pd.get("unit").toString() : "个";
-                    BigDecimal cnyAmt = pd.get("cnyAmount") instanceof BigDecimal ? (BigDecimal) pd.get("cnyAmount") : BigDecimal.ZERO;
-                    BigDecimal unitPrice = pd.get("unitPrice") instanceof BigDecimal ? (BigDecimal) pd.get("unitPrice") :
-                            (qtyBD.compareTo(BigDecimal.ZERO) > 0 ? cnyAmt.divide(qtyBD, 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO);
-                    BigDecimal exclTax = cnyAmt.divide(new BigDecimal("1.13"), 2, java.math.RoundingMode.HALF_UP);
+                    // 使用退税加成后金额作为含税金额，与开票金额一致
+                    BigDecimal inclTaxAmt = pd.get("amountWithTaxRefund") instanceof BigDecimal ? (BigDecimal) pd.get("amountWithTaxRefund") : BigDecimal.ZERO;
+                    BigDecimal unitPrice = qtyBD.compareTo(BigDecimal.ZERO) > 0
+                            ? inclTaxAmt.divide(qtyBD, 10, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+                    BigDecimal exclTax = inclTaxAmt.divide(new BigDecimal("1.13"), 2, java.math.RoundingMode.HALF_UP);
                     setCellText(pRow.getCell(0), pName, false, 10);
                     setCellText(pRow.getCell(1), qtyBD.stripTrailingZeros().toPlainString(), false, 10);
                     setCellText(pRow.getCell(2), unit, false, 10);
                     setCellText(pRow.getCell(3), unitPrice.toPlainString(), false, 10);
                     setCellText(pRow.getCell(4), exclTax.toPlainString(), false, 10);
-                    setCellText(pRow.getCell(5), cnyAmt.toPlainString(), false, 10);
-                    totalInclTax = totalInclTax.add(cnyAmt);
+                    setCellText(pRow.getCell(5), inclTaxAmt.toPlainString(), false, 10);
+                    totalInclTax = totalInclTax.add(inclTaxAmt);
                     totalExclTax = totalExclTax.add(exclTax);
                 }
             }
@@ -1334,5 +1361,20 @@ public class FinancialSupplementController {
         labelCell.setCellValue(label);
         labelCell.setCellStyle(headerStyle);
         row.createCell(1).setCellValue(value != null ? value : "");
+    }
+
+    /**
+     * 从配置获取默认币种，不再写死 USD
+     */
+    private String getDefaultCurrency() {
+        try {
+            var list = currencyInfoService.getEnabledList();
+            if (list != null && !list.isEmpty()) {
+                return list.get(0).getCurrencyCode();
+            }
+        } catch (Exception e) {
+            log.warn("获取默认币种配置失败，回退 USD", e);
+        }
+        return "USD";
     }
 }

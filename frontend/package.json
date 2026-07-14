@@ -15,7 +15,7 @@
     "@types/echarts": "^4.9.22",
     "ant-design-vue": "^4.2.3",
     "axios": "^1.7.4",
-    "bpmn-js": "^18.13.1",
+    "bpmn-js": "^18.20.0",
     "dayjs": "^1.11.11",
     "docx-preview": "^0.3.7",
     "echarts": "^5.5.1",

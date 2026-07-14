@@ -312,3 +312,30 @@ export function auditInvoice(data: { formId: number | string; result: 1 | 2; rem
     data
   })
 }
+
+/**
+ * 通用阶段提交（字典驱动，stage = form_section 字典的 submitKey）
+ */
+export function submitStage(formId: number | string, stage: string) {
+  return request({
+    url: '/v1/material/items/stage/submit',
+    method: 'post',
+    params: { formId, stage }
+  })
+}
+
+/**
+ * 通用阶段审核（字典驱动，stage = form_section 字典的 auditTaskKey）
+ */
+export function auditStage(data: {
+  formId: number | string
+  stage: string
+  result: 1 | 2
+  remark?: string
+}) {
+  return request({
+    url: '/v1/material/items/stage/audit',
+    method: 'post',
+    data
+  })
+}

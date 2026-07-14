@@ -1,7 +1,7 @@
 # 线索申报系统 - 项目工作记录
 
 > **创建日期**: 2026-04-22  
-> **最后更新**: 2026-04-24  
+> **最后更新**: 2026-07-07  
 > **项目路径**: F:\lead-declaration-system
 
 ---
@@ -17,6 +17,64 @@
 - 缓存: Redis (Database 2 for Sa-Token)
 
 **权限框架**: Sa-Token (RBAC模型)
+
+---
+
+## 📊 2026-07-07 工作内容
+
+### 1. 扣款项获取逻辑简化
+
+#### 后端 (`FinancialSupplementServiceImpl.java`)
+- `getAllInvoiceDeductions()` 简化为直接判断 `invoiceCategory === 'DEDUCTION'`
+- 移除 stage 排除、invoiceMode 回退、硬编码 code 等复杂判断
+- 删除 `isInvoiceTypeItem()` 方法
+
+---
+
+### 2. 开票文件含税金额修正
+
+#### 后端 (`FinancialSupplementController.java`)
+- Word/Excel 表格中"含税金额"列改用 `amountWithTaxRefund`（退税加成后金额），替代原来的 `cnyAmount`（原始水单 CNY）
+- Word 通知摘要和 Excel 计算摘要均改为 80% 内联计算
+
+---
+
+### 3. 80% 开票基数（仅文件生成）
+
+#### 规则
+- **前端显示**: 总金额 = 退税加成合计 - 扣款合计 - 手续费合计（不含 80%）
+- **文件生成（Word/Excel）**: 开票基数 = `amountWithTaxRefund × 0.8`，文件开票金额 = 开票基数 - 扣款 - 手续费
+
+#### 实现
+- 后端 `getCalculationDetail()` 返回完整金额（无 80% 因子）
+- 文件生成代码内联计算 80%：
+  ```java
+  BigDecimal invoiceBaseAmt = amountWithTaxRefundAmt.multiply(new BigDecimal("0.8")).setScale(2, RoundingMode.HALF_UP);
+  BigDecimal fileInvoiceAmt = invoiceBaseAmt.subtract(totalDeductionAmt).subtract(totalFeeAmt).setScale(2, RoundingMode.HALF_UP);
+  ```
+- 文件摘要显示：退税加成合计 → 开票基数(80%) → 扣款合计 → 开票金额
+
+---
+
+### 4. MaterialManager 分段渲染
+
+#### 前端 (`MaterialManager.vue`)
+- 新增 props: `sectionRange`（'all'|'pre'|'post'）、`stopBefore`（边界 section 名）、`sectionOrderMap`
+- `visibleSections` 根据 sectionRange 过滤 pre/post 片段
+
+#### 前端 (`FormComposition.vue`)
+- 新增 `sectionOrderMap` computed：从流程节点推导 formSection → sortOrder 映射
+- 模板分段渲染：MaterialManager(pre) → InvoiceAmountSection → MaterialManager(post)
+- InvoiceAmountSection 插入在补充资料和发票资料之间，由流程节点 sortOrder 驱动环节顺序
+
+---
+
+### 5. 开票金额前端展示 (`InvoiceAmountSection.vue` / `index.vue`)
+
+#### 计算公式展示
+- 收入部分：退税加成合计 = Σ(商品 cnyAmount × (1 + 退税率%))
+- 支出部分：扣款项 + 银行手续费 + 内部操作费
+- 开票金额 = 退税加成合计 - 支出合计（无 80%）
 
 ---
 
@@ -157,7 +215,7 @@
 ## ⚠️ 待处理
 
 1. **数据库迁移**:
-   - 执行 `sql/add-amount-locked-to-product.sql`
+   - 执行 `sql/migration/09-product-add-amount-locked.sql`
    - 清理历史发票 `form_id` 为 NULL 的数据
 
 2. **编译**:
@@ -167,4 +225,4 @@
 ---
 
 **维护人**: AI助手  
-**最后更新**: 2026-04-24
+**最后更新**: 2026-07-07

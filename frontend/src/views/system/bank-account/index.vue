@@ -7,13 +7,7 @@
           <a-input v-model:value="searchForm.keyword" placeholder="账户名称/银行名称/账户持有人/账号" allow-clear class="ui-input" />
         </a-form-item>
         <a-form-item label="币种">
-          <a-select v-model:value="searchForm.currency" placeholder="请选择币种" allowClear style="width: 140px" class="ui-select">
-            <a-select-option value="USD">USD</a-select-option>
-            <a-select-option value="EUR">EUR</a-select-option>
-            <a-select-option value="CNY">CNY</a-select-option>
-            <a-select-option value="GBP">GBP</a-select-option>
-            <a-select-option value="JPY">JPY</a-select-option>
-          </a-select>
+          <a-select v-model:value="searchForm.currency" placeholder="请选择币种" allowClear style="width: 140px" class="ui-select" :options="currencyOptions" />
         </a-form-item>
         <a-form-item label="状态">
           <a-select v-model:value="searchForm.status" placeholder="请选择状态" allowClear style="width: 140px" class="ui-select">
@@ -214,13 +208,7 @@
         </a-form-item>
 
         <a-form-item label="账户币种" name="currency">
-          <a-select v-model:value="formData.currency" placeholder="请选择币种">
-            <a-select-option value="USD">USD - 美元</a-select-option>
-            <a-select-option value="EUR">EUR - 欧元</a-select-option>
-            <a-select-option value="CNY">CNY - 人民币</a-select-option>
-            <a-select-option value="GBP">GBP - 英镑</a-select-option>
-            <a-select-option value="JPY">JPY - 日元</a-select-option>
-          </a-select>
+          <a-select v-model:value="formData.currency" placeholder="请选择币种" :options="currencyOptions" />
         </a-form-item>
 
         <a-form-item label="支行名称" name="branchName">
@@ -305,6 +293,26 @@ import { PlusOutlined, ReloadOutlined, SearchOutlined, EditOutlined, StarOutline
 import type { TablePaginationConfig } from 'ant-design-vue'
 import request from '@/utils/request'
 import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityConfig'
+import { getEnabledCurrencies } from '@/api/system/currency'
+
+const currencyOptions = ref<any[]>([])
+const loadCurrencies = async () => {
+  try {
+    const response = await getEnabledCurrencies()
+    if (response.data.code === 200 && response.data.data.length > 0) {
+      currencyOptions.value = response.data.data.map((item: any) => ({
+        label: `${item.currencyCode} - ${item.chineseName || item.currencyName}`,
+        value: item.currencyCode
+      }))
+      // 如果表单币种未设置，使用配置中的第一个
+      if (!formData.currency && currencyOptions.value.length > 0) {
+        formData.currency = currencyOptions.value[0].value
+      }
+    }
+  } catch (error) {
+    console.warn('加载货币数据失败:', error)
+  }
+}
 
 // API接口定义
 interface BankAccountConfig {
@@ -530,7 +538,7 @@ const formData = reactive({
   swiftCode: '',
   iban: '',
   accountHolder: '',
-  currency: 'USD',
+  currency: undefined as string | undefined,
   branchName: '',
   branchAddress: '',
   isDefault: false,
@@ -664,7 +672,7 @@ const resetForm = () => {
   formData.swiftCode = ''
   formData.iban = ''
   formData.accountHolder = ''
-  formData.currency = 'USD'
+  formData.currency = currencyOptions.value[0]?.value || 'USD'
   formData.branchName = ''
   formData.branchAddress = ''
   formData.isDefault = false
@@ -773,6 +781,7 @@ const setDefault = async (record: BankAccountConfig) => {
 onMounted(() => {
   loadEntityList()
   loadBankAccountList()
+  loadCurrencies()
 })
 </script>
 

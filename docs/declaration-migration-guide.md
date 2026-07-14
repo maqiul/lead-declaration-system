@@ -39,7 +39,7 @@ src/views/declaration/
 ## 菜单配置更新
 
 ### SQL脚本位置
-`d:\lead-declaration-system\sql\formal-declaration-menu.sql`
+`sql/migration/20-declaration-menu-split.sql`（早期 `formal-declaration-menu.sql` 已移除，菜单调整现由该脚本与 `sql/migration/11-full-permission-registry.sql` 维护；脚本总索引见 `sql/README.md`）
 
 ### 主要更新内容
 1. 更新菜单路径指向正式目录
@@ -81,8 +81,8 @@ src/views/declaration/
 
 ### 1. 数据库菜单更新
 ```sql
--- 执行菜单配置脚本
-source d:/lead-declaration-system/sql/formal-declaration-menu.sql
+-- 执行菜单配置脚本（路径相对仓库根目录）
+source sql/migration/20-declaration-menu-split.sql
 ```
 
 ### 2. 验证迁移结果

@@ -10,6 +10,8 @@ import com.declaration.entity.DeclarationMaterialItem;
 import com.declaration.entity.DeclarationMaterialTemplate;
 import com.declaration.entity.FinancialSupplement;
 import com.declaration.entity.MaterialAttachment;
+import com.declaration.entity.MaterialTemplateBinding;
+import com.declaration.entity.SysDictItem;
 import com.declaration.entity.User;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.DeclarationMaterialItemService;
@@ -18,6 +20,7 @@ import com.declaration.service.DeclarationRemittanceService;
 import com.declaration.service.FinancialSupplementService;
 import com.declaration.service.InvoiceService;
 import com.declaration.service.MaterialAttachmentService;
+import com.declaration.service.SysDictService;
 import com.declaration.service.UserService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,6 +42,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -62,7 +67,36 @@ public class DeclarationMaterialItemServiceImpl
     @Autowired
     private FinancialSupplementService financialSupplementService;
     private final DeclarationRemittanceService remittanceService;
+    private final SysDictService sysDictService;
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * 在绑定规则中查找匹配项，返回第一条匹配的规则（用于读取 required 等覆盖字段）。
+     * 匹配条件：flow匹配或空 AND transport匹配或空
+     * 未匹配返回 null
+     */
+    private MaterialTemplateBinding findMatchingBinding(List<MaterialTemplateBinding> bindings, String formFlowCode, String formTransportMode) {
+        if (bindings == null || bindings.isEmpty()) return null;
+        for (MaterialTemplateBinding b : bindings) {
+            boolean flowMatch = (b.getFlowTemplateCode() == null) ||
+                    (formFlowCode != null && b.getFlowTemplateCode().equals(formFlowCode));
+            boolean transportMatch = (b.getTransportModeCode() == null) ||
+                    (formTransportMode != null && b.getTransportModeCode().equals(formTransportMode));
+            if (flowMatch && transportMatch) return b;
+        }
+        return null;
+    }
+
+    /**
+     * 获取资料项的 required 值：优先使用匹配绑定规则的 required，否则回退到模板默认值
+     */
+    private int resolveRequired(List<MaterialTemplateBinding> bindings, String formFlowCode, String formTransportMode, DeclarationMaterialTemplate tpl) {
+        MaterialTemplateBinding matched = findMatchingBinding(bindings, formFlowCode, formTransportMode);
+        if (matched != null && matched.getRequired() != null) {
+            return matched.getRequired();
+        }
+        return tpl.getRequired() == null ? 1 : tpl.getRequired();
+    }
 
     /** 审核记录 business_type 常量（提交与审核共用一个类型，同一条记录的两个阶段）*/
     public static final String BT_MATERIAL_AUDIT  = "DECLARATION_MATERIAL_AUDIT";
@@ -234,11 +268,17 @@ public class DeclarationMaterialItemServiceImpl
      * - 已存在实例的模板行直接用实例（带 id，有 createBy/updateBy）
      * - 仅在模板中出现、用户从未操作的资料项，构造虚拟项（id=null, templateId=xxx）
      * - 单据内手动新增的实例（templateId=null）追加在后
+     * - 根据申报单的流程+运输方式过滤模板（无绑定=全适用，有绑定=任一行匹配即可）
      */
     @Override
     public List<DeclarationMaterialItem> viewByFormId(Long formId) {
         List<DeclarationMaterialItem> result = new ArrayList<>();
         if (formId == null) return result;
+
+        // 获取申报单的流程和运输方式
+        DeclarationForm form = declarationFormService.getById(formId);
+        String formFlowCode = (form != null) ? form.getTemplateCode() : null;
+        String formTransportMode = (form != null) ? form.getTransportMode() : null;
 
         List<DeclarationMaterialItem> items = listByFormId(formId);
         Map<String, DeclarationMaterialItem> itemByCode = new HashMap<>();
@@ -252,8 +292,21 @@ public class DeclarationMaterialItemServiceImpl
         }
 
         List<DeclarationMaterialTemplate> templates = templateService.listEnabled();
+        // 批量查询模板的绑定规则
+        Map<Long, List<MaterialTemplateBinding>> tplBindingMap = Collections.emptyMap();
+        if (templates != null && !templates.isEmpty()) {
+            List<Long> tplIds = templates.stream().map(DeclarationMaterialTemplate::getId).collect(Collectors.toList());
+            tplBindingMap = templateService.batchGetBindings(tplIds);
+        }
+
         if (templates != null) {
             for (DeclarationMaterialTemplate tpl : templates) {
+                // 绑定过滤：无绑定=全适用；有绑定=任一行匹配即可
+                List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
+                if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
+                    continue;
+                }
+
                 DeclarationMaterialItem existed = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
                 if (existed != null) {
                     result.add(existed);
@@ -265,9 +318,10 @@ public class DeclarationMaterialItemServiceImpl
                 virtual.setTemplateId(tpl.getId());
                 virtual.setStage(tpl.getStage());
                 virtual.setInvoiceMode(tpl.getInvoiceMode() != null ? tpl.getInvoiceMode() : 0);
+                virtual.setInvoiceCategory(tpl.getInvoiceCategory());
                 virtual.setCode(tpl.getCode());
                 virtual.setName(tpl.getName());
-                virtual.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());
+                virtual.setRequired(resolveRequired(bindings, formFlowCode, formTransportMode, tpl));
                 virtual.setSort(tpl.getSort() == null ? 0 : tpl.getSort());
                 virtual.setRemark(tpl.getRemark());
                 virtual.setFormSchema(tpl.getFormSchema());
@@ -335,6 +389,7 @@ public class DeclarationMaterialItemServiceImpl
         item.setTemplateId(tpl.getId());
         item.setStage(tpl.getStage());
         item.setInvoiceMode(tpl.getInvoiceMode() != null ? tpl.getInvoiceMode() : 0);
+        item.setInvoiceCategory(tpl.getInvoiceCategory());
         item.setCode(tpl.getCode());
         item.setName(tpl.getName());
         item.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());
@@ -352,10 +407,19 @@ public class DeclarationMaterialItemServiceImpl
         if (formId == null) {
             return 0;
         }
+        // 获取申报单的流程和运输方式
+        DeclarationForm form = declarationFormService.getById(formId);
+        String formFlowCode = (form != null) ? form.getTemplateCode() : null;
+        String formTransportMode = (form != null) ? form.getTransportMode() : null;
+
         List<DeclarationMaterialTemplate> templates = templateService.listEnabled();
         if (templates == null || templates.isEmpty()) {
             return 0;
         }
+        // 批量查询模板的绑定规则
+        List<Long> tplIds = templates.stream().map(DeclarationMaterialTemplate::getId).collect(Collectors.toList());
+        Map<Long, List<MaterialTemplateBinding>> tplBindingMap = templateService.batchGetBindings(tplIds);
+
         // 已存在的 code 集合，幂等去重
         List<DeclarationMaterialItem> exists = listByFormId(formId);
         Set<String> existCodes = new HashSet<>();
@@ -365,6 +429,12 @@ public class DeclarationMaterialItemServiceImpl
 
         int inserted = 0;
         for (DeclarationMaterialTemplate tpl : templates) {
+            // 绑定过滤：无绑定=全适用；有绑定=任一行匹配即可
+            List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
+            if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
+                continue;
+            }
+
             if (tpl.getCode() != null && existCodes.contains(tpl.getCode())) {
                 continue;
             }
@@ -373,9 +443,10 @@ public class DeclarationMaterialItemServiceImpl
             item.setTemplateId(tpl.getId());
             item.setStage(tpl.getStage());
             item.setInvoiceMode(tpl.getInvoiceMode() != null ? tpl.getInvoiceMode() : 0);
+            item.setInvoiceCategory(tpl.getInvoiceCategory());
             item.setCode(tpl.getCode());
             item.setName(tpl.getName());
-            item.setRequired(tpl.getRequired() == null ? 1 : tpl.getRequired());
+            item.setRequired(resolveRequired(bindings, formFlowCode, formTransportMode, tpl));
             item.setSort(tpl.getSort() == null ? 0 : tpl.getSort());
             item.setRemark(tpl.getRemark());
             item.setFormSchema(tpl.getFormSchema());
@@ -383,7 +454,7 @@ public class DeclarationMaterialItemServiceImpl
             this.save(item);
             inserted++;
         }
-        log.info("申报单 {} 同步资料项模板 新增 {} 条", formId, inserted);
+        log.info("申报单 {} 同步资料项模板 (flow={}, transport={}) 新增 {} 条", formId, formFlowCode, formTransportMode, inserted);
         return inserted;
     }
 
@@ -409,7 +480,18 @@ public class DeclarationMaterialItemServiceImpl
                 }
             }
         }
+        // 获取申报单的流程和运输方式
+        DeclarationForm form = declarationFormService.getById(formId);
+        String formFlowCode = (form != null) ? form.getTemplateCode() : null;
+        String formTransportMode = (form != null) ? form.getTransportMode() : null;
+
         List<DeclarationMaterialTemplate> templates = templateService.listEnabled();
+        // 批量查询模板的绑定规则
+        Map<Long, List<MaterialTemplateBinding>> tplBindingMap = Collections.emptyMap();
+        if (templates != null && !templates.isEmpty()) {
+            List<Long> tplIds = templates.stream().map(DeclarationMaterialTemplate::getId).collect(Collectors.toList());
+            tplBindingMap = templateService.batchGetBindings(tplIds);
+        }
         if (templates != null) {
             for (DeclarationMaterialTemplate tpl : templates) {
                 // 跳过补充资料和发票阶段的模板
@@ -417,7 +499,12 @@ public class DeclarationMaterialItemServiceImpl
                 if ("SUPPLEMENT".equals(tplStage) || "INVOICE".equals(tplStage)) {
                     continue;
                 }
-                boolean required = tpl.getRequired() != null && tpl.getRequired() == 1;
+                // 绑定过滤：无绑定=全适用；有绑定=任一行匹配即可
+                List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
+                if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
+                    continue;
+                }
+                boolean required = resolveRequired(bindings, formFlowCode, formTransportMode, tpl) == 1;
                 DeclarationMaterialItem it = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
                 boolean uploaded = it != null && it.getStatus() != null && it.getStatus() == 1
                         && it.getFileUrl() != null && !it.getFileUrl().isEmpty();
@@ -486,32 +573,61 @@ public class DeclarationMaterialItemServiceImpl
         if (formId == null) {
             throw new RuntimeException("申报单ID不能为空");
         }
-        // 校验补充资料必填项是否已上传附件
+
+        // 获取申报单的流程和运输方式
+        DeclarationForm form = declarationFormService.getById(formId);
+        String formFlowCode = (form != null) ? form.getTemplateCode() : null;
+        String formTransportMode = (form != null) ? form.getTransportMode() : null;
+
+        // 已落库的补充资料实例
         List<DeclarationMaterialItem> supplementItems = lambdaQuery()
                 .eq(DeclarationMaterialItem::getFormId, formId)
                 .eq(DeclarationMaterialItem::getStage, "SUPPLEMENT")
                 .list();
-        // 已落库的必填项：校验附件数
-        Set<Long> existingTemplateIds = new HashSet<>();
-        for (DeclarationMaterialItem item : supplementItems) {
-            if (item.getTemplateId() != null) existingTemplateIds.add(item.getTemplateId());
-            if (item.getRequired() != null && item.getRequired() == 1) {
-                long attCount = materialAttachmentService.countByItemId(item.getId());
-                if (attCount == 0) {
-                    throw new RuntimeException("补充资料「" + item.getName() + "」为必填项，请先上传附件");
-                }
+        Map<String, DeclarationMaterialItem> itemByCode = new HashMap<>();
+        List<DeclarationMaterialItem> manualItems = new ArrayList<>();
+        for (DeclarationMaterialItem it : supplementItems) {
+            if (it.getTemplateId() != null && it.getCode() != null) {
+                itemByCode.put(it.getCode(), it);
+            } else {
+                manualItems.add(it);
             }
         }
-        // 模板中必填但未落库的项（未操作过 = 未上传）
-        if (templateService.listEnabled() != null) {
-            for (DeclarationMaterialTemplate tpl : templateService.listEnabled()) {
-                if ("SUPPLEMENT".equals(tpl.getStage())
-                        && tpl.getRequired() != null && tpl.getRequired() == 1
-                        && !existingTemplateIds.contains(tpl.getId())) {
+
+        // 按绑定规则校验模板必填项（与 viewByFormId 前端展示逻辑一致）
+        List<DeclarationMaterialTemplate> templates = templateService.listEnabled();
+        Map<Long, List<MaterialTemplateBinding>> tplBindingMap = Collections.emptyMap();
+        if (templates != null && !templates.isEmpty()) {
+            List<Long> tplIds = templates.stream().map(DeclarationMaterialTemplate::getId).collect(Collectors.toList());
+            tplBindingMap = templateService.batchGetBindings(tplIds);
+        }
+        if (templates != null) {
+            for (DeclarationMaterialTemplate tpl : templates) {
+                if (!"SUPPLEMENT".equals(tpl.getStage())) continue;
+                // 绑定过滤：无绑定=全适用；有绑定=任一行匹配即可
+                List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
+                if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
+                    continue;
+                }
+                boolean required = resolveRequired(bindings, formFlowCode, formTransportMode, tpl) == 1;
+                DeclarationMaterialItem it = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
+                boolean uploaded = it != null && it.getStatus() != null && it.getStatus() == 1
+                        && materialAttachmentService.countByItemId(it.getId()) > 0;
+                if (required && !uploaded) {
                     throw new RuntimeException("补充资料「" + tpl.getName() + "」为必填项，请先上传附件");
                 }
             }
         }
+        // 手动新增项校验
+        for (DeclarationMaterialItem it : manualItems) {
+            if (it.getRequired() != null && it.getRequired() == 1) {
+                long attCount = materialAttachmentService.countByItemId(it.getId());
+                if (attCount == 0) {
+                    throw new RuntimeException("补充资料「" + it.getName() + "」为必填项，请先上传附件");
+                }
+            }
+        }
+
         Task task = findTask(formId, "supplementSubmit");
         if (task == null) {
             throw new RuntimeException("当前申报单没有待补充资料提交任务");
@@ -614,21 +730,54 @@ public class DeclarationMaterialItemServiceImpl
         if (formId == null) {
             throw new RuntimeException("申报单ID不能为空");
         }
-        // 检查 INVOICE 阶段的资料项是否已上传附件
+
+        // 获取申报单的流程和运输方式
+        DeclarationForm form = declarationFormService.getById(formId);
+        String formFlowCode = (form != null) ? form.getTemplateCode() : null;
+        String formTransportMode = (form != null) ? form.getTransportMode() : null;
+
+        // 按绑定规则过滤 INVOICE 阶段模板项
+        List<DeclarationMaterialTemplate> templates = templateService.listEnabled();
+        Map<Long, List<MaterialTemplateBinding>> tplBindingMap = Collections.emptyMap();
+        if (templates != null && !templates.isEmpty()) {
+            List<Long> tplIds = templates.stream().map(DeclarationMaterialTemplate::getId).collect(Collectors.toList());
+            tplBindingMap = templateService.batchGetBindings(tplIds);
+        }
+        // 收集绑定匹配的 INVOICE 模板 code 集合
+        Set<String> applicableCodes = new HashSet<>();
+        boolean hasApplicableTemplate = false;
+        if (templates != null) {
+            for (DeclarationMaterialTemplate tpl : templates) {
+                if (!"INVOICE".equals(tpl.getStage())) continue;
+                List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
+                if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
+                    continue;
+                }
+                hasApplicableTemplate = true;
+                if (tpl.getCode() != null) applicableCodes.add(tpl.getCode());
+            }
+        }
+        if (!hasApplicableTemplate) {
+            throw new RuntimeException("没有业务发票资料项，请先在资料模板中配置");
+        }
+
+        // 已落库的 INVOICE 实例
         List<DeclarationMaterialItem> invoiceItems = lambdaQuery()
                 .eq(DeclarationMaterialItem::getFormId, formId)
                 .eq(DeclarationMaterialItem::getStage, "INVOICE")
                 .list();
-        if (invoiceItems.isEmpty()) {
-            throw new RuntimeException("没有业务发票资料项，请先在资料模板中配置");
-        }
+        // 检查绑定匹配的资料项是否已上传附件
         boolean hasAttachment = invoiceItems.stream().anyMatch(item -> {
-            long count = materialAttachmentService.countByItemId(item.getId());
-            return count > 0;
+            // 模板项须在适用集合中，手动项始终参与
+            if (item.getTemplateId() != null && item.getCode() != null && !applicableCodes.contains(item.getCode())) {
+                return false;
+            }
+            return materialAttachmentService.countByItemId(item.getId()) > 0;
         });
         if (!hasAttachment) {
             throw new RuntimeException("请至少上传一份业务发票附件后再提交");
         }
+
         Task task = findTask(formId, "invoiceSubmit");
         if (task == null) {
             throw new RuntimeException("当前申报单没有待发票提交任务");
@@ -647,6 +796,10 @@ public class DeclarationMaterialItemServiceImpl
         if (formId == null) {
             throw new RuntimeException("申报单ID不能为空");
         }
+        // 审核通过时校验是否已关联至少一条已审核的收汇水单
+        if (approved && !remittanceService.hasApprovedRemittance(formId)) {
+            throw new RuntimeException("发票审核通过前，请先关联并审核至少一条收汇水单");
+        }
         Task task = findTask(formId, "invoiceAudit");
         if (task == null) {
             throw new RuntimeException("当前申报单没有待发票审核任务");
@@ -660,6 +813,226 @@ public class DeclarationMaterialItemServiceImpl
         // 更新同单的待审核记录为审核结果
         finishAuditRecord(formId, BT_INVOICE_AUDIT, approved, remark, auditorId);
         log.info("申报单 {} 发票审核完成 approved={} 审核人={}", formId, approved, auditorId);
+    }
+
+    // ==================== 通用阶段提交（字典驱动） ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitStage(Long formId, String stage, Long currentUserId) {
+        if (formId == null) {
+            throw new RuntimeException("申报单ID不能为空");
+        }
+        if (stage == null) {
+            throw new RuntimeException("提交阶段不能为空");
+        }
+
+        // 从 form_section 字典动态读取配置
+        JsonNode sectionConfig = findSectionConfig(stage);
+        if (sectionConfig == null) {
+            throw new RuntimeException("未找到阶段配置，请检查 form_section 字典 submitKey=" + stage);
+        }
+
+        String templateStage = sectionConfig.path("templateStage").asText("");
+        String auditBt = sectionConfig.path("auditBt").asText(BT_MATERIAL_AUDIT);
+        String attachmentMode = sectionConfig.path("attachmentMode").asText("fileUrl");
+        boolean requireAnyAttachment = sectionConfig.path("requireAnyAttachment").asBoolean(false);
+        boolean checkSchema = sectionConfig.path("checkSchema").asBoolean(false);
+        String labelPrefix = sectionConfig.path("btnText").asText("提交").replace("提交", "").replace("审核", "");
+        if (labelPrefix.isEmpty()) labelPrefix = "资料";
+
+        // 模板阶段过滤器：完全由字典 templateStage 驱动
+        if (templateStage.isEmpty()) {
+            throw new RuntimeException("字典 form_section 配置缺少 templateStage，submitKey=" + stage);
+        }
+        Predicate<String> stageFilter = s -> templateStage.equals(s);
+
+        // 获取该阶段的已落库实例
+        List<DeclarationMaterialItem> allItems = listByFormId(formId);
+        List<DeclarationMaterialItem> stageItems = new ArrayList<>();
+        for (DeclarationMaterialItem it : allItems) {
+            if (stageFilter.test(it.getStage() != null ? it.getStage() : "")) {
+                stageItems.add(it);
+            }
+        }
+
+        // 附件判断：由字典 attachmentMode 驱动
+        //   fileUrl   = 单文件模式（检查 fileUrl 字段）
+        //   attachment = 多附件模式（检查 material_attachment 表计数）
+        Function<DeclarationMaterialItem, Boolean> attachmentChecker;
+        if ("attachment".equals(attachmentMode)) {
+            attachmentChecker = it -> materialAttachmentService.countByItemId(it.getId()) > 0;
+        } else {
+            attachmentChecker = it -> it.getStatus() != null && it.getStatus() == 1
+                    && it.getFileUrl() != null && !it.getFileUrl().isEmpty();
+        }
+
+        // 通用模板绑定校验
+        validateStageTemplates(formId, stageFilter, stageItems, labelPrefix, attachmentChecker);
+
+        // 至少一个附件校验：由字典 requireAnyAttachment 驱动
+        if (requireAnyAttachment && !stageItems.isEmpty()) {
+            boolean hasAny = stageItems.stream().anyMatch(it ->
+                    materialAttachmentService.countByItemId(it.getId()) > 0);
+            if (!hasAny) {
+                throw new RuntimeException("请至少上传一份" + labelPrefix + "附件后再提交");
+            }
+        }
+
+        // 结构化字段校验：由字典 checkSchema 驱动
+        if (checkSchema) {
+            for (DeclarationMaterialItem it : stageItems) {
+                String missing = validateSchemaFields(it);
+                if (missing != null) {
+                    throw new RuntimeException("资料「" + it.getName() + "」的「" + missing + "」为必填项");
+                }
+            }
+        }
+
+        // 完成 Flowable 任务（stage 即 taskKey）
+        Task task = findTask(formId, stage);
+        if (task == null) {
+            throw new RuntimeException("当前申报单没有待" + labelPrefix + "提交任务");
+        }
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("approved", true);
+        claimIfNeeded(task, currentUserId);
+        flowableTaskService.complete(task.getId(), variables);
+
+        // 插入审核记录
+        String desc = labelPrefix + "提交待审核";
+        insertPendingAuditRecord(formId, auditBt, currentUserId, desc);
+        log.info("申报单 {} 通用阶段提交 stage={} 操作人={}", formId, stage, currentUserId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void auditStage(Long formId, String stage, boolean approved, String remark, Long auditorId) {
+        if (formId == null) {
+            throw new RuntimeException("申报单ID不能为空");
+        }
+        if (stage == null) {
+            throw new RuntimeException("审核阶段不能为空");
+        }
+
+        // 从 form_section 字典动态读取配置（按 auditTaskKey 查找）
+        JsonNode sectionConfig = findSectionConfigByAuditKey(stage);
+        if (sectionConfig == null) {
+            throw new RuntimeException("未找到审核阶段配置，请检查 form_section 字典 auditTaskKey=" + stage);
+        }
+
+        String auditBt = sectionConfig.path("auditBt").asText("");
+        boolean checkApprovedRemittance = sectionConfig.path("checkApprovedRemittance").asBoolean(false);
+        String labelPrefix = sectionConfig.path("btnText").asText("提交").replace("提交", "").replace("审核", "");
+        if (labelPrefix.isEmpty()) labelPrefix = "资料";
+
+        // 审核通过前置校验：由字典 checkApprovedRemittance 驱动
+        if (approved && checkApprovedRemittance) {
+            if (!remittanceService.hasApprovedRemittance(formId)) {
+                throw new RuntimeException(labelPrefix + "审核通过前，请先关联并审核至少一条收汇水单");
+            }
+        }
+
+        // 完成 Flowable 审核任务（stage 即 auditTaskKey）
+        Task task = findTask(formId, stage);
+        if (task == null) {
+            throw new RuntimeException("当前申报单没有待" + labelPrefix + "审核任务");
+        }
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("approved", approved);
+        if (remark != null) {
+            variables.put("auditRemark", remark);
+        }
+        flowableTaskService.complete(task.getId(), variables);
+
+        // 更新审核记录
+        if (!auditBt.isEmpty()) {
+            finishAuditRecord(formId, auditBt, approved, remark, auditorId);
+        }
+        log.info("申报单 {} 通用阶段审核 stage={} approved={} 审核人={}", formId, stage, approved, auditorId);
+    }
+
+    /**
+     * 从 form_section 字典查找匹配 submitKey 的区块配置（解析 remark JSON）
+     */
+    private JsonNode findSectionConfig(String submitKey) {
+        return findSectionConfigByField("submitKey", submitKey);
+    }
+
+    /**
+     * 从 form_section 字典查找匹配 auditTaskKey 的区块配置（解析 remark JSON）
+     */
+    private JsonNode findSectionConfigByAuditKey(String auditTaskKey) {
+        return findSectionConfigByField("auditTaskKey", auditTaskKey);
+    }
+
+    /**
+     * 通用：按 remark JSON 中某个字段查找匹配的区块配置
+     */
+    private JsonNode findSectionConfigByField(String fieldName, String fieldValue) {
+        List<SysDictItem> items = sysDictService.listEnabledItems("form_section");
+        if (items == null) return null;
+        for (SysDictItem item : items) {
+            if (!StringUtils.hasText(item.getRemark())) continue;
+            try {
+                JsonNode config = MAPPER.readTree(item.getRemark());
+                if (fieldValue.equals(config.path(fieldName).asText(""))) {
+                    return config;
+                }
+            } catch (Exception e) {
+                log.warn("解析 form_section remark 失败 itemValue={} : {}", item.getItemValue(), e.getMessage());
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 通用模板绑定校验：按阶段 + 绑定规则过滤模板，用 resolveRequired 判定必填，校验附件。
+     * 与 viewByFormId 前端展示逻辑一致。
+     */
+    private Set<String> validateStageTemplates(Long formId, Predicate<String> stageMatch,
+                                                List<DeclarationMaterialItem> items, String labelPrefix,
+                                                Function<DeclarationMaterialItem, Boolean> attachmentChecker) {
+        DeclarationForm form = declarationFormService.getById(formId);
+        String formFlowCode = form != null ? form.getTemplateCode() : null;
+        String formTransportMode = form != null ? form.getTransportMode() : null;
+
+        // 实例按 code 索引
+        Map<String, DeclarationMaterialItem> itemByCode = new HashMap<>();
+        if (items != null) {
+            for (DeclarationMaterialItem it : items) {
+                if (it.getTemplateId() != null && it.getCode() != null) {
+                    itemByCode.put(it.getCode(), it);
+                }
+            }
+        }
+
+        List<DeclarationMaterialTemplate> templates = templateService.listEnabled();
+        Map<Long, List<MaterialTemplateBinding>> tplBindingMap = Collections.emptyMap();
+        if (templates != null && !templates.isEmpty()) {
+            List<Long> tplIds = templates.stream().map(DeclarationMaterialTemplate::getId).collect(Collectors.toList());
+            tplBindingMap = templateService.batchGetBindings(tplIds);
+        }
+
+        Set<String> applicableCodes = new HashSet<>();
+        if (templates != null) {
+            for (DeclarationMaterialTemplate tpl : templates) {
+                if (!stageMatch.test(tpl.getStage())) continue;
+                // 绑定过滤：无绑定=全适用；有绑定=任一行匹配即可
+                List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
+                if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
+                    continue;
+                }
+                applicableCodes.add(tpl.getCode());
+                // 必填校验
+                if (resolveRequired(bindings, formFlowCode, formTransportMode, tpl) != 1) continue;
+                DeclarationMaterialItem it = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
+                if (it == null || !attachmentChecker.apply(it)) {
+                    throw new RuntimeException(labelPrefix + "「" + tpl.getName() + "」为必填项，请先上传附件");
+                }
+            }
+        }
+        return applicableCodes;
     }
 
     private Task findTask(Long formId, String taskKey) {

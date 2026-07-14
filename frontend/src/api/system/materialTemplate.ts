@@ -11,7 +11,8 @@ export const MATERIAL_STAGES = [
   { value: 'SUPPLEMENT', label: '补充资料', color: 'orange' },
   { value: 'INVOICE', label: '业务发票', color: 'blue' }
 ] as const
-export type MaterialStage = typeof MATERIAL_STAGES[number]['value']
+/** 资料环节类型：默认三环节 + 字典动态扩展 */
+export type MaterialStage = typeof MATERIAL_STAGES[number]['value'] | (string & {})
 
 export const MATERIAL_STAGE_LABEL: Record<MaterialStage, string> = {
   MATERIAL_SUBMIT: '资料上传',
@@ -23,6 +24,18 @@ export const MATERIAL_STAGE_COLOR: Record<MaterialStage, string> = {
   MATERIAL_SUBMIT: 'green',
   SUPPLEMENT: 'orange',
   INVOICE: 'blue'
+}
+
+/**
+ * 绑定规则（流程 + 运输方式）
+ */
+export interface MaterialTemplateBinding {
+  id?: number | string
+  templateId?: number | string
+  flowTemplateCode?: string
+  transportModeCode?: string
+  /** 是否必填（undefined=模板默认, 1=必填, 0=选填） */
+  required?: number
 }
 
 /**
@@ -40,6 +53,10 @@ export interface MaterialTemplate {
   stage?: MaterialStage
   /** 发票模式: 0-普通附件 1-附件级金额/发票号/日期 */
   invoiceMode?: number
+  /** 发票分类: DEDUCTION-扣款 INPUT-进项 */
+  invoiceCategory?: string
+  /** 绑定规则（空数组或未设置 = 全部适用） */
+  bindings?: MaterialTemplateBinding[]
   createTime?: string
   updateTime?: string
 }
@@ -104,5 +121,26 @@ export function deleteMaterialTemplate(id: number | string) {
   return request({
     url: `/v1/material/templates/${id}`,
     method: 'delete'
+  })
+}
+
+/**
+ * 获取模板绑定规则
+ */
+export function getTemplateBindings(id: number | string) {
+  return request({
+    url: `/v1/material/templates/${id}/bindings`,
+    method: 'get'
+  })
+}
+
+/**
+ * 设置模板绑定规则
+ */
+export function saveTemplateBindings(id: number | string, bindings: MaterialTemplateBinding[]) {
+  return request({
+    url: `/v1/material/templates/${id}/bindings`,
+    method: 'put',
+    data: bindings
   })
 }

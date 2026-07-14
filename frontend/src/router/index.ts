@@ -23,8 +23,29 @@ const preloadComponents = [
   () => import('@/views/system/bank-account/index.vue'),
   () => import('@/views/system/country/index.vue'),
   () => import('@/views/system/measurement-unit/index.vue'),
-  () => import('@/views/system/entity-config/index.vue')
+  () => import('@/views/system/entity-config/index.vue'),
+  () => import('@/views/system/flow-template/index.vue'),
+  () => import('@/views/system/flow-node/index.vue'),
+  () => import('@/views/system/dict/index.vue')
 ]
+
+// 申报子路由生成器（避免重复定义）
+function createDeclarationChildren(suffix: string): RouteRecordRaw[] {
+  return [
+    { path: 'manage', name: `DeclarationManage${suffix}`, component: () => import('@/views/declaration/manage/index.vue'), meta: { title: '申报管理', icon: 'ContainerOutlined' } },
+    { path: 'finance', name: `DeclarationFinance${suffix}`, component: () => import('@/views/declaration/finance/index.vue'), meta: { title: '财务单证', icon: 'PayCircleOutlined' } },
+    { path: 'form', name: `DeclarationForm${suffix}`, component: () => import('@/views/declaration/form/index.vue'), meta: { title: '申报表单', icon: 'FileTextOutlined', hidden: true } },
+    { path: 'form-v2', name: `DeclarationFormV2${suffix}`, component: () => import('@/views/declaration/form/FormComposition.vue'), meta: { title: '申报表单(V2)', icon: 'FileTextOutlined', hidden: true } },
+    { path: 'entry', name: `DeclarationEntry${suffix}`, component: () => import('@/views/declaration/entry/index.vue'), meta: { title: '申报录入', icon: 'EditOutlined' } },
+    { path: 'material', name: `DeclarationMaterial${suffix}`, component: () => import('@/views/declaration/material/index.vue'), meta: { title: '资料提交', icon: 'UploadOutlined' } },
+    { path: 'supplement', name: `DeclarationSupplement${suffix}`, component: () => import('@/views/declaration/supplement/index.vue'), meta: { title: '补充资料', icon: 'FileAddOutlined' } },
+    { path: 'invoice-amount', name: `DeclarationInvoiceAmount${suffix}`, component: () => import('@/views/declaration/invoice-amount/index.vue'), meta: { title: '开票金额', icon: 'AccountBookOutlined' } },
+    { path: 'invoice', name: `DeclarationInvoice${suffix}`, component: () => import('@/views/declaration/invoice/index.vue'), meta: { title: '发票提交', icon: 'FileTextOutlined' } },
+    { path: 'archive', name: `DeclarationArchive${suffix}`, component: () => import('@/views/declaration/archive/index.vue'), meta: { title: '归档查询', icon: 'FolderOpenOutlined' } },
+    { path: 'payment', name: `DeclarationPayment${suffix}`, component: () => import('@/views/declaration/payment/index.vue'), meta: { title: '支付凭证', icon: 'AccountBookOutlined', hidden: true } },
+    { path: 'statistics', name: `DeclarationStatistics${suffix}`, component: () => import('@/views/declaration/statistics/index.vue'), meta: { title: '申报统计', icon: 'BarChartOutlined' } }
+  ]
+}
 
 export const asyncRoutes: RouteRecordRaw[] = [
   {
@@ -147,36 +168,28 @@ export const asyncRoutes: RouteRecordRaw[] = [
         name: 'EntityConfig',
         component: () => import('@/views/system/entity-config/index.vue'),
         meta: { title: '主体配置', icon: 'ShopOutlined', permission: 'system:entity-config:view' }
+      },
+      {
+        path: 'flow-template',
+        name: 'FlowTemplate',
+        component: () => import('@/views/system/flow-template/index.vue'),
+        meta: { title: '流程模板', icon: 'BranchesOutlined', permission: 'system:flow-template:view' }
+      },
+      {
+        path: 'flow-node',
+        name: 'FlowNode',
+        component: () => import('@/views/system/flow-node/index.vue'),
+        meta: { title: '流程节点', icon: 'ApartmentOutlined', permission: 'system:flow-node:view' }
+      },
+      {
+        path: 'dict',
+        name: 'DictManagement',
+        component: () => import('@/views/system/dict/index.vue'),
+        meta: { title: '字典管理', icon: 'BookOutlined', permission: 'system:dict:view' }
       }
     ]
   },
-  {
-    path: '/tax-refund',
-    component: Layout,
-    name: 'TaxRefund',
-    redirect: '/tax-refund/list',
-    meta: { title: '税务退费', icon: 'DollarOutlined' },
-    children: [
-      {
-        path: 'apply',
-        name: 'TaxRefundApply',
-        component: () => import('@/views/tax-refund/apply/index.vue'),
-        meta: { title: '退税申请', icon: 'PlusOutlined' }
-      },
-      {
-        path: 'list',
-        name: 'TaxRefundList',
-        component: () => import('@/views/tax-refund/list/index.vue'),
-        meta: { title: '申请列表', icon: 'UnorderedListOutlined' }
-      },
-      {
-        path: 'detail/:id',
-        name: 'TaxRefundDetail',
-        component: () => import('@/views/tax-refund/detail/index.vue'),
-        meta: { title: '申请详情', icon: 'FileSearchOutlined', hideInMenu: true }
-      }
-    ]
-  },
+
   {
     path: '/workflow',
     component: Layout,
@@ -255,6 +268,38 @@ export const asyncRoutes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/payment-remittance',
+    component: Layout,
+    name: 'PaymentRemittance',
+    meta: { title: '出款水单管理', icon: 'SendOutlined' },
+    children: [
+      {
+        path: 'draft',
+        name: 'PaymentRemittanceDraft',
+        component: () => import('@/views/payment-remittance/list/index.vue'),
+        meta: { title: '草稿出款', icon: 'EditOutlined' }
+      },
+      {
+        path: 'pending',
+        name: 'PaymentRemittancePending',
+        component: () => import('@/views/payment-remittance/list/index.vue'),
+        meta: { title: '待审核', icon: 'ClockCircleOutlined' }
+      },
+      {
+        path: 'audited',
+        name: 'PaymentRemittanceAudited',
+        component: () => import('@/views/payment-remittance/list/index.vue'),
+        meta: { title: '已审核', icon: 'CheckCircleOutlined' }
+      },
+      {
+        path: 'unrelated',
+        name: 'PaymentRemittanceUnrelated',
+        component: () => import('@/views/payment-remittance/list/index.vue'),
+        meta: { title: '未关联', icon: 'LinkOutlined' }
+      }
+    ]
+  },
+  {
     path: '/finance-invoice',
     component: Layout,
     name: 'FinanceInvoice',
@@ -329,6 +374,12 @@ export const asyncRoutes: RouteRecordRaw[] = [
         meta: { title: '申报表单', icon: 'FileTextOutlined', hidden: true }
       },
       {
+        path: 'form-v2',
+        name: 'DeclarationFormV2',
+        component: () => import('@/views/declaration/form/FormComposition.vue'),
+        meta: { title: '申报表单(V2)', icon: 'FileTextOutlined', hidden: true }
+      },
+      {
         path: 'payment',
         name: 'DeclarationPayment',
         component: () => import('@/views/declaration/payment/index.vue'),
@@ -341,6 +392,22 @@ export const asyncRoutes: RouteRecordRaw[] = [
         meta: { title: '申报统计', icon: 'BarChartOutlined' }
       }
     ]
+  },
+  // 梓熠、理德申报（内部）—— 复用同样的组件，不同路径前缀
+  {
+    path: '/declaration-self',
+    component: Layout,
+    name: 'DeclarationSelf',
+    meta: { title: '梓熠、理德申报', icon: 'ShopOutlined' },
+    children: createDeclarationChildren('Self')
+  },
+  // 集洛申报（外部）
+  {
+    path: '/declaration-external',
+    component: Layout,
+    name: 'DeclarationExternal',
+    meta: { title: '集洛申报', icon: 'TeamOutlined' },
+    children: createDeclarationChildren('External')
   },
   {
     path: '/contract',

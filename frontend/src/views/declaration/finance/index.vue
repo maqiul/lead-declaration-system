@@ -111,7 +111,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { EditOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import {
@@ -122,6 +122,13 @@ import {
 } from '@/api/business/declaration'
 
 const router = useRouter()
+const route = useRoute()
+
+/** 根据 route query 中的 declarationType 确定路由前缀 */
+const declarationPrefix = computed(() => {
+  const dt = (route.query.declarationType as string) || 'EXTERNAL'
+  return dt === 'SELF' ? '/declaration-self' : '/declaration-external'
+})
 
 const queryParams = reactive({
   current: 1,
@@ -186,7 +193,7 @@ const handleTableChange = (pag: any) => {
 }
 
 const handleViewDeclaration = (formId: number) => {
-  router.push(`/declaration/form?id=${formId}&mode=view`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${formId}&mode=view`)
 }
 
 // ========== 选择申报单 ==========

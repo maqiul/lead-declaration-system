@@ -27,6 +27,10 @@ public class Menu extends BaseEntity {
     @TableField("menu_name")
     private String menuName;
 
+    @Schema(description = "菜单编码")
+    @TableField("menu_code")
+    private String menuCode;
+
     @Schema(description = "父菜单ID")
     @TableField("parent_id")
     private Long parentId;

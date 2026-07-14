@@ -14,7 +14,9 @@ import com.declaration.service.DeclarationRemittanceService;
 import com.declaration.service.FinancialSupplementService;
 import com.declaration.service.MaterialAttachmentService;
 import com.declaration.service.ProductTypeConfigService;
+import com.declaration.service.CurrencyInfoService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -22,6 +24,7 @@ import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.util.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplementMapper, FinancialSupplement> implements FinancialSupplementService {
@@ -31,6 +34,7 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
     private final MaterialAttachmentService materialAttachmentService;
     private final DeclarationProductService declarationProductService;
     private final ProductTypeConfigService productTypeConfigService;
+    private final CurrencyInfoService currencyInfoService;
 
     // 数字格式化器
     private static final DecimalFormat AMOUNT_FORMAT = new DecimalFormat("#,##0.00");
@@ -41,9 +45,8 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
     private static final String CODE_CUSTOMS = "CUSTOMS_AGENT_INVOICE";
 
     /**
-     * 获取所有发票类资料项的扣减金额汇总
-     * 判断规则：formSchema 含 amount 字段 / stage=INVOICE / 已知发票编码
-     * 返回：每项的{name, code, amount}列表 + 合计
+     * 获取所有扣款类资料项的金额汇总
+     * 规则：直接遍历所有资料项，invoiceCategory=DEDUCTION 的纳入扣款，其余跳过
      */
     private Map<String, Object> getAllInvoiceDeductions(Long formId) {
         List<DeclarationMaterialItem> items = materialItemService.listByFormId(formId);
@@ -58,7 +61,8 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
         }
 
         for (DeclarationMaterialItem item : items) {
-            if (!isInvoiceTypeItem(item)) continue;
+            // 只取扣款项
+            if (!"DEDUCTION".equals(item.getInvoiceCategory())) continue;
 
             BigDecimal itemAmount = sumItemAmount(item);
             if (itemAmount.compareTo(BigDecimal.ZERO) <= 0) continue;
@@ -75,22 +79,6 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
         result.put("items", deductions);
         result.put("total", totalDeduction);
         return result;
-    }
-
-    /** 判断资料项是否为发票类型（仅资料提交环节，排除业务发票） */
-    private boolean isInvoiceTypeItem(DeclarationMaterialItem item) {
-        // 排除业务发票环节（INVOICE 是出口发票，不是费用扣减项）
-        if ("INVOICE".equals(item.getStage())) return false;
-        // 排除财务补充环节
-        if ("FINANCE_SUPPLEMENT".equals(item.getStage())) return false;
-        // 1. 数据库 invoice_mode=1 标记的资料项
-        if (item.getInvoiceMode() != null && item.getInvoiceMode() == 1) return true;
-        // 2. 已知发票编码（货代/报关代理，兼容旧数据）
-        if (CODE_FREIGHT.equals(item.getCode()) || CODE_CUSTOMS.equals(item.getCode())) return true;
-        // 3. 资料提交环节中 formSchema 含 amount 字段的项（兼容旧数据）
-        if ("MATERIAL_SUBMIT".equals(item.getStage())
-                && item.getFormSchema() != null && item.getFormSchema().contains("\"amount\"")) return true;
-        return false;
     }
 
     /** 汇总资料项金额（附件金额优先，无附件则取 item 级金额） */
@@ -191,7 +179,7 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
             BigDecimal fullAmt = r.get("remittanceAmount") != null ? (BigDecimal) r.get("remittanceAmount") : BigDecimal.ZERO;
             BigDecimal amt = (relationAmt != null && relationAmt.compareTo(BigDecimal.ZERO) > 0) ? relationAmt : fullAmt;
             BigDecimal taxRate = r.get("taxRate") != null ? (BigDecimal) r.get("taxRate") : BigDecimal.ZERO;
-            String currency = r.get("currency") != null ? (String) r.get("currency") : "USD";
+            String currency = r.get("currency") != null ? (String) r.get("currency") : getDefaultCurrency();
             
             // 计算人民币金额: 原币金额 × 汇率
             BigDecimal cnyAmount = amt.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
@@ -403,7 +391,7 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
                 AMOUNT_FORMAT.format(internalBankFeeTotal), RATE_FORMAT.format(internalBankFeePercent),
                 AMOUNT_FORMAT.format(totalFeeAmount)));
 
-        // 10. 计算最终开票金额
+        // 10. 计算最终开票金额：退税加成合计 - 扣款项 - 手续费
         BigDecimal invoiceAmount = amountWithTaxRefund
                 .subtract(totalInvoiceDeduction)
                 .subtract(totalFeeAmount)
@@ -460,5 +448,20 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
         result.put("customsInvoiceAmount", customsAmount);
 
         return result;
+    }
+
+    /**
+     * 从配置获取默认币种，不再写死 USD
+     */
+    private String getDefaultCurrency() {
+        try {
+            var list = currencyInfoService.getEnabledList();
+            if (list != null && !list.isEmpty()) {
+                return list.get(0).getCurrencyCode();
+            }
+        } catch (Exception e) {
+            log.warn("获取默认币种配置失败，回退 USD", e);
+        }
+        return "USD";
     }
 }

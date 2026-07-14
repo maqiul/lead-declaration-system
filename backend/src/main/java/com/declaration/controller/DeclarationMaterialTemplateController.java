@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.declaration.annotation.RequiresPermissions;
 import com.declaration.common.Result;
 import com.declaration.entity.DeclarationMaterialTemplate;
+import com.declaration.entity.MaterialTemplateBinding;
 import com.declaration.service.DeclarationMaterialTemplateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -12,7 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 申报资料项模板管理（全局）
@@ -44,7 +46,16 @@ public class DeclarationMaterialTemplateController {
         }
         wrapper.orderByAsc(DeclarationMaterialTemplate::getSort)
                .orderByAsc(DeclarationMaterialTemplate::getId);
-        return Result.success(templateService.list(wrapper));
+        List<DeclarationMaterialTemplate> list = templateService.list(wrapper);
+        // 附带每个模板的绑定规则
+        if (!list.isEmpty()) {
+            List<Long> tplIds = list.stream().map(DeclarationMaterialTemplate::getId).collect(Collectors.toList());
+            Map<Long, List<MaterialTemplateBinding>> bindingMap = templateService.batchGetBindings(tplIds);
+            for (DeclarationMaterialTemplate tpl : list) {
+                tpl.setBindings(bindingMap.getOrDefault(tpl.getId(), Collections.emptyList()));
+            }
+        }
+        return Result.success(list);
     }
 
     @PostMapping
@@ -71,7 +82,11 @@ public class DeclarationMaterialTemplateController {
         if (entity.getRequired() == null) entity.setRequired(1);
         if (entity.getSort() == null) entity.setSort(0);
         if (entity.getEnabled() == null) entity.setEnabled(1);
-        return Result.success(templateService.save(entity));
+        boolean saved = templateService.save(entity);
+        if (saved && entity.getId() != null) {
+            templateService.saveBindings(entity.getId(), entity.getBindings());
+        }
+        return Result.success(saved);
     }
 
     @PutMapping
@@ -93,7 +108,26 @@ public class DeclarationMaterialTemplateController {
                 return Result.fail("资料编码已存在");
             }
         }
-        return Result.success(templateService.updateById(entity));
+        boolean updated = templateService.updateById(entity);
+        if (updated) {
+            templateService.saveBindings(entity.getId(), entity.getBindings());
+        }
+        return Result.success(updated);
+    }
+
+    @GetMapping("/{id}/bindings")
+    @Operation(summary = "获取模板绑定规则")
+    @RequiresPermissions("system:material:template:view")
+    public Result<List<MaterialTemplateBinding>> getBindings(@PathVariable Long id) {
+        return Result.success(templateService.getBindings(id));
+    }
+
+    @PutMapping("/{id}/bindings")
+    @Operation(summary = "设置模板绑定规则")
+    @RequiresPermissions("system:material:template:edit")
+    public Result<Boolean> saveBindings(@PathVariable Long id, @RequestBody List<MaterialTemplateBinding> bindings) {
+        templateService.saveBindings(id, bindings);
+        return Result.success(true);
     }
 
     @DeleteMapping("/{id}")
@@ -101,6 +135,8 @@ public class DeclarationMaterialTemplateController {
     @RequiresPermissions("system:material:template:delete")
     public Result<Boolean> delete(@PathVariable Long id) {
         log.info("删除资料项模板 id={}", id);
+        // 级联删除绑定规则
+        templateService.saveBindings(id, null);
         return Result.success(templateService.removeById(id));
     }
 }

@@ -378,7 +378,7 @@ const handleComplete = (task: Task) => {
   if (task.activityId === 'pickupListUpload') {
     // 提货单上传任务：跳转到申报单详情页，并设置为提货单上传模式
     router.push({
-      path: '/declaration/form',
+      path: '/declaration/form-v2',
       query: { 
         id: task.businessKey, 
         taskId: task.taskId, 
@@ -392,7 +392,7 @@ const handleComplete = (task: Task) => {
   if (task.activityId === 'pickupListAudit') {
     // 提货单审核任务：跳转到申报单详情页，并设置为审核模式
     router.push({
-      path: '/declaration/form',
+      path: '/declaration/form-v2',
       query: { 
         id: task.businessKey, 
         taskId: task.taskId, 

@@ -355,7 +355,7 @@
           <a-col :span="6">
             <a-form-item label="申报类型">
               <a-tag :color="formData.declarationType === 'SELF' ? 'blue' : 'default'" style="font-size: 13px; padding: 4px 12px;">
-                {{ formData.declarationType === 'SELF' ? '内部申报' : '外部申报' }}
+                {{ formData.declarationType === 'SELF' ? '梓熠、理德申报' : '集洛申报' }}
               </a-tag>
             </a-form-item>
           </a-col>
@@ -1228,24 +1228,68 @@
                   <div v-if="(record as MaterialItem).remark" class="name-remark">{{ (record as MaterialItem).remark }}</div>
                   <!-- 附件列表 -->
                   <template v-if="record.attachments && record.attachments.length > 0">
-                    <div v-for="att in record.attachments" :key="att.id" class="att-invoice-card">
-                      <div class="att-row-main">
-                        <div class="att-file-name">
-                          <FileTextOutlined class="file-icon-sm" />
-                          <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ displayAttFileName(att) }}</a>
+                    <!-- 发票类：每个附件带金额/发票号/日期字段 -->
+                    <template v-if="isInvoiceMaterial(record as MaterialItem)">
+                      <div v-for="att in record.attachments" :key="att.id" class="att-invoice-card">
+                        <div class="att-row-main">
+                          <div class="att-file-name">
+                            <FileTextOutlined class="file-icon-sm" />
+                            <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ displayAttFileName(att) }}</a>
+                          </div>
+                          <div class="att-divider-v"></div>
+                          <template v-if="isSupplementEditable">
+                            <div class="att-field-inline">
+                              <span class="att-field-label">金额</span>
+                              <a-input-number :value="att.amount ?? undefined" @update:value="(v: any) => saveAttachmentField(record as MaterialItem, att, 'amount', v)" placeholder="-" size="small" :precision="2" style="width: 120px" />
+                            </div>
+                            <div class="att-field-inline">
+                              <span class="att-field-label">发票号</span>
+                              <a-input :value="att.invoiceNo ?? undefined" @update:value="(v: any) => saveAttachmentField(record as MaterialItem, att, 'invoiceNo', v)" @blur="() => saveAttachmentField(record as MaterialItem, att, 'invoiceNo', att.invoiceNo)" placeholder="-" size="small" style="width: 180px" :maxlength="100" />
+                            </div>
+                            <div class="att-field-inline">
+                              <span class="att-field-label">日期</span>
+                              <a-date-picker :value="att.invoiceDate || undefined" value-format="YYYY-MM-DD" @update:value="(v: any) => saveAttachmentField(record as MaterialItem, att, 'invoiceDate', v)" placeholder="-" size="small" style="width: 140px" />
+                            </div>
+                          </template>
+                          <template v-else>
+                            <span class="att-val-tag">¥{{ att.amount ?? '-' }}</span>
+                            <span class="att-val-tag">{{ att.invoiceNo || '-' }}</span>
+                            <span class="att-val-tag">{{ att.invoiceDate || '-' }}</span>
+                          </template>
+                          <a-popconfirm v-if="isSupplementEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                            <DeleteOutlined class="file-delete-btn" />
+                          </a-popconfirm>
                         </div>
-                        <a-popconfirm v-if="isSupplementEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
-                          <DeleteOutlined class="file-delete-btn" />
-                        </a-popconfirm>
+                        <div class="att-row-meta">
+                          <span><UserOutlined /> 创建 {{ att.createByName || '-' }}</span>
+                          <span class="att-meta-dot"></span>
+                          <span><EditOutlined /> 更新 {{ att.updateByName || '-' }}</span>
+                          <span class="att-meta-dot"></span>
+                          <span><ClockCircleOutlined /> {{ att.uploadTime ? att.uploadTime.substring(0, 16) : '-' }}</span>
+                        </div>
                       </div>
-                      <div class="att-row-meta">
-                        <span><UserOutlined /> 创建 {{ att.createByName || '-' }}</span>
-                        <span class="att-meta-dot"></span>
-                        <span><EditOutlined /> 更新 {{ att.updateByName || '-' }}</span>
-                        <span class="att-meta-dot"></span>
-                        <span><ClockCircleOutlined /> {{ att.uploadTime ? att.uploadTime.substring(0, 16) : '-' }}</span>
+                    </template>
+                    <!-- 非发票类：简单格式 -->
+                    <template v-else>
+                      <div v-for="att in record.attachments" :key="att.id" class="att-invoice-card">
+                        <div class="att-row-main">
+                          <div class="att-file-name">
+                            <FileTextOutlined class="file-icon-sm" />
+                            <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ displayAttFileName(att) }}</a>
+                          </div>
+                          <a-popconfirm v-if="isSupplementEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                            <DeleteOutlined class="file-delete-btn" />
+                          </a-popconfirm>
+                        </div>
+                        <div class="att-row-meta">
+                          <span><UserOutlined /> 创建 {{ att.createByName || '-' }}</span>
+                          <span class="att-meta-dot"></span>
+                          <span><EditOutlined /> 更新 {{ att.updateByName || '-' }}</span>
+                          <span class="att-meta-dot"></span>
+                          <span><ClockCircleOutlined /> {{ att.uploadTime ? att.uploadTime.substring(0, 16) : '-' }}</span>
+                        </div>
                       </div>
-                    </div>
+                    </template>
                     <div class="file-count-hint" v-if="record.attachments.length > 1">共 {{ record.attachments.length }} 份文件</div>
                   </template>
                   <template v-else>
@@ -2237,9 +2281,8 @@ const showSupplementSection = computed(() => {
   return false
 })
 
-/** 业务发票区域是否显示（发票环节进行中、已完成查阅均展示；自用申报跳过） */
+/** 业务发票区域是否显示（发票环节进行中、已完成查阅均展示） */
 const showInvoiceSection = computed(() => {
-  if (formData.declarationType === 'SELF') return false
   if (invoiceStageItems.value.length === 0) return false
   const s = formStatus.value
   if (s == null) return false
@@ -2351,18 +2394,16 @@ const remittanceColumns = [
   { title: '状态', key: 'status', width: 80, customRender: ({ text }: any) => text === 0 ? '草稿' : text === 1 ? '待审核' : '已审核' }
 ]
 
-/** 状态=8 时可提交业务发票（不限 mode；自用申报跳过） */
+/** 状态=8 时可提交业务发票（不限 mode） */
 const canSubmitInvoice = computed(() => {
-  if (formData.declarationType === 'SELF') return false
   if (formStatus.value !== 8) return false
   if (route.query.readonly === 'true') return false
   if (isInvoiceAuditMode.value || isMaterialAuditMode.value || isSupplementAuditMode.value || isAudit.value) return false
   return true
 })
 
-/** 状态=9 时可审核业务发票（自用申报跳过） */
+/** 状态=9 时可审核业务发票 */
 const canAuditInvoice = computed(() => {
-  if (formData.declarationType === 'SELF') return false
   if (formStatus.value !== 9) return false
   if (route.query.readonly === 'true') return false
   if (isMaterialMode.value || isSupplementMode.value) return false
@@ -3247,7 +3288,7 @@ const formData = reactive({
   departureCityEnglish: '',
   destinationCountry: undefined as string | undefined,
   tradeCountry: undefined as string | undefined,
-  currency: 'USD',
+  currency: undefined as string | undefined,
   declarationDate: undefined as Dayjs | undefined,
   declarationType: 'EXTERNAL' as string,
   orgId: undefined as number | undefined
@@ -3398,6 +3439,10 @@ const loadCurrencies = async () => {
         label: `${item.currencyCode} - ${item.chineseName || item.currencyName}`,
         value: item.currencyCode
       }))
+      // 新建表单时，默认使用配置中的第一个币种
+      if (!formId.value && currencyOptions.value.length > 0) {
+        formData.currency = currencyOptions.value[0].value
+      }
       console.log('加载货币数据成功:', currencyOptions.value)
     } else {
       // 如果API失败，使用默认数据
@@ -3406,6 +3451,9 @@ const loadCurrencies = async () => {
         { label: 'EUR - 欧元', value: 'EUR' },
         { label: 'CNY - 人民币', value: 'CNY' }
       ]
+      if (!formId.value && currencyOptions.value.length > 0) {
+        formData.currency = currencyOptions.value[0].value
+      }
     }
   } catch (error) {
     console.warn('加载货币数据失败:', error)
@@ -3415,6 +3463,9 @@ const loadCurrencies = async () => {
       { label: 'EUR - 欧元', value: 'EUR' },
       { label: 'CNY - 人民币', value: 'CNY' }
     ]
+    if (!formId.value && currencyOptions.value.length > 0) {
+      formData.currency = currencyOptions.value[0].value
+    }
   }
 }
 
@@ -3971,7 +4022,7 @@ const goBack = () => {
   if (window.history.length > 1) {
     router.back()
   } else {
-    router.push('/declaration/entry')
+    router.push(formData.declarationType === 'SELF' ? '/declaration-self/entry' : '/declaration-external/entry')
   }
 }
 
@@ -4000,17 +4051,30 @@ const handleSaveDraft = async () => {
       }
     })
     
-    // 构建箱子产品关联数据
-    const cartonProducts: Array<{cartonId: number, productId: number, quantity: number}> = []
+    // 构建箱子产品关联数据（使用 productDetails 中的数量/毛重/净重）
+    const cartonProducts: Array<{cartonId: number, productId: number, quantity: number, grossWeight?: number | null, netWeight?: number | null}> = []
     cartonList.value.forEach(carton => {
-      if (carton.selectedProducts && carton.selectedProducts.length > 0) {
+      // 优先使用 productDetails，回退到 selectedProducts
+      if (carton.productDetails && carton.productDetails.length > 0) {
+        carton.productDetails.forEach((detail: any) => {
+          cartonProducts.push({
+            cartonId: carton.id,
+            productId: detail.productId,
+            quantity: detail.quantity || 0,
+            grossWeight: detail.grossWeight ?? null,
+            netWeight: detail.netWeight ?? null
+          })
+        })
+      } else if (carton.selectedProducts && carton.selectedProducts.length > 0) {
         carton.selectedProducts.forEach((productId: number) => {
           const product = productList.value.find(p => p.id === productId)
           if (product) {
             cartonProducts.push({
-              cartonId: carton.id, 
+              cartonId: carton.id,
               productId: productId,
-              quantity: product.quantity 
+              quantity: product.quantity,
+              grossWeight: product.grossWeight ?? null,
+              netWeight: product.netWeight ?? null
             })
           }
         })
@@ -4179,17 +4243,29 @@ const handleSubmit = async () => {
       }
     })
     
-    // 构建箱子产品关联数据
-    const cartonProducts: Array<{cartonId: number, productId: number, quantity: number}> = []
+    // 构建箱子产品关联数据（使用 productDetails 中的数量/毛重/净重）
+    const cartonProducts: Array<{cartonId: number, productId: number, quantity: number, grossWeight?: number | null, netWeight?: number | null}> = []
     cartonList.value.forEach(carton => {
-      if (carton.selectedProducts && carton.selectedProducts.length > 0) {
+      if (carton.productDetails && carton.productDetails.length > 0) {
+        carton.productDetails.forEach((detail: any) => {
+          cartonProducts.push({
+            cartonId: carton.id,
+            productId: detail.productId,
+            quantity: detail.quantity || 0,
+            grossWeight: detail.grossWeight ?? null,
+            netWeight: detail.netWeight ?? null
+          })
+        })
+      } else if (carton.selectedProducts && carton.selectedProducts.length > 0) {
         carton.selectedProducts.forEach((productId: number) => {
           const product = productList.value.find(p => p.id === productId)
           if (product) {
             cartonProducts.push({
-              cartonId: carton.id, 
+              cartonId: carton.id,
               productId: productId,
-              quantity: product.quantity 
+              quantity: product.quantity,
+              grossWeight: product.grossWeight ?? null,
+              netWeight: product.netWeight ?? null
             })
           }
         })
@@ -4364,7 +4440,7 @@ const loadData = async () => {
                 formData.departureCityEnglish = detailData.departureCityEnglish || 'SHANGHAI, CHINA'
         formData.destinationCountry = detailData.destinationCountry || ''
         formData.tradeCountry = detailData.tradeCountry || ''
-        formData.currency = detailData.currency || 'USD'
+        formData.currency = detailData.currency || currencyOptions.value[0]?.value || 'USD'
         formData.declarationDate = detailData.declarationDate ? dayjs(detailData.declarationDate) : undefined
         formData.declarationType = detailData.declarationType || 'EXTERNAL'
         
@@ -4390,11 +4466,11 @@ const loadData = async () => {
               options: ev.options || [],
               editable: true
             })),
-            // 处理产品照片 - 根据 imageId 构建预览 URL
-            productPhoto: product.imageId 
+            // 处理产品照片 - imageId 为 0/"0"/null 均视为无图片
+            productPhoto: (product.imageId && String(product.imageId) !== '0')
               ? getFilePreviewUrl(product.imageId) 
               : (product.productPhoto || ''),
-            photoFile: product.imageId ? {
+            photoFile: (product.imageId && String(product.imageId) !== '0') ? {
               uid: String(product.imageId),
               name: 'product.jpg',
               status: 'done',
