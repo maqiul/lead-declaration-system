@@ -141,10 +141,10 @@ Write-Host "   # 进入MySQL容器" -ForegroundColor Cyan
 Write-Host "   docker exec -it $DOCKER_CONTAINER_NAME bash" -ForegroundColor White
 Write-Host ""
 Write-Host "   # 执行权限配置脚本" -ForegroundColor Cyan
-Write-Host "   mysql -uroot -p < /path/to/complete-permissions-config.sql" -ForegroundColor White
+Write-Host "   mysql -uroot -p < /path/to/sql/migration/11-full-permission-registry.sql" -ForegroundColor White
 Write-Host ""
 Write-Host "   # 或者直接在宿主机执行" -ForegroundColor Cyan
-Write-Host "   docker exec -i $DOCKER_CONTAINER_NAME mysql -uroot -p$MYSQL_PASSWORD < sql\complete-permissions-config.sql" -ForegroundColor White
+Write-Host "   docker exec -i $DOCKER_CONTAINER_NAME mysql -uroot -p$MYSQL_PASSWORD < sql\migration\11-full-permission-registry.sql" -ForegroundColor White
 Write-Host ""
 Write-Host "   # 检查特定表" -ForegroundColor Cyan
 Write-Host "   docker exec $DOCKER_CONTAINER_NAME mysql -uroot -p$MYSQL_PASSWORD -e `"SELECT * FROM sys_menu LIMIT 5;`"" -ForegroundColor White
@@ -161,11 +161,11 @@ $choice = Read-Host "请选择操作 (输入数字)"
 switch ($choice) {
     "1" {
         Write-Host "执行完整权限配置..." -ForegroundColor Yellow
-        if (Test-Path "sql\fixed-permissions-config.sql") {
-            Get-Content "sql\fixed-permissions-config.sql" | docker exec -i $DOCKER_CONTAINER_NAME mysql -u$MYSQL_USER -p$MYSQL_PASSWORD
+        if (Test-Path "sql\migration\11-full-permission-registry.sql") {
+            Get-Content "sql\migration\11-full-permission-registry.sql" | docker exec -i $DOCKER_CONTAINER_NAME mysql -u$MYSQL_USER -p$MYSQL_PASSWORD
             Write-Host "✅ 权限配置完成" -ForegroundColor Green
-        } elseif (Test-Path "sql\complete-permissions-config.sql") {
-            Get-Content "sql\complete-permissions-config.sql" | docker exec -i $DOCKER_CONTAINER_NAME mysql -u$MYSQL_USER -p$MYSQL_PASSWORD
+        } elseif (Test-Path "sql\migration\11-full-permission-registry.sql") {
+            Get-Content "sql\migration\11-full-permission-registry.sql" | docker exec -i $DOCKER_CONTAINER_NAME mysql -u$MYSQL_USER -p$MYSQL_PASSWORD
             Write-Host "✅ 权限配置完成（使用原始版本）" -ForegroundColor Yellow
         } else {
             Write-Host "❌ 找不到权限配置文件" -ForegroundColor Red
@@ -173,8 +173,8 @@ switch ($choice) {
     }
     "2" {
         Write-Host "重新分配管理员权限..." -ForegroundColor Yellow
-        if (Test-Path "sql\fix-admin-permissions.sql") {
-            Get-Content "sql\fix-admin-permissions.sql" | docker exec -i $DOCKER_CONTAINER_NAME mysql -u$MYSQL_USER -p$MYSQL_PASSWORD
+        if (Test-Path "sql\migration\11-full-permission-registry.sql") {
+            Get-Content "sql\migration\11-full-permission-registry.sql" | docker exec -i $DOCKER_CONTAINER_NAME mysql -u$MYSQL_USER -p$MYSQL_PASSWORD
             Write-Host "✅ 管理员权限重新分配完成" -ForegroundColor Green
         } else {
             Write-Host "❌ 找不到管理员权限修复文件" -ForegroundColor Red
@@ -182,8 +182,8 @@ switch ($choice) {
     }
     "3" {
         Write-Host "初始化基础数据..." -ForegroundColor Yellow
-        if (Test-Path "sql\complete-database-init.sql") {
-            Get-Content "sql\complete-database-init.sql" | docker exec -i $DOCKER_CONTAINER_NAME mysql -u$MYSQL_USER -p$MYSQL_PASSWORD
+        if (Test-Path "sql\init\00-full-database-dump.sql") {
+            Get-Content "sql\init\00-full-database-dump.sql" | docker exec -i $DOCKER_CONTAINER_NAME mysql -u$MYSQL_USER -p$MYSQL_PASSWORD
             Write-Host "✅ 基础数据初始化完成" -ForegroundColor Green
         } else {
             Write-Host "❌ 找不到基础数据初始化文件" -ForegroundColor Red

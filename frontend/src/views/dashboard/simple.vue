@@ -34,16 +34,14 @@
               </div>
             </div>
             <div class="workflow-group-body">
-              <a-row :gutter="[10, 10]">
-                <a-col :xs="8" :sm="6" v-for="step in group.steps" :key="step.label">
-                  <div class="workflow-step" @click="goTo(step.path)">
-                    <div class="workflow-step-icon" :style="{ background: step.bg }">
-                      <component :is="step.icon" />
-                    </div>
-                    <span class="workflow-step-label">{{ step.label }}</span>
+              <div class="workflow-steps-row">
+                <div class="workflow-step" v-for="step in group.steps" :key="step.label" @click="goTo(step.path)">
+                  <div class="workflow-step-icon" :style="{ background: step.bg }">
+                    <component :is="step.icon" />
                   </div>
-                </a-col>
-              </a-row>
+                  <span class="workflow-step-label">{{ step.label }}</span>
+                </div>
+              </div>
             </div>
           </div>
         </a-col>
@@ -571,6 +569,13 @@ onMounted(() => {
   padding: 4px 16px 16px;
 }
 
+.workflow-steps-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+}
+
 .workflow-step {
   display: flex;
   flex-direction: column;
@@ -580,6 +585,8 @@ onMounted(() => {
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .workflow-step:hover {

@@ -95,8 +95,8 @@ echo "✅ 权限检查报告已生成: permission_check_report.txt"
 
 # 7. 提供修复建议
 echo "7. 权限修复建议:"
-echo "   - 如果发现权限缺失，执行: complete-permissions-config.sql"
-echo "   - 如果需要重新分配管理员权限，执行: fix-admin-permissions.sql"
-echo "   - 如果需要初始化基础数据，执行: complete-database-init.sql"
+echo "   - 如果发现权限缺失或需重新分配管理员权限，执行: sql/migration/11-full-permission-registry.sql"
+echo "   - 如果需要初始化基础数据，执行: sql/init/00-full-database-dump.sql"
+echo "   - SQL 脚本总索引见: sql/README.md"
 
 echo "=== 检查完成 ==="

@@ -134,10 +134,10 @@ echo "   # 进入MySQL容器"
 echo "   docker exec -it $DOCKER_CONTAINER_NAME bash"
 echo ""
 echo "   # 执行权限配置脚本"
-echo "   mysql -uroot -p < /path/to/complete-permissions-config.sql"
+echo "   mysql -uroot -p < /path/to/sql/migration/11-full-permission-registry.sql"
 echo ""
 echo "   # 或者直接在宿主机执行"
-echo "   docker exec -i $DOCKER_CONTAINER_NAME mysql -uroot -p$MYSQL_PASSWORD < sql/complete-permissions-config.sql"
+echo "   docker exec -i $DOCKER_CONTAINER_NAME mysql -uroot -p$MYSQL_PASSWORD < sql/migration/11-full-permission-registry.sql"
 echo ""
 echo "   # 检查特定表"
 echo "   docker exec $DOCKER_CONTAINER_NAME mysql -uroot -p$MYSQL_PASSWORD -e \"SELECT * FROM sys_menu LIMIT 5;\""
@@ -156,17 +156,17 @@ read -r choice
 case $choice in
     1)
         echo "执行完整权限配置..."
-        if [ -f "sql/complete-permissions-config.sql" ]; then
-            docker exec -i "$DOCKER_CONTAINER_NAME" mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" < sql/complete-permissions-config.sql
+        if [ -f "sql/migration/11-full-permission-registry.sql" ]; then
+            docker exec -i "$DOCKER_CONTAINER_NAME" mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" < sql/migration/11-full-permission-registry.sql
             echo "✅ 权限配置完成"
         else
-            echo "❌ 找不到权限配置文件: sql/complete-permissions-config.sql"
+            echo "❌ 找不到权限配置文件: sql/migration/11-full-permission-registry.sql"
         fi
         ;;
     2)
         echo "重新分配管理员权限..."
-        if [ -f "sql/fix-admin-permissions.sql" ]; then
-            docker exec -i "$DOCKER_CONTAINER_NAME" mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" < sql/fix-admin-permissions.sql
+        if [ -f "sql/migration/11-full-permission-registry.sql" ]; then
+            docker exec -i "$DOCKER_CONTAINER_NAME" mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" < sql/migration/11-full-permission-registry.sql
             echo "✅ 管理员权限重新分配完成"
         else
             echo "❌ 找不到管理员权限修复文件"
@@ -174,8 +174,8 @@ case $choice in
         ;;
     3)
         echo "初始化基础数据..."
-        if [ -f "sql/complete-database-init.sql" ]; then
-            docker exec -i "$DOCKER_CONTAINER_NAME" mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" < sql/complete-database-init.sql
+        if [ -f "sql/init/00-full-database-dump.sql" ]; then
+            docker exec -i "$DOCKER_CONTAINER_NAME" mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" < sql/init/00-full-database-dump.sql
             echo "✅ 基础数据初始化完成"
         else
             echo "❌ 找不到基础数据初始化文件"

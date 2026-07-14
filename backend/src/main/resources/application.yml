@@ -125,3 +125,11 @@ logging:
 # OCR 配置（发票识别，基于 RapidOCR/PaddleOCR）
 ocr:
   enabled: true
+
+# LibreOffice 配置（Excel 转 PDF）
+libreoffice:
+  enabled: true
+  # Linux 默认: libreoffice 或 /usr/bin/libreoffice
+  # Windows: C:\\Program Files\\LibreOffice\\program\\soffice.exe
+  path: C:\\Program Files\\LibreOffice\\program\\soffice.exe
+  timeout: 120

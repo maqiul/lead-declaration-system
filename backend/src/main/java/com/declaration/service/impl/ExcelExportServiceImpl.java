@@ -86,6 +86,9 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     @Autowired
     private CurrencyInfoService currencyInfoService;
 
+    @Autowired
+    private ExcelToPdfConverterService excelToPdfConverterService;
+
     @Override
     public DeclarationAttachment generateAndSaveExportDocuments(DeclarationForm form) throws IOException {
         log.info("[生成单据] formNo={}, entityId={}, shipperCompany={}", form.getFormNo(), form.getEntityId(), form.getShipperCompany());
@@ -161,6 +164,9 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         query.eq(DeclarationAttachment::getFormId, form.getId())
                 .eq(DeclarationAttachment::getFileType, "FullDocuments");
         DeclarationAttachment oldAttachment = attachmentService.getOne(query);
+
+        // Excel 生成完成后，转换 PDF
+        convertAndSavePdf(targetFile, formNoDir, fileName, form.getId(), "FullDocumentsPdf", "预录入表单_");
 
         if (oldAttachment != null) {
             // 替换：更新旧记录
@@ -1077,6 +1083,9 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                 .eq(DeclarationAttachment::getFileType, "AllDocuments");
         DeclarationAttachment oldAttachment = attachmentService.getOne(query);
 
+        // Excel 生成完成后，转换 PDF
+        convertAndSavePdf(targetFile, formNoDir, fileName, form.getId(), "AllDocumentsPdf", "报关表单_");
+
         if (oldAttachment != null) {
             // 替换：更新旧记录
             oldAttachment.setFileName(attachment.getFileName());
@@ -1088,6 +1097,54 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             // 新增
             attachmentService.save(attachment);
             return attachment;
+        }
+    }
+
+    /**
+     * 将已生成的 xlsx 转换为 PDF 并保存附件记录
+     *
+     * @param xlsxFile     源 xlsx 文件
+     * @param formNoDir    申报单目录名
+     * @param xlsxFileName xlsx 文件名（磁盘上的实际文件名）
+     * @param formId       申报单ID
+     * @param pdfFileType  PDF 附件类型（如 AllDocumentsPdf / FullDocumentsPdf）
+     * @param displayPrefix 显示文件名前缀（如 "报关表单_" / "预录入表单_"）
+     */
+    private void convertAndSavePdf(File xlsxFile, String formNoDir, String xlsxFileName,
+                                    Long formId, String pdfFileType, String displayPrefix) {
+        try {
+            File pdfFile = excelToPdfConverterService.convertToPdf(xlsxFile);
+            if (pdfFile == null) {
+                log.info("[PDF转换] 未生成 PDF，跳过附件保存");
+                return;
+            }
+            String pdfFileName = xlsxFileName.replace(".xlsx", ".pdf");
+            // 显示文件名去掉 UUID 和冗余前缀
+            String displayPdfName = pdfFileName.replaceFirst("_[a-f0-9]{32}", "")
+                    .replaceFirst("^海关申报单_", "");
+            DeclarationAttachment pdfAttachment = new DeclarationAttachment();
+            pdfAttachment.setFormId(formId);
+            pdfAttachment.setFileName(displayPrefix + displayPdfName);
+            pdfAttachment.setFileUrl("/api/v1/files/download?path=" + formNoDir + "/" + pdfFileName);
+            pdfAttachment.setFileType(pdfFileType);
+            pdfAttachment.setCreateTime(LocalDateTime.now());
+
+            // 替换旧 PDF 附件
+            LambdaQueryWrapper<DeclarationAttachment> pdfQuery = new LambdaQueryWrapper<>();
+            pdfQuery.eq(DeclarationAttachment::getFormId, formId)
+                    .eq(DeclarationAttachment::getFileType, pdfFileType);
+            DeclarationAttachment oldPdf = attachmentService.getOne(pdfQuery);
+            if (oldPdf != null) {
+                oldPdf.setFileName(pdfAttachment.getFileName());
+                oldPdf.setFileUrl(pdfAttachment.getFileUrl());
+                oldPdf.setCreateTime(LocalDateTime.now());
+                attachmentService.updateById(oldPdf);
+            } else {
+                attachmentService.save(pdfAttachment);
+            }
+            log.info("[PDF转换] PDF 附件记录已保存: formId={}", formId);
+        } catch (Exception e) {
+            log.warn("[PDF转换] PDF 转换或保存失败，不影响 Excel 附件: {}", e.getMessage());
         }
     }
 

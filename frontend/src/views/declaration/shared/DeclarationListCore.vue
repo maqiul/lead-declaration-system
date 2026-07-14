@@ -916,8 +916,8 @@ const hasMyTaskForStatus = (record: any, status: number, taskKey: string): boole
 const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('zh-CN') : ''
 const isDocumentFile = (f: string) => ['.pdf','.doc','.docx','.xls','.xlsx','.ppt','.pptx','.txt'].some(e => f.toLowerCase().endsWith(e))
 const isImageFile = (f: string) => ['.jpg','.jpeg','.png','.gif','.bmp','.webp','.svg'].some(e => f.toLowerCase().endsWith(e))
-const getFileTypeColor = (t: string) => ({ Invoice: 'blue', PackingList: 'green', FullDocuments: 'purple', PickupList: 'orange', Remittance: 'cyan', Contract: 'magenta', AllDocuments: 'cyan' }[t] || 'default')
-const getFileTypeText = (t: string) => ({ Invoice: '商业发票', PackingList: '装箱单', FullDocuments: '海关附件', PickupList: '提货单', Remittance: '水单', Contract: '合同', AllDocuments: '海关资料' }[t] || t)
+const getFileTypeColor = (t: string) => ({ Invoice: 'blue', PackingList: 'green', FullDocuments: 'purple', PickupList: 'orange', Remittance: 'cyan', Contract: 'magenta', AllDocuments: 'cyan', AllDocumentsPdf: 'red', FullDocumentsPdf: 'red' }[t] || 'default')
+const getFileTypeText = (t: string) => ({ Invoice: '商业发票', PackingList: '装箱单', FullDocuments: '海关附件', PickupList: '提货单', Remittance: '水单', Contract: '合同', AllDocuments: '海关资料', AllDocumentsPdf: '报关单PDF', FullDocumentsPdf: '预录入PDF' }[t] || t)
 const getFileExtension = (f: string) => f.substring(f.lastIndexOf('.'))
 const formatFileSize = (s: number) => !s ? '0 KB' : s < 1024 ? s + ' B' : s < 1048576 ? (s / 1024).toFixed(1) + ' KB' : (s / 1048576).toFixed(1) + ' MB'
 
