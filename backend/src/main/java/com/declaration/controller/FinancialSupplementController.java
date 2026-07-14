@@ -350,7 +350,7 @@ public class FinancialSupplementController {
                     BigDecimal internalFeeCny = (BigDecimal) d.get("internalBankFee");
                     String currency = d.get("currency") != null ? d.get("currency").toString() : getDefaultCurrency();
                     createDataRow(sheet, rowNum++, name.isEmpty() ? "水单" : name,
-                            String.format("%1$,.2f %2$s × %3$s = %4$,.2f CNY，银行手续费: %5$,.2f CNY，内部操作费: %6$,.2f CNY", amt, currency, rate, cny, bankFeeCny, internalFeeCny), headerStyle);
+                            String.format("%1$,.2f %2$s × %3$s = %4$,.2f CNY", amt, currency, rate, cny), headerStyle);
                 }
             }
             createDataRow(sheet, rowNum++, "收汇合计(CNY)", String.format("%,.2f", calcDetail.get("totalCny")), headerStyle);

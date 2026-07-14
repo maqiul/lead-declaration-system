@@ -82,7 +82,7 @@
                 <span class="calc-label" style="font-weight: 600;">{{ rd.remittanceName || '水单' }}</span>
                 <span class="calc-value">{{ fmtAmt(rd.amount) }} {{ rd.currency || 'USD' }} × {{ Number(rd.taxRate || 0).toFixed(4) }} = <b>{{ fmtAmt(rd.cnyAmount) }} CNY</b></span>
               </div>
-              <div v-if="rd.proportion && rd.proportion < 100" style="font-size: 12px; color: #666; margin-left: 12px; margin-top: 4px;">
+              <!-- <div v-if="rd.proportion && rd.proportion < 100" style="font-size: 12px; color: #666; margin-left: 12px; margin-top: 4px;">
                 分配占比: {{ rd.proportion }}% ({{ fmtAmt(rd.relationAmount) }} / {{ fmtAmt(rd.fullAmount) }})
               </div>
               <div v-if="rd.bankFeeCny > 0 || rd.internalBankFee > 0" style="font-size: 12px; margin-left: 12px; margin-top: 4px; padding: 6px; background: #fff3e0; border-radius: 3px;">
@@ -96,7 +96,7 @@
                   <span v-if="rd.proportion && rd.proportion < 100"> × {{ rd.proportion }}% = </span>
                   <span v-if="rd.proportion && rd.proportion < 100">{{ fmtAmt(rd.internalBankFee) }} CNY</span>
                 </div>
-              </div>
+              </div> -->
             </div>
             <div class="calc-row calc-subtotal">
               <span class="calc-label">收汇合计</span>

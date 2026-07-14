@@ -131,9 +131,6 @@
                             × {{ item.taxRate }} = {{ formatMoney(item.cnyAmount) }} CNY
                           </span>
                         </div>
-                        <div class="calc-row" style="font-size: 12px; color: #666; margin-left: 20px;">
-                          <span>银行: {{ item.bankAccountName || '-' }} | 内部手续费: {{ formatMoney(item.bankFeeCny || 0) }} CNY</span>
-                        </div>
                       </div>
                       <div class="calc-row total" style="margin-top: 8px;">
                         <span class="calc-label">收汇合计:</span>

@@ -159,8 +159,13 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             if (existingForm != null && existingForm.getOrgId() != null) {
                 Long currentOrgId = OrganizationUtils.getCurrentUserOrgId();
                 if (currentOrgId != null && !existingForm.getOrgId().equals(currentOrgId)) {
-                    log.warn("用户尝试修改不属于其组织的申报单: {}", form.getId());
-                    return false;
+                    // 拥有 submit:others 权限的用户可以跨组织编辑
+                    boolean canEditOthers = StpUtil.hasPermission("business:declaration:submit:others");
+                    if (!canEditOthers) {
+                        log.warn("用户尝试修改不属于其组织的申报单: {}", form.getId());
+                        return false;
+                    }
+                    log.info("用户凭 submit:others 权限跨组织修改申报单: {}", form.getId());
                 }
             }
             

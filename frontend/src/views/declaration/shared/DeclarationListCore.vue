@@ -53,7 +53,7 @@
     </a-card>
 
     <!-- 操作按钮 -->
-    <a-card class="operation-card" v-if="showAddButton || showExportButton">
+    <a-card class="operation-card">
       <a-space>
         <a-button v-if="showAddButton" type="primary" @click="handleAdd" v-permission="['business:declaration:create']">
           <template #icon><plus-outlined /></template>
@@ -64,6 +64,26 @@
           导出
         </a-button>
       </a-space>
+      <a-popover title="自定义列" trigger="click" placement="bottomRight" :overlay-style="{ minWidth: '220px' }">
+        <template #content>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <a-checkbox
+              v-for="col in allColumns.filter(c => c.key !== 'action')"
+              :key="col.key"
+              :checked="visibleColumnKeys.includes(col.key)"
+              @change="(e: any) => toggleColumn(col.key, e.target.checked)"
+              :disabled="['formNo', 'status'].includes(col.key)"
+            >{{ col.title }}</a-checkbox>
+          </div>
+          <div style="margin-top: 10px; text-align: right;">
+            <a-button size="small" @click="resetColumns">重置</a-button>
+          </div>
+        </template>
+        <a-button style="float: right;" size="small">
+          <template #icon><setting-outlined /></template>
+          列设置
+        </a-button>
+      </a-popover>
     </a-card>
 
     <a-card class="ui-card">
@@ -72,7 +92,7 @@
         :columns="columns" 
         :loading="loading"
         :pagination="pagination"
-        :scroll="{ x: 1720 }"
+        :scroll="{ x: scrollX }"
         rowKey="id"
         @change="handleTableChange"
         class="ui-table"
@@ -458,10 +478,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, watch, h } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, h } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRouter, useRoute } from 'vue-router'
-import { DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, SearchOutlined, CloseOutlined, AuditOutlined, UndoOutlined, EyeOutlined } from '@ant-design/icons-vue'
+import { DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, SearchOutlined, CloseOutlined, AuditOutlined, UndoOutlined, EyeOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import { checkPermission } from '@/directives/permission'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
 import { getAvailableFlowTemplates } from '@/api/business/declaration'
@@ -584,20 +604,47 @@ const handleAdd = async () => {
 const bpmnPreviewVisible = ref(false)
 const previewTemplateId = ref<number | null>(null)
 
-const columns = [
+// --- 列配置 ---
+const allColumns = [
   { title: '申报单号', dataIndex: 'formNo', key: 'formNo', width: 160 },
-  { title: '申报人', dataIndex: 'applicantName', key: 'applicantName', width: 100 },
-  { title: '发货人', dataIndex: 'shipperCompany', key: 'shipperCompany', width: 150 },
-  { title: '收货人', dataIndex: 'consigneeCompany', key: 'consigneeCompany', width: 150 },
-  { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo', width: 120 },
-  { title: '贸易国', dataIndex: 'tradeCountry', key: 'tradeCountry', width: 100 },
+  { title: '申报人', dataIndex: 'applicantName', key: 'applicantName', width: 100, ellipsis: true },
+  { title: '发货人', dataIndex: 'shipperCompany', key: 'shipperCompany', width: 150, ellipsis: true },
+  { title: '收货人', dataIndex: 'consigneeCompany', key: 'consigneeCompany', width: 150, ellipsis: true },
+  { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo', width: 120, ellipsis: true },
+  { title: '贸易国', dataIndex: 'tradeCountry', key: 'tradeCountry', width: 100, ellipsis: true },
   { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate', width: 120 },
   { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', width: 100 },
   { title: '总箱数', dataIndex: 'totalCartons', key: 'totalCartons', width: 80 },
   { title: '状态', key: 'status', width: 100, customRender: ({ record }: { record: any }) => h('a-tag', { color: getStatusColor(record.status) }, getStatusText(record.status)) },
   { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 },
-  { title: '操作', key: 'action', width: 240, fixed: 'right' as const }
 ]
+const DEFAULT_VISIBLE_KEYS = allColumns.map(c => c.key)
+const STORAGE_KEY = 'declaration-column-keys'
+
+const visibleColumnKeys = ref<string[]>(
+  JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || DEFAULT_VISIBLE_KEYS
+)
+
+const toggleColumn = (key: string, checked: boolean) => {
+  if (checked) {
+    if (!visibleColumnKeys.value.includes(key)) visibleColumnKeys.value.push(key)
+  } else {
+    visibleColumnKeys.value = visibleColumnKeys.value.filter(k => k !== key)
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(visibleColumnKeys.value))
+}
+
+const resetColumns = () => {
+  visibleColumnKeys.value = [...DEFAULT_VISIBLE_KEYS]
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_VISIBLE_KEYS))
+}
+
+const columns = computed(() => [
+  ...allColumns.filter(c => visibleColumnKeys.value.includes(c.key)),
+  { title: '操作', key: 'action', width: 240, fixed: 'right' as const }
+])
+
+const scrollX = computed(() => columns.value.reduce((sum, c: any) => sum + (c.width || 100), 0))
 
 // 弹窗状态
 const attachmentModalVisible = ref(false)

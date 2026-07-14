@@ -301,15 +301,15 @@ public class DeclarationMaterialItemServiceImpl
 
         if (templates != null) {
             for (DeclarationMaterialTemplate tpl : templates) {
-                // 绑定过滤：无绑定=全适用；有绑定=任一行匹配即可
-                List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
-                if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
-                    continue;
-                }
-
+                // 检查是否已有实例（有实例则始终显示，不受绑定规则过滤）
                 DeclarationMaterialItem existed = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
                 if (existed != null) {
                     result.add(existed);
+                    continue;
+                }
+                // 无实例时，创建虚拟项前检查绑定规则：无绑定=全适用；有绑定=任一行匹配即可
+                List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
+                if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
                     continue;
                 }
                 DeclarationMaterialItem virtual = new DeclarationMaterialItem();
@@ -326,7 +326,7 @@ public class DeclarationMaterialItemServiceImpl
                 virtual.setRemark(tpl.getRemark());
                 virtual.setFormSchema(tpl.getFormSchema());
                 virtual.setStatus(0);
-                // 虚拟项未落库，无 createBy/updateBy，前端按 id==null 判定显示为“—”
+                // 虚拟项未落库，无 createBy/updateBy，前端按 id==null 判定显示为"—"
                 result.add(virtual);
             }
         }
