@@ -188,32 +188,31 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
             // 按币种统计原币金额
             currencyOriginalAmounts.merge(currency, amt, BigDecimal::add);
 
-            // 计算银行手续费（原币）：从水单记录取 bankFee，按比例分摊
-            // 比例 = 关联金额 / 水单总金额（拆分时按比例分配）
+            // 银行手续费：主关联扣全额，副关联不扣
             BigDecimal bankFeeOriginal = r.get("bankFee") != null ? (BigDecimal) r.get("bankFee") : BigDecimal.ZERO;
-            BigDecimal proportionalFee = BigDecimal.ZERO;
             BigDecimal bankFeeCny = BigDecimal.ZERO;
             
-            // 计算内部操作手续费（CNY）：从水单记录取 internalBankFee，按比例分摊
+            // 内部操作手续费（CNY）：始终按比例分摊
             BigDecimal internalBankFeeOriginal = r.get("internalBankFee") != null ? (BigDecimal) r.get("internalBankFee") : BigDecimal.ZERO;
             BigDecimal internalBankFee = BigDecimal.ZERO;
             
-            // 计算分摊比例
+            // 判断是否为主关联（relationType=1）
+            Integer relationType = r.get("relationType") != null ? (Integer) r.get("relationType") : null;
+            boolean isMainRelation = (relationType != null && relationType == 1);
+            
+            // 计算分摊比例（内部操作费始终按比例）
             BigDecimal proportion = BigDecimal.ONE;
             if (fullAmt.compareTo(BigDecimal.ZERO) > 0 && relationAmt != null && relationAmt.compareTo(BigDecimal.ZERO) > 0) {
                 proportion = relationAmt.divide(fullAmt, 8, RoundingMode.HALF_UP);
             }
             
-            // 银行手续费按比例分摊
-            if (bankFeeOriginal.compareTo(BigDecimal.ZERO) > 0) {
-                // 按比例分摊后的原币手续费
-                proportionalFee = bankFeeOriginal.multiply(proportion).setScale(4, RoundingMode.HALF_UP);
-                // 转换为人民币
-                bankFeeCny = proportionalFee.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+            // 银行手续费：主关联扣全额，副关联不扣
+            if (bankFeeOriginal.compareTo(BigDecimal.ZERO) > 0 && isMainRelation) {
+                bankFeeCny = bankFeeOriginal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
             }
             totalBankFeeCny = totalBankFeeCny.add(bankFeeCny);
             
-            // 内部操作手续费按比例分摊（已经是CNY）
+            // 内部操作手续费：始终按比例分摊
             if (internalBankFeeOriginal.compareTo(BigDecimal.ZERO) > 0) {
                 internalBankFee = internalBankFeeOriginal.multiply(proportion).setScale(2, RoundingMode.HALF_UP);
             }
@@ -238,7 +237,7 @@ public class FinancialSupplementServiceImpl extends ServiceImpl<FinancialSupplem
             detail.put("remittanceName", r.get("remittanceName"));
             detail.put("bankAccountName", bankName);
             detail.put("bankFeeOriginal", bankFeeOriginal);  // 水单原始银行手续费（原币）
-            detail.put("bankFee", proportionalFee);           // 按比例分摊后的银行手续费（原币）
+            detail.put("bankFee", isMainRelation ? bankFeeOriginal : BigDecimal.ZERO); // 主关联扣全额，副关联不扣
             detail.put("bankFeeCny", bankFeeCny);             // 银行手续费（CNY）
             detail.put("internalBankFeeOriginal", internalBankFeeOriginal); // 水单原始内部操作手续费（CNY）
             detail.put("internalBankFee", internalBankFee);   // 按比例分摊后的内部操作手续费（CNY）
