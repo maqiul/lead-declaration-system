@@ -699,6 +699,7 @@ import { message, Modal } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
 import { PlusOutlined, DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, LinkOutlined, SearchOutlined, CloseOutlined, EyeOutlined, AuditOutlined } from '@ant-design/icons-vue'
 import { checkPermission } from '@/directives/permission'
+import { validateDeclarationCompleteness } from '@/utils/declaration-validation'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import {
@@ -1147,6 +1148,21 @@ const handleView = (record: DeclarationRecord) => {
 const handleStatusSubmit = async (record: DeclarationRecord) => {
   try {
     loading.value = true
+    // 提交前预校验：拉取完整详情在本地校验完整性（与后端规则一致）
+    const detailRes = await getDeclarationDetail(record.id, record.status)
+    const detail = detailRes.data?.data
+    const check = validateDeclarationCompleteness(detail)
+    if (!check.valid) {
+      loading.value = false
+      Modal.confirm({
+        title: '申报单信息不完整',
+        content: `${check.message}。是否前往编辑页补全？`,
+        okText: '去补全',
+        cancelText: '取消',
+        onOk: () => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}`) }
+      })
+      return
+    }
     const res = await submitDeclaration(record.id)
     if (res.data && res.data.code === 200) {
       message.success('流程启动完成，已进入部门初审阶段')

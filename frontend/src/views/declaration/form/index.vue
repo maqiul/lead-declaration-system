@@ -251,7 +251,19 @@
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="收货人公司名">
-              <a-input v-model:value="formData.consigneeCompany" placeholder="收货人公司名" :readonly="isFormReadonly" />
+              <a-auto-complete
+                v-model:value="formData.consigneeCompany"
+                :options="customerOptions"
+                placeholder="选择或输入收货人公司名"
+                :disabled="isFormReadonly"
+                @select="onCustomerSelect"
+                :filter-option="filterCustomerOption"
+                style="width: 100%"
+              >
+                <template #option="{ value: val, label }">
+                  <span>{{ label || val }}</span>
+                </template>
+              </a-auto-complete>
             </a-form-item>
           </a-col>
           <a-col :span="12">
@@ -1790,6 +1802,7 @@ import { getActiveMeasurementUnits, type MeasurementUnit } from '@/api/system/me
 import { getCitiesByCountry } from '@/api/system/city-info'
 import {  findUnitByCode } from '@/utils/measurement-unit'
 import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityConfig'
+import { getAllEnabledCustomers, type CustomerConfig } from '@/api/system/customerConfig'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
 import InvoiceSplitModal from './InvoiceSplitModal.vue'
 
@@ -3315,6 +3328,47 @@ const transportModeOptions = ref<any[]>([])
 // 国家选项
 const countryOptions = ref<any[]>([])
 
+// 常用客户选项
+const customerList = ref<CustomerConfig[]>([])
+const customerOptions = computed(() =>
+  customerList.value.map(c => ({
+    value: c.customerName,
+    label: c.customerName
+  }))
+)
+
+// 常用客户筛选
+const filterCustomerOption = (input: string, option: any) => {
+  return (option.label || '').toLowerCase().includes(input.toLowerCase())
+}
+
+// 选择常用客户后自动填充
+const onCustomerSelect = (value: string) => {
+  const customer = customerList.value.find(c => c.customerName === value)
+  if (customer) {
+    formData.consigneeCompany = customer.customerName
+    formData.consigneeAddress = customer.customerAddress || ''
+    if (customer.destinationCountry) {
+      formData.destinationCountry = customer.destinationCountry
+    }
+    if (customer.tradeCountry) {
+      formData.tradeCountry = customer.tradeCountry
+    }
+  }
+}
+
+// 加载常用客户
+const loadCustomers = async () => {
+  try {
+    const response = await getAllEnabledCustomers()
+    if (response.data?.code === 200) {
+      customerList.value = response.data.data || []
+    }
+  } catch (error) {
+    console.warn('加载常用客户失败', error)
+  }
+}
+
 // // 国家自动完成选项
 // const countryAutoCompleteOptions = computed(() => {
 //   return countryOptions.value.map(option => ({
@@ -4698,6 +4752,7 @@ onMounted(() => {
   loadCountries()
   loadMeasurementUnits()
   loadEntityList()
+  loadCustomers()
 })
 </script>
 

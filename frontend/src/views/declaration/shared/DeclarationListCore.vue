@@ -485,6 +485,7 @@ import { DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, Se
 import { checkPermission } from '@/directives/permission'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
 import { getAvailableFlowTemplates } from '@/api/business/declaration'
+import { validateDeclarationCompleteness } from '@/utils/declaration-validation'
 import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList, deleteDeclaration as deleteDeclarationApi, getDeclarationDetail,
@@ -805,7 +806,24 @@ const resetSearch = () => { searchForm.formNo = ''; searchForm.status = ''; sear
 const handleTableChange = (pag: any) => { pagination.current = pag.current; pagination.pageSize = pag.pageSize; loadData() }
 const handleView = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&readonly=true&status=${record.status}`) }
 const handleStatusSubmit = async (record: DeclarationRecord) => {
-  try { loading.value = true; const res = await submitDeclaration(record.id)
+  try {
+    loading.value = true
+    // 提交前预校验：拉取完整详情在本地校验完整性（与后端规则一致）
+    const detailRes = await getDeclarationDetail(record.id, record.status)
+    const detail = detailRes.data?.data
+    const check = validateDeclarationCompleteness(detail)
+    if (!check.valid) {
+      loading.value = false
+      Modal.confirm({
+        title: '申报单信息不完整',
+        content: `${check.message}。是否前往编辑页补全？`,
+        okText: '去补全',
+        cancelText: '取消',
+        onOk: () => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}`) }
+      })
+      return
+    }
+    const res = await submitDeclaration(record.id)
     if (res.data?.code === 200) { message.success('流程启动完成'); loadData() } else message.error('提交失败: ' + (res.data?.message || '未知错误'))
   } catch (e: any) { message.error('提交操作失败: ' + (e.message || '网络错误')) } finally { loading.value = false }
 }

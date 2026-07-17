@@ -44,7 +44,23 @@
             <a-row :gutter="16">
               <a-col :span="12">
                 <a-form-item label="收货人公司名">
-                  <a-input v-model:value="formData.consigneeCompany" placeholder="收货人公司名" :readonly="isFormReadonly" />
+                  <a-auto-complete
+                    v-model:value="formData.consigneeCompany"
+                    :options="consigneeOptions"
+                    :filter-option="false"
+                    placeholder="选择或输入收货人公司名"
+                    :disabled="isFormReadonly"
+                    allow-clear
+                    style="width: 100%"
+                    @select="handleConsigneeSelect"
+                  >
+                    <template #option="item">
+                      <span v-if="item.addNew" style="color: var(--color-primary); font-weight: 500;">
+                        <PlusOutlined /> {{ item.label }}
+                      </span>
+                      <span v-else>{{ item.label }}</span>
+                    </template>
+                  </a-auto-complete>
                 </a-form-item>
               </a-col>
               <a-col :span="12">
@@ -616,6 +632,51 @@
               </template>
             </a-table>
           </a-card>
+
+    <!-- 快速新增客户弹窗 -->
+    <a-modal
+      v-model:open="quickAddCustomerVisible"
+      title="快速新增客户"
+      @ok="handleQuickAddCustomer"
+      @cancel="handleQuickAddCustomerCancel"
+      :confirm-loading="quickAddCustomerSaving"
+      width="500px"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="客户公司名" required>
+          <a-input v-model:value="quickAddCustomerName" placeholder="请输入客户公司名" />
+        </a-form-item>
+        <a-form-item label="收货人地址" required>
+          <a-textarea v-model:value="quickAddCustomerAddress" placeholder="请输入收货人地址" :rows="2" />
+        </a-form-item>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="目的国" required>
+              <a-select
+                v-model:value="quickAddDestinationCountry"
+                show-search
+                allow-clear
+                placeholder="请选择目的国"
+                :options="countryOptions"
+                :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="贸易国" required>
+              <a-select
+                v-model:value="quickAddTradeCountry"
+                show-search
+                allow-clear
+                placeholder="请选择贸易国"
+                :options="countryOptions"
+                :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
+              />
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -626,7 +687,8 @@
  * - 结构性操作（添加/删除产品、箱子）通过 emit 通知父组件
  * - 纯 UI 状态（申报要素弹窗）保留在组件内部
  */
-import { ref, toRefs } from 'vue'
+import { ref, computed, toRefs } from 'vue'
+import { AutoComplete as AAutoComplete } from 'ant-design-vue'
 import { useFormState } from '../composables/useDeclarationForm'
 import {
   PlusOutlined, DeleteOutlined, EnvironmentOutlined,
@@ -657,12 +719,47 @@ const {
   syncProductDetails, getMaxQuantity, getMaxWeight,
   handleCompanyChange, filterCompanyOption,
   onDepartureCityChange, filterCountrySelectOption,
+  customerList, onCustomerSelect,
+  quickAddCustomerVisible, quickAddCustomerName, quickAddCustomerAddress,
+  quickAddDestinationCountry, quickAddTradeCountry, quickAddCustomerSaving, handleQuickAddCustomer,
   handleQuantityOrPriceChange, handleUnitChange, handleAmountChange,
   updateProductName, onHsCodeChange,
 } = toRefs(state) as any
 
 // 本地 UI 状态：申报要素弹窗
 const elementsModalVisible = ref(false)
+
+// 下拉选项：基于当前输入的公司名实时计算（a-auto-complete 的 v-model 就是输入文本）
+// 区分已有客户与“快速新增”；快速新增项 value 即输入文本，选中后输入框仍显示文本
+const consigneeOptions = computed(() => {
+  const q = (formData.value?.consigneeCompany || '') as string
+  const list = customerList.value || []
+  const opts = list
+    .filter((c: any) => !q || c.customerName.toLowerCase().includes(q.toLowerCase()))
+    .map((c: any) => ({ value: c.customerName, label: c.customerName, addNew: false }))
+  if (q && !list.some((c: any) => c.customerName.toLowerCase() === q.toLowerCase())) {
+    opts.push({ value: q, label: `快速新增：${q}`, addNew: true })
+  }
+  return opts
+})
+
+// 取消快速新增客户弹窗：保留当前公司名文本
+const handleQuickAddCustomerCancel = () => {
+  // 不需额外处理，formData.consigneeCompany 已为输入文本
+}
+
+// 收货人公司名选择处理（a-auto-complete @select）
+// option.addNew 为 true 表示“快速新增”，否则为已有客户
+const handleConsigneeSelect = (value: any, option: any) => {
+  if (option && option.addNew) {
+    // 新客户：打开快速新增弹窗，公司名 = 输入文本
+    onCustomerSelect.value('__add_new__', value)
+  } else {
+    // 选择已有客户，自动填充地址/目的国/贸易国
+    onCustomerSelect.value(value)
+  }
+}
+
 const currentProductForElements = ref<any>(null)
 const currentElementValues = ref<any[]>([])
 const elementsLoading = ref(false)

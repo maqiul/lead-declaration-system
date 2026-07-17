@@ -24,6 +24,7 @@ const preloadComponents = [
   () => import('@/views/system/country/index.vue'),
   () => import('@/views/system/measurement-unit/index.vue'),
   () => import('@/views/system/entity-config/index.vue'),
+  () => import('@/views/customer/index.vue'),
   () => import('@/views/system/flow-template/index.vue'),
   () => import('@/views/system/flow-node/index.vue'),
   () => import('@/views/system/dict/index.vue')
@@ -408,6 +409,20 @@ export const asyncRoutes: RouteRecordRaw[] = [
     name: 'DeclarationExternal',
     meta: { title: '集洛申报', icon: 'TeamOutlined' },
     children: createDeclarationChildren('External')
+  },
+  {
+    path: '/customer',
+    component: Layout,
+    name: 'Customer',
+    meta: { title: '常用客户', icon: 'UserOutlined' },
+    children: [
+      {
+        path: 'index',
+        name: 'CustomerConfig',
+        component: () => import('@/views/customer/index.vue'),
+        meta: { title: '客户管理', icon: 'TeamOutlined' }
+      }
+    ]
   },
   {
     path: '/contract',

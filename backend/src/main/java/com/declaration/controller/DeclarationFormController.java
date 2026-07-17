@@ -1481,6 +1481,14 @@ public class DeclarationFormController {
                 form.setOrgId(currentOrgId);
             }
 
+            // 提交前完整性校验：草稿可能缺字段，防止从列表页直接提交不完整的申报单
+            DeclarationForm fullForm = declarationFormService.getFullDeclarationForm(id);
+            String incompleteMsg = validateSubmitCompleteness(fullForm);
+            if (incompleteMsg != null) {
+                log.warn("申报单 {} 提交完整性校验未通过：{}", id, incompleteMsg);
+                return Result.fail(incompleteMsg);
+            }
+
             form.setStatus(1); // 已提交状态 - 待初审
             declarationFormService.updateById(form);
 
@@ -1507,7 +1515,7 @@ public class DeclarationFormController {
 
             // 在提交时生成Excel文件（Service 内部已处理保存/替换逻辑）
             try {
-                DeclarationForm fullForm = declarationFormService.getFullDeclarationForm(id);
+                // 复用上面校验时已加载的完整申报单，避免重复查询
                 if (fullForm != null) {
                     excelExportService.generateAndSaveExportDocuments(fullForm);
                     log.info("申报单 {} 提交时自动生成全套单证成功", fullForm.getFormNo());
@@ -1587,6 +1595,67 @@ public class DeclarationFormController {
             }
         }
         return Result.success("提交成功");
+    }
+
+    /**
+     * 提交前完整性校验，与前端表单页(handleSubmit)的校验规则保持一致。
+     * 无论从表单页还是列表页提交都会经过此校验。
+     *
+     * @param form 已加载 products/cartons/cartonProducts 的完整申报单
+     * @return null 表示校验通过；否则返回第一条错误信息
+     */
+    private String validateSubmitCompleteness(DeclarationForm form) {
+        if (form == null) {
+            return "申报单不存在";
+        }
+        if (!StringUtils.hasText(form.getConsigneeCompany())) {
+            return "收货人公司名未填写，无法提交";
+        }
+        if (!StringUtils.hasText(form.getConsigneeAddress())) {
+            return "收货人地址未填写，无法提交";
+        }
+        if (!StringUtils.hasText(form.getDestinationCountry())) {
+            return "目的地国家未选择，无法提交";
+        }
+        if (!StringUtils.hasText(form.getTradeCountry())) {
+            return "贸易国家未选择，无法提交";
+        }
+        if (!StringUtils.hasText(form.getTransportMode())) {
+            return "运输方式未选择，无法提交";
+        }
+        if (!StringUtils.hasText(form.getDepartureCity())) {
+            return "出发城市未选择，无法提交";
+        }
+        if (!StringUtils.hasText(form.getCurrency())) {
+            return "货币未选择，无法提交";
+        }
+
+        List<DeclarationProduct> products = form.getProducts();
+        if (products == null || products.isEmpty()) {
+            return "请至少添加一个产品后再提交";
+        }
+
+        // 每个产品必须已分配到箱子（与前端 unassignedProducts 校验一致）
+        List<DeclarationCartonProduct> cartonProducts = form.getCartonProducts();
+        Set<Long> assignedProductIds = new HashSet<>();
+        if (cartonProducts != null) {
+            for (DeclarationCartonProduct cp : cartonProducts) {
+                if (cp.getProductId() != null) {
+                    assignedProductIds.add(cp.getProductId());
+                }
+            }
+        }
+        List<String> unassigned = new ArrayList<>();
+        for (DeclarationProduct p : products) {
+            if (p.getId() == null || !assignedProductIds.contains(p.getId())) {
+                unassigned.add(StringUtils.hasText(p.getProductName()) ? p.getProductName() : "未命名产品");
+            }
+        }
+        if (!unassigned.isEmpty()) {
+            return "以下产品未分配箱子：" + String.join("、", unassigned) + "，请在箱子信息中关联产品后再提交";
+        }
+
+        return null;
     }
 
     /**

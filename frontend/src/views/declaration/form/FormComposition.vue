@@ -400,6 +400,7 @@ import { getActiveMeasurementUnits, type MeasurementUnit } from '@/api/system/me
 import { getCitiesByCountry } from '@/api/system/city-info'
 import {  findUnitByCode } from '@/utils/measurement-unit'
 import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityConfig'
+import { getAllEnabledCustomers, addCustomer, type CustomerConfig } from '@/api/system/customerConfig'
 import { getFlowTemplateNodesByCode } from '@/api/system/flowTemplate'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
 import InvoiceSplitModal from './InvoiceSplitModal.vue'
@@ -543,6 +544,126 @@ const filterCompanyOption = (input: string, option: any) => {
   // 通过 label 文本匹配
   if (typeof label === 'string' && label.toLowerCase().includes(lowerInput)) return true
   return false
+}
+
+// 常用客户
+const customerList = ref<CustomerConfig[]>([])
+const customerOptions = computed(() => {
+  const searchText = formData.consigneeCompany || ''
+  const options = customerList.value
+    .filter(c => !searchText || c.customerName.toLowerCase().includes(searchText.toLowerCase()))
+    .map(c => ({
+      value: c.customerName,
+      label: c.customerName
+    }))
+  // 如果输入的内容不在列表中，显示"快速新增"选项
+  if (searchText && !customerList.value.some(c => c.customerName.toLowerCase() === searchText.toLowerCase())) {
+    options.push({
+      value: '__add_new__',
+      label: `+ 快速新增: ${searchText}`
+    })
+  }
+  return options
+})
+
+// 常用客户筛选（a-auto-complete 不需要 filter-option，已在 computed 中处理）
+const filterCustomerOption = () => true
+
+// 选择常用客户后自动填充
+const onCustomerSelect = (value: string, displayName?: string) => {
+  if (value === '__add_new__') {
+    // 打开快速新增弹窗，带入表单已填写的信息（地址/目的国/贸易国），便于直接沉淀为常用客户
+    quickAddCustomerName.value = displayName || formData.consigneeCompany || ''
+    quickAddCustomerAddress.value = formData.consigneeAddress || ''
+    quickAddDestinationCountry.value = formData.destinationCountry || ''
+    quickAddTradeCountry.value = formData.tradeCountry || ''
+    quickAddCustomerVisible.value = true
+    return
+  }
+  const customer = customerList.value.find(c => c.customerName === value)
+  if (customer) {
+    formData.consigneeCompany = customer.customerName
+    formData.consigneeAddress = customer.customerAddress || ''
+    if (customer.destinationCountry) {
+      formData.destinationCountry = getCountryCodeByName(customer.destinationCountry)
+    }
+    if (customer.tradeCountry) {
+      formData.tradeCountry = getCountryCodeByName(customer.tradeCountry)
+    }
+  }
+}
+
+// 加载常用客户
+const loadCustomers = async () => {
+  try {
+    const response = await getAllEnabledCustomers()
+    if (response.data?.code === 200) {
+      customerList.value = response.data.data || []
+    }
+  } catch (error) {
+    console.warn('加载常用客户失败', error)
+  }
+}
+
+// 快速新增客户
+const quickAddCustomerVisible = ref(false)
+const quickAddCustomerName = ref('')
+const quickAddCustomerAddress = ref('')
+const quickAddDestinationCountry = ref('')
+const quickAddTradeCountry = ref('')
+const quickAddCustomerSaving = ref(false)
+
+const handleQuickAddCustomer = async () => {
+  if (!quickAddCustomerName.value.trim()) {
+    message.warning('请输入客户公司名')
+    return
+  }
+  if (!quickAddCustomerAddress.value.trim()) {
+    message.warning('请输入收货人地址')
+    return
+  }
+  if (!quickAddDestinationCountry.value) {
+    message.warning('请选择目的国')
+    return
+  }
+  if (!quickAddTradeCountry.value) {
+    message.warning('请选择贸易国')
+    return
+  }
+  quickAddCustomerSaving.value = true
+  try {
+    const response = await addCustomer({
+      customerName: quickAddCustomerName.value.trim(),
+      customerAddress: quickAddCustomerAddress.value.trim(),
+      destinationCountry: getCountryEnglishName(quickAddDestinationCountry.value),
+      tradeCountry: getCountryEnglishName(quickAddTradeCountry.value),
+      status: 1
+    })
+    if (response.data?.code === 200) {
+      message.success('客户添加成功')
+      quickAddCustomerVisible.value = false
+      // 重新加载客户列表
+      await loadCustomers()
+      // 自动选中新添加的客户
+      const newCustomer = customerList.value.find(c => c.customerName === quickAddCustomerName.value.trim())
+      if (newCustomer) {
+        formData.consigneeCompany = newCustomer.customerName
+        formData.consigneeAddress = newCustomer.customerAddress || ''
+        if (newCustomer.destinationCountry) {
+          formData.destinationCountry = getCountryCodeByName(newCustomer.destinationCountry)
+        }
+        if (newCustomer.tradeCountry) {
+          formData.tradeCountry = getCountryCodeByName(newCustomer.tradeCountry)
+        }
+      }
+    } else {
+      message.error(response.data?.message || '添加失败')
+    }
+  } catch (error) {
+    message.error('添加失败')
+  } finally {
+    quickAddCustomerSaving.value = false
+  }
 }
 const returnReason = ref('')
 const auditHistoryVisible = ref(false)
@@ -2193,6 +2314,16 @@ const getCountryEnglishName = (countryCode: string): string => {
   return country ? country.englishName : countryCode;
 }
 
+// 根据国家名称（英文/中文）反查国家代码；已是代码或找不到则原样返回
+// 用于将存储层的英文全名转为表单下拉的 value(code)
+const getCountryCodeByName = (name: string): string => {
+  if (!name) return name;
+  const country = countryOptions.value.find(
+    (item: any) => item.value === name || item.englishName === name || item.chineseName === name
+  );
+  return country ? country.value : name;
+}
+
 // 根据国家代码获取中文全名
 // const getCountryChineseName = (countryCode: string): string => {
 //   const country = countryOptions.value.find(item => item.value === countryCode);
@@ -2861,6 +2992,9 @@ const handleSaveDraft = async () => {
     // 构建保存数据
     const draftData = {
       ...formData,
+      // 关键：与提交一致，将国家代码转换为英文全名后再入库（避免草稿存成纯 code）
+      destinationCountry: formData.destinationCountry ? getCountryEnglishName(formData.destinationCountry) : '',
+      tradeCountry: formData.tradeCountry ? getCountryEnglishName(formData.tradeCountry) : '',
       id: formId.value,
       status: 0,
       totalQuantity: totals.value.totalQuantity,
@@ -2962,12 +3096,15 @@ const handleSubmit = async () => {
       message.error('请至少添加一个产品')
       return
     }    
-    // 检查所有产品是否都关联了箱子
+    // 检查所有产品是否都关联了箱子（同时检查 productDetails 和 selectedProducts）
     const unassignedProducts = productList.value.filter(product => {
-      // 检查这个产品是否在任何箱子的产品列表中
-      return !cartonList.value.some(carton => 
-        carton.selectedProducts && carton.selectedProducts.includes(product.id)
-      )
+      return !cartonList.value.some(carton => {
+        // 优先检查 productDetails（主要数据源），回退到 selectedProducts
+        if (carton.productDetails && carton.productDetails.length > 0) {
+          return carton.productDetails.some((d: any) => d.productId === product.id)
+        }
+        return carton.selectedProducts && carton.selectedProducts.includes(product.id)
+      })
     })
     
     if(!formData.transportMode){
@@ -3212,8 +3349,8 @@ const loadData = async () => {
         formData.departureCity = detailData.departureCity || 'SHANGHAI, CHINA'
                 formData.departureCityChinese = detailData.departureCityChinese || '上海'
                 formData.departureCityEnglish = detailData.departureCityEnglish || 'SHANGHAI, CHINA'
-        formData.destinationCountry = detailData.destinationCountry || ''
-        formData.tradeCountry = detailData.tradeCountry || ''
+        formData.destinationCountry = getCountryCodeByName(detailData.destinationCountry || '')
+        formData.tradeCountry = getCountryCodeByName(detailData.tradeCountry || '')
         formData.currency = detailData.currency || currencyOptions.value[0]?.value || 'USD'
         formData.declarationDate = detailData.declarationDate ? dayjs(detailData.declarationDate) : undefined
         formData.declarationType = detailData.declarationType || 'EXTERNAL'
@@ -3505,6 +3642,10 @@ provideFormState({
   // 产品/箱子操作
   handleCompanyChange, filterCompanyOption,
   onDepartureCityChange, filterCountrySelectOption,
+  // 常用客户
+  customerList, customerOptions, filterCustomerOption, onCustomerSelect,
+  quickAddCustomerVisible, quickAddCustomerName, quickAddCustomerAddress,
+  quickAddDestinationCountry, quickAddTradeCountry, quickAddCustomerSaving, handleQuickAddCustomer,
   handleQuantityOrPriceChange, handleUnitChange, handleAmountChange,
   updateProductName, onHsCodeChange,
   getProductCartonInfo, getProductDisplayById,
@@ -3549,8 +3690,13 @@ onMounted(() => {
       // 根据模板配置加载区块显示
       loadTemplateSections(templateFromQuery)
     }
-    if (typeFromQuery && ['SELF', 'EXTERNAL'].includes(typeFromQuery)) {
-      formData.declarationType = typeFromQuery
+    // 优先使用页面上下文的 declarationType（来自申报列表页），回退到模板的 type
+    const dtFromQuery = route.query.declarationType as string
+    const resolvedType = (dtFromQuery && ['SELF', 'EXTERNAL'].includes(dtFromQuery))
+      ? dtFromQuery
+      : (typeFromQuery && ['SELF', 'EXTERNAL'].includes(typeFromQuery) ? typeFromQuery : null)
+    if (resolvedType) {
+      formData.declarationType = resolvedType
     }
     // 运输方式从 URL 预选并锁定
     if (transportFromQuery) {
@@ -3563,6 +3709,7 @@ onMounted(() => {
   loadCountries()
   loadMeasurementUnits()
   loadEntityList()
+  loadCustomers()
 })
 </script>
 
