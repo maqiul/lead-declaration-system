@@ -108,6 +108,12 @@
             <a-tag v-if="record.pendingRollback" color="orange" style="margin-top: 2px;">
               退回待审
             </a-tag>
+            <a-tag v-if="record.exemptionStatus === 0" color="blue" style="margin-top: 2px;">
+              豁免审核中
+            </a-tag>
+            <a-tag v-else-if="record.exemptionStatus === 2" color="red" style="margin-top: 2px;">
+              豁免已驳回
+            </a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
@@ -136,6 +142,14 @@
                 <a-button type="link" size="small" style="color: #1677ff;" @click="handleMaterialSubmit(record as any)">
                   <template #icon><UploadOutlined /></template>
                   提交资料
+                </a-button>
+              </template>
+
+              <!-- 待资料提交状态 + 当前用户有权审核豁免: 豁免审核按钮 -->
+              <template v-if="record.status === 2 && record.canAuditExemption">
+                <a-button type="link" size="small" style="color: #fa541c;" @click="handleExemptionAudit(record as any)">
+                  <template #icon><AuditOutlined /></template>
+                  豁免审核
                 </a-button>
               </template>
 
@@ -494,6 +508,7 @@ import {
   applyReturnToDraft, auditReturnToDraft, getReturnAuditHistory
 } from '@/api/business/declaration'
 import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile, getContractDownloadUrl } from '@/api/business/contract'
+import { getBatchPendingExemptions } from '@/api/business/materialItem'
 import MaterialAuditModal from '../material/components/MaterialAuditModal.vue'
 import InvoiceAuditModal from '../material/components/InvoiceAuditModal.vue'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
@@ -544,7 +559,7 @@ interface DeclarationRecord {
   declarationDate?: string; totalAmount?: number; totalCartons?: number; status: number
   createTime?: string; financeUploadPending?: boolean; attachments?: any[]
   hasContract?: boolean; regenerateButtons?: any[]; activeTasks?: string[]; myTasks?: string[]
-  needsFlowMigration?: boolean; pendingRollback?: boolean
+  needsFlowMigration?: boolean; pendingRollback?: boolean; pendingExemptionId?: number; exemptionStatus?: number; canAuditExemption?: boolean
 }
 
 const dataSource = ref<DeclarationRecord[]>([])
@@ -769,6 +784,24 @@ const loadData = async () => {
           }
         } catch (e: any) { console.error('查询待审核退回申请失败:', e) }
       }
+      // 查询所有申报单的豁免状态
+      const exemptionCheckIds = dataSource.value.map((r: any) => r.id)
+      if (exemptionCheckIds.length > 0) {
+        try {
+          const exRes = await getBatchPendingExemptions(exemptionCheckIds.join(','))
+          if (exRes.data?.code === 200 && exRes.data.data) {
+            const exMap = exRes.data.data as Record<string, { id: number; status: number; canAudit?: boolean }>
+            dataSource.value.forEach((r: any) => {
+              const ex = exMap[String(r.id)]
+              if (ex) {
+                r.pendingExemptionId = ex.status === 0 ? ex.id : undefined
+                r.exemptionStatus = ex.status
+                r.canAuditExemption = ex.canAudit === true
+              }
+            })
+          }
+        } catch (e: any) { console.error('查询豁免状态失败:', e) }
+      }
     } else { dataSource.value = []; pagination.total = 0 }
   } catch (error: any) {
     console.error('加载数据失败:', error)
@@ -831,6 +864,7 @@ const handleEdit = (record: DeclarationRecord) => { if (record.status !== 0) { m
 const handleAudit = (record: DeclarationRecord, taskKey?: string) => { const q: any = { id: record.id, mode: 'audit' }; if (taskKey) q.taskKey = taskKey; router.push({ path: `${declarationPrefix.value}/form-v2`, query: q }) }
 const handleMaterialSubmit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&scrollTo=material`) }
 const handleMaterialAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=materialAudit&scrollTo=material`) }
+const handleExemptionAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?exemptionId=${record.pendingExemptionId}&mode=exemptionAudit`) }
 const handleGoMode = (record: DeclarationRecord, mode: string) => {
   // 根据 mode 确定滚动位置
   const scrollMap: Record<string, string> = {

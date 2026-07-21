@@ -69,6 +69,16 @@ public class DeclarationForm {
     private String transportMode;
 
     /**
+     * 贸易方式(Incoterms)
+     */
+    private String tradeTerm;
+
+    /**
+     * 到达港口(C组/D组贸易方式时必填)
+     */
+    private String arrivalPort;
+
+    /**
      * 支付方式
      */
     private String paymentMethod;

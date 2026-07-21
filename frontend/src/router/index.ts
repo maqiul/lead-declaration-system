@@ -135,6 +135,12 @@ export const asyncRoutes: RouteRecordRaw[] = [
         meta: { title: '运输方式', icon: 'CarOutlined', permission: 'system:transport:view' }
       },
       {
+        path: 'trade-term',
+        name: 'TradeTerm',
+        component: () => import('@/views/system/trade-term/index.vue'),
+        meta: { title: '贸易方式', icon: 'SwapOutlined', permission: 'system:tradeterm:view' }
+      },
+      {
         path: 'payment-method',
         name: 'PaymentMethod',
         component: () => import('@/views/system/payment-method/index.vue'),

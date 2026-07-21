@@ -72,10 +72,10 @@
             
             <a-row :gutter="16">
               <a-col :span="8">
-                <a-form-item label="出发城市">
+                <a-form-item label="出发口岸">
                   <a-select
                     v-model:value="formData.departureCity"
-                    placeholder="请选择出发城市"
+                    placeholder="请选择出发口岸"
                     :disabled="isFormReadonly"
                     show-search
                     option-filter-prop="label"
@@ -128,7 +128,31 @@
                   <div v-if="transportModeLocked" style="font-size: 11px; color: #999; margin-top: 2px;">新建时已选定，不可修改</div>
                 </a-form-item>
               </a-col>
-              <a-col :span="6">
+              <a-col :span="5">
+                <a-form-item label="贸易方式">
+                  <a-select 
+                    v-model:value="formData.tradeTerm" 
+                    :options="filteredTradeTermOptions"
+                    placeholder="请选择贸易方式" 
+                    :disabled="isFormReadonly"
+                    style="width: 100%"
+                    allow-clear
+                    show-search
+                    option-filter-prop="label"
+                  />
+                </a-form-item>
+              </a-col>
+              <a-col :span="5" v-if="isArrivalPortRequired">
+                <a-form-item label="到达港口" required>
+                  <a-input 
+                    v-model:value="formData.arrivalPort" 
+                    placeholder="请输入到达港口" 
+                    :disabled="isFormReadonly"
+                    style="width: 100%"
+                  />
+                </a-form-item>
+              </a-col>
+              <a-col :span="isArrivalPortRequired ? 5 : 7">
                 <a-form-item label="支付方式">
                   <a-select 
                     v-model:value="formData.paymentMethod" 
@@ -140,16 +164,7 @@
                   />
                 </a-form-item>
               </a-col>
-              <a-col :span="8">
-                <a-form-item label="发票号">
-                  <a-input 
-                    v-model:value="formData.invoiceNo" 
-                    placeholder="请输入发票号，留空则自动生成(ZIYI-yy-mmdd格式)" 
-                    :readonly="isFormReadonly"
-                  />
-                </a-form-item>
-              </a-col>
-              <a-col :span="6">
+              <a-col :span="isArrivalPortRequired ? 5 : 8">
                 <a-form-item label="币种">
                   <a-select 
                     v-model:value="formData.currency" 
@@ -159,6 +174,17 @@
                     show-search
                     option-filter-prop="label"
                     style="width: 100%"
+                  />
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-row :gutter="16">
+              <a-col :span="10">
+                <a-form-item label="发票号">
+                  <a-input 
+                    v-model:value="formData.invoiceNo" 
+                    placeholder="请输入发票号，留空则自动生成(ZIYI-yy-mmdd格式)" 
+                    :readonly="isFormReadonly"
                   />
                 </a-form-item>
               </a-col>
@@ -687,7 +713,7 @@
  * - 结构性操作（添加/删除产品、箱子）通过 emit 通知父组件
  * - 纯 UI 状态（申报要素弹窗）保留在组件内部
  */
-import { ref, computed, toRefs } from 'vue'
+import { ref, computed, toRefs, watch } from 'vue'
 import { AutoComplete as AAutoComplete } from 'ant-design-vue'
 import { useFormState } from '../composables/useDeclarationForm'
 import {
@@ -712,7 +738,7 @@ const {
   formData, isFormReadonly, transportModeLocked,
   entityList, productList, cartonList,
   cityOptions, countryOptions, currencyOptions,
-  transportModeOptions, paymentMethodOptions, productOptions,
+  transportModeOptions, tradeTermOptions, paymentMethodOptions, productOptions,
   productColumns, cartonColumns, productAutoCompleteOptionsWithCustom,
   hsOptions, measurementUnits,
   totals, getProductCartonInfo, getProductDisplayById,
@@ -728,6 +754,39 @@ const {
 
 // 本地 UI 状态：申报要素弹窗
 const elementsModalVisible = ref(false)
+
+// 贸易方式联动逻辑：根据运输方式过滤可选贸易方式
+const filteredTradeTermOptions = computed(() => {
+  const mode = formData.value?.transportMode
+  if (!mode) return tradeTermOptions.value || []
+  // 将运输方式的 name(value) 映射为 code，与关联表中的 transport_mode_code 匹配
+  const modeOption = (transportModeOptions.value || []).find((opt: any) => opt.value === mode)
+  const modeCode = modeOption?.code || mode
+  return (tradeTermOptions.value || []).filter((opt: any) => {
+    const modes = opt.transportModes || []
+    return modes.length === 0 || modes.includes(modeCode)
+  })
+})
+
+// 运输方式变更时，若已选贸易方式不在过滤列表中则清空
+watch(() => formData.value?.transportMode, () => {
+  const current = formData.value?.tradeTerm
+  if (current && !filteredTradeTermOptions.value.some((opt: any) => opt.value === current)) {
+    formData.value.tradeTerm = undefined
+  }
+})
+
+// 贸易方式联动逻辑：C组和D组需要到达港口
+const isTradeTermRequired = computed(() => {
+  const tradeTerm = formData.value?.tradeTerm
+  if (!tradeTerm) return false
+  const option = filteredTradeTermOptions.value?.find((opt: any) => opt.value === tradeTerm)
+  return option?.groupName === 'C组' || option?.groupName === 'D组'
+})
+
+const isArrivalPortRequired = computed(() => {
+  return isTradeTermRequired.value
+})
 
 // 下拉选项：基于当前输入的公司名实时计算（a-auto-complete 的 v-model 就是输入文本）
 // 区分已有客户与“快速新增”；快速新增项 value 即输入文本，选中后输入框仍显示文本

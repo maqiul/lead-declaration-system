@@ -297,6 +297,8 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         fillData.put("departureCity", form.getDepartureCity());
         fillData.put("destinationRegion", form.getDestinationCountry());
         fillData.put("totalAmount", form.getTotalAmount());
+        fillData.put("tradeTerm",form.getTradeTerm());
+        fillData.put("port",form.getArrivalPort().isBlank() ? form.getDepartureCityEnglish() : form.getArrivalPort());
         // 总金额英文大写
         if (form.getTotalAmount() != null) {
             fillData.put("totalAmountWords", convertAmountToWords(form.getTotalAmount().doubleValue(),form.getCurrency()));

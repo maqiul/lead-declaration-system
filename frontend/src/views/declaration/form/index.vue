@@ -275,10 +275,10 @@
         
         <a-row :gutter="16">
           <a-col :span="8">
-            <a-form-item label="出发城市">
+            <a-form-item label="出发口岸">
               <a-select
                 v-model:value="formData.departureCity"
-                placeholder="请选择出发城市"
+                placeholder="请选择出发口岸"
                 :disabled="isFormReadonly"
                 show-search
                 option-filter-prop="label"
@@ -2732,10 +2732,7 @@ const handleSubmitMaterial = async () => {
     return stage !== 'SUPPLEMENT' && stage !== 'INVOICE'
   })
   const missing = submitItems.filter((i) => i.required === 1 && i.status !== 1)
-  if (missing.length > 0) {
-    message.warning(`还有 ${missing.length} 项必填资料未上传：${missing.map((m) => m.name).join('、')}`)
-    return
-  }
+
   const schemaMissing = validateMaterialSchemaFields()
   if (schemaMissing) {
     message.warning(schemaMissing)
@@ -2762,12 +2759,12 @@ const handleSubmitMaterial = async () => {
     return
   }
 
-  const doSubmit = async () => {
+  const doSubmit = async (skipRequiredCheck: boolean) => {
     try {
       submitting.value = true
-      const res = await submitMaterial(formId.value!)
+      const res = await submitMaterial(formId.value!, skipRequiredCheck)
       if (res.data?.code === 200) {
-        message.success('资料提交成功，等待审核')
+        message.success(skipRequiredCheck ? '资料已提交，等待豁免审核' : '资料提交成功，等待审核')
         goBack()
       } else {
         message.error(res.data?.message || '提交失败')
@@ -2779,13 +2776,22 @@ const handleSubmitMaterial = async () => {
     }
   }
 
-  const confirmText = '提交后将进入资料审核流程，无法修改。'
+  if (missing.length > 0) {
+    Modal.confirm({
+      title: `还有 ${missing.length} 项必填资料未上传`,
+      content: `缺失项：${missing.map((m) => m.name).join('、')}。\n确认提交？系统将创建豁免审批流程，审核通过后主流程继续。`,
+      okText: '确认提交',
+      cancelText: '取消',
+      onOk: () => doSubmit(true)
+    })
+    return
+  }
 
   Modal.confirm({
     title: '确认提交资料审核？',
-    content: confirmText,
+    content: '提交后将进入资料审核流程，无法修改。',
     okText: '确认提交',
-    onOk: doSubmit
+    onOk: () => doSubmit(false)
   })
 }
 
@@ -4235,7 +4241,7 @@ const handleSubmit = async () => {
       return
     }
     if (!formData.departureCity) {
-      message.error('请选择出发城市')
+      message.error('请选择出发口岸')
       return
     }
     if(!formData.currency){

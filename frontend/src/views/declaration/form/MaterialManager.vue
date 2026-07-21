@@ -2,7 +2,7 @@
   <div class="material-manager">
     <a-spin :spinning="loading">
       <!-- 动态渲染每个环节 -->
-      <template v-for="section in visibleSections" :key="section.itemValue">
+      <template v-for="(section, sectionIdx) in visibleSections" :key="section.itemValue">
         <a-card
           :title="section.config.sectionTitle || section.label"
           size="small"
@@ -10,20 +10,49 @@
           :id="'section-' + section.itemValue"
         >
           <template #extra>
-            <!-- submit 模式：提交按钮 -->
-            <a-button
-              v-if="mode === 'submit' && canOperateSection(section) && section.config.submitKey"
-              type="primary"
-              size="small"
-              :loading="submittingKey === section.config.submitKey"
-              @click="handleSubmit(section)"
-            >
-              <template #icon><UploadOutlined /></template>
-              {{ section.config.btnText || '提交审核' }}
-            </a-button>
-            <!-- audit 模式：通过/驳回按钮 -->
-            <a-space v-if="mode === 'audit' && canOperateSection(section) && section.config.auditTaskKey">
+            <a-space align="center">
+              <!-- 豁免审批记录按钮（仅在第一个环节卡片显示） -->
               <a-button
+                v-if="sectionIdx === 0 && exemptionCount && exemptionCount > 0"
+                size="small"
+                @click="emit('viewExemptionHistory')"
+              >
+                <template #icon><HistoryOutlined /></template>
+                豁免审批记录 ({{ exemptionCount }})
+              </a-button>
+              <!-- 豁免审核按钮（仅在第一个环节卡片且豁免审核模式显示） -->
+              <a-button
+                v-if="sectionIdx === 0 && showExemptionAudit && hasPendingExemption"
+                type="primary"
+                size="small"
+                @click="emit('exemptionApprove')"
+              >
+                <template #icon><CheckCircleOutlined /></template>
+                {{ exemptionStep === 2 ? '豁免复核通过' : '豁免通过' }}
+              </a-button>
+              <a-button
+                v-if="sectionIdx === 0 && showExemptionAudit && hasPendingExemption"
+                danger
+                size="small"
+                @click="emit('exemptionReject')"
+              >
+                <template #icon><CloseCircleOutlined /></template>
+                {{ exemptionStep === 2 ? '豁免复核驳回' : '豁免驳回' }}
+              </a-button>
+              <!-- submit 模式：提交按钮 -->
+              <a-button
+                v-if="mode === 'submit' && canOperateSection(section) && section.config.submitKey"
+                type="primary"
+                size="small"
+                :loading="submittingKey === section.config.submitKey"
+                @click="handleSubmit(section)"
+              >
+                <template #icon><UploadOutlined /></template>
+                {{ section.config.btnText || '提交审核' }}
+              </a-button>
+              <!-- audit 模式：通过/驳回按钮 -->
+              <a-button
+                v-if="mode === 'audit' && canOperateSection(section) && section.config.auditTaskKey"
                 type="primary"
                 size="small"
                 :loading="submittingKey === section.config.auditTaskKey"
@@ -33,6 +62,7 @@
                 审核通过
               </a-button>
               <a-button
+                v-if="mode === 'audit' && canOperateSection(section) && section.config.auditTaskKey"
                 danger
                 size="small"
                 :loading="submittingKey === section.config.auditTaskKey"
@@ -240,7 +270,7 @@ import {
   UploadOutlined, FileDoneOutlined, FileTextOutlined, CloudUploadOutlined,
   CheckCircleOutlined, CloseCircleOutlined, PlusOutlined,
   MoreOutlined, EditOutlined, DeleteOutlined, CloseOutlined,
-  UserOutlined, ClockCircleOutlined,
+  UserOutlined, ClockCircleOutlined, HistoryOutlined,
 } from '@ant-design/icons-vue'
 import {
   getMaterialItems, submitStage, auditStage,
@@ -270,6 +300,14 @@ const props = withDefaults(defineProps<{
   stopBefore?: string
   /** 是否可操作（由父组件根据权限和状态控制） */
   canOperate?: (section: { submitKey?: string; auditTaskKey?: string }) => boolean
+  /** 豁免审批记录数量（>0 时显示按钮） */
+  exemptionCount?: number
+  /** 是否有待审核的豁免申请 */
+  hasPendingExemption?: boolean
+  /** 豁免审核当前步骤（1 或 2） */
+  exemptionStep?: number
+  /** 是否显示豁免审核按钮（仅豁免审核模式为 true） */
+  showExemptionAudit?: boolean
 }>(), {
   mode: 'submit',
   formStatus: null,
@@ -281,6 +319,9 @@ const emit = defineEmits<{
   (e: 'submitted', submitKey: string): void
   (e: 'audited', auditTaskKey: string, approved: boolean): void
   (e: 'previewFile', fileUrl: string): void
+  (e: 'viewExemptionHistory'): void
+  (e: 'exemptionApprove'): void
+  (e: 'exemptionReject'): void
 }>()
 
 // ==================== 类型 ====================
@@ -462,8 +503,36 @@ const handleSubmit = (section: SectionInfo) => {
 
   // 前端校验：必填项是否已上传
   const missing = items.filter((i: MaterialItem) => i.required === 1 && i.status !== 1)
+
+  const doSubmit = async (skipRequiredCheck: boolean) => {
+    try {
+      submittingKey.value = submitKey
+      const res = await submitStage(props.formId, submitKey, skipRequiredCheck)
+      if (res.data?.code === 200) {
+        message.success(skipRequiredCheck
+          ? `${section.label}已提交，等待豁免审核`
+          : `${section.label}提交成功，等待审核`)
+        emit('submitted', submitKey)
+        await loadData()
+      } else {
+        message.error(res.data?.message || '提交失败')
+      }
+    } catch (e: any) {
+      message.error(e?.message || '提交失败')
+    } finally {
+      submittingKey.value = null
+    }
+  }
+
   if (missing.length > 0) {
-    message.warning(`还有 ${missing.length} 项必填资料未上传：${missing.map((m: MaterialItem) => m.name).join('、')}`)
+    // 必填不全：弹确认框允许强制提交（走豁免流程）
+    Modal.confirm({
+      title: `还有 ${missing.length} 项必填资料未上传`,
+      content: `缺失项：${missing.map((m: MaterialItem) => m.name).join('、')}。\n确认提交？系统将创建豁免审批流程，审核通过后主流程继续。`,
+      okText: '确认提交',
+      cancelText: '取消',
+      onOk: () => doSubmit(true)
+    })
     return
   }
 
@@ -471,23 +540,7 @@ const handleSubmit = (section: SectionInfo) => {
     title: `确认${section.config.btnText || '提交'}？`,
     content: '提交后将进入审核流程，无法修改。',
     okText: '确认提交',
-    onOk: async () => {
-      try {
-        submittingKey.value = submitKey
-        const res = await submitStage(props.formId, submitKey)
-        if (res.data?.code === 200) {
-          message.success(`${section.label}提交成功，等待审核`)
-          emit('submitted', submitKey)
-          await loadData()
-        } else {
-          message.error(res.data?.message || '提交失败')
-        }
-      } catch (e: any) {
-        message.error(e?.message || '提交失败')
-      } finally {
-        submittingKey.value = null
-      }
-    }
+    onOk: () => doSubmit(false)
   })
 }
 

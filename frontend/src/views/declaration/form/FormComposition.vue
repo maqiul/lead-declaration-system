@@ -1,6 +1,6 @@
 <template>
   <div class="declaration-form-page">
-    <a-card :title="(isMaterialMode ? (isReadonly ? '申报资料查看' : '提交申报资料') : isMaterialAuditMode ? '申报单详情 - 资料审核' : isSupplementMode ? '申报单详情 - 补充资料提交' : isSupplementAuditMode ? '申报单详情 - 补充资料审核' : canSubmitInvoiceAmount ? '申报单详情 - 申请开票金额' : (canAuditInvoiceAmount || isInvoiceAmountAuditMode) ? '申报单详情 - 开票金额审核' : isInvoiceAmountMode ? '申报单详情 - 申请开票金额' : isInvoiceAuditMode ? '申报单详情 - 发票审核' : isInvoiceUploadMode ? '申报单详情 - 上传发票' : '出口申报表单')" >
+    <a-card :title="(isMaterialMode ? (isReadonly ? '申报资料查看' : '提交申报资料') : isExemptionAuditMode ? '申报单详情 - 豁免审核' : isMaterialAuditMode ? '申报单详情 - 资料审核' : isSupplementMode ? '申报单详情 - 补充资料提交' : isSupplementAuditMode ? '申报单详情 - 补充资料审核' : canSubmitInvoiceAmount ? '申报单详情 - 申请开票金额' : (canAuditInvoiceAmount || isInvoiceAmountAuditMode) ? '申报单详情 - 开票金额审核' : isInvoiceAmountMode ? '申报单详情 - 申请开票金额' : isInvoiceAuditMode ? '申报单详情 - 发票审核' : isInvoiceUploadMode ? '申报单详情 - 上传发票' : '出口申报表单')" >
       <template #extra>
         <a-space>
           <a-button @click="goBack">
@@ -41,8 +41,9 @@
 
           <!-- 资料提交模式下的按钮：状态 2（待资料提交）时显示 -->
           <template v-else-if="isMaterialMode && !isReadonly">
+            <!-- 无豁免申请：显示正常提交按钮 -->
             <a-button
-              v-if="formStatus === 2"
+              v-if="formStatus === 2 && !pendingExemption"
               type="primary"
               @click="handleSubmitMaterial"
               :loading="submitting"
@@ -218,6 +219,33 @@
         @remove-product-photo="(i: number) => handleRemoveProductPhoto(i)"
       />
 
+      <!-- 豁免审批状态提示 -->
+      <a-alert
+        v-if="pendingExemption"
+        type="warning"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        <template #message>
+          <span>资料豁免审批中</span>
+          <a-tag color="orange" style="margin-left: 8px">
+            {{ pendingExemption.exemptionType === 'INVOICE' ? '发票类(两步审核)' : pendingExemption.exemptionType === 'MIXED' ? '混合类' : '普通(一步审核)' }}
+          </a-tag>
+          <a-tag v-if="exemptionTaskInfo" color="blue" style="margin-left: 4px">
+            当前: {{ exemptionTaskInfo.taskName || '豁免审核' }} ({{ exemptionTaskInfo.step || 1 }}/{{ exemptionTaskInfo.totalSteps || 1 }})
+          </a-tag>
+        </template>
+        <template #description>
+          <div>缺失文件清单：</div>
+          <ul style="margin: 4px 0 0 16px; padding: 0">
+            <li v-for="(item, idx) in parseExemptionMissingItems(pendingExemption)" :key="idx">
+              {{ item.name }}<span v-if="item.stage">（{{ item.stage }}）</span>
+            </li>
+          </ul>
+          <div v-if="pendingExemption.auditRemark" style="margin-top: 4px; color: #999">备注：{{ pendingExemption.auditRemark }}</div>
+        </template>
+      </a-alert>
+
       <!-- 资料管理：开票金额之前的环节（资料、补充资料） -->
       <MaterialManager
         v-if="showMaterialManager"
@@ -229,9 +257,16 @@
         :section-range="hasSection('invoiceAmount') ? 'pre' : 'all'"
         :stop-before="'invoiceAmount'"
         :can-operate="canOperateMaterialStage"
+        :exemption-count="exemptionHistory.length"
+        :has-pending-exemption="!!pendingExemption"
+        :exemption-step="exemptionTaskInfo?.step || 1"
+        :show-exemption-audit="isExemptionAuditMode"
         @submitted="() => goBack()"
         @audited="() => goBack()"
         @preview-file="previewFile"
+        @view-exemption-history="exemptionHistoryModalVisible = true"
+        @exemption-approve="handleExemptionAudit(true)"
+        @exemption-reject="handleExemptionAudit(false)"
       />
 
       <!-- 申请开票金额（插入在补充资料和发票资料之间） -->
@@ -328,6 +363,39 @@
     <!-- 20%拆分产品设置弹窗 -->
     <InvoiceSplitModal ref="invoiceSplitModalRef" :form-id="formId!" :calc-detail="invoiceAmountCalcDetail" :readonly="!hasFinancePermission" @confirm="handleSplitConfirm" />
 
+    <!-- 豁免审批记录弹窗 -->
+    <a-modal
+      v-model:open="exemptionHistoryModalVisible"
+      title="豁免审批记录"
+      :footer="null"
+      :width="600"
+    >
+      <a-timeline style="padding: 16px 0 0 8px">
+        <a-timeline-item
+          v-for="(ex, idx) in exemptionHistory"
+          :key="idx"
+          :color="ex.status === 0 ? 'blue' : ex.status === 1 ? 'green' : 'red'"
+        >
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+            <a-tag :color="ex.status === 0 ? 'processing' : ex.status === 1 ? 'success' : 'error'" style="margin: 0">
+              {{ ex.status === 0 ? '审核中' : ex.status === 1 ? '已通过' : '已驳回' }}
+            </a-tag>
+            <a-tag color="default" style="margin: 0">
+              {{ ex.exemptionType === 'INVOICE' ? '发票类' : ex.exemptionType === 'MIXED' ? '混合类' : '普通' }}
+            </a-tag>
+            <span style="color: #999; font-size: 12px">{{ ex.auditTime || ex.createTime }}</span>
+          </div>
+          <div v-if="ex.missingItems" style="margin-top: 4px; font-size: 12px; color: #666">
+            缺失项：{{ parseExemptionMissingItems(ex).map((i: any) => i.name).join('、') }}
+          </div>
+          <div v-if="ex.auditRemark" style="margin-top: 2px; font-size: 12px; color: #999">
+            审核意见：{{ ex.auditRemark }}
+          </div>
+        </a-timeline-item>
+      </a-timeline>
+      <a-empty v-if="exemptionHistory.length === 0" description="暂无记录" />
+    </a-modal>
+
   </div>
 </template>
 
@@ -382,6 +450,10 @@ import {
   submitInvoiceAmount,
   auditInvoiceAmount,
   getInvoiceAmountDetail,
+  getExemptionList,
+  getExemptionDetail,
+  auditExemption,
+  getExemptionCurrentTask,
   type MaterialItem,
   type MaterialAttachment
 } from '@/api/business/materialItem'
@@ -393,6 +465,7 @@ import {
 import { getEnabledDictItems } from '@/api/system/dict'
 import { getProductTypes } from '@/api/system/product'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
+import { getEnabledTradeTerms } from '@/api/system/tradeTerm'
 import { getEnabledPaymentMethods } from '@/api/system/paymentMethod'
 import { getEnabledCountries } from '@/api/system'
 import { getEnabledCurrencies } from '@/api/system/currency'
@@ -426,8 +499,9 @@ const router = useRouter()
 // 页面状态
 const isAudit = ref(route.query.mode === 'audit')
 const isPaymentMode = ref(route.query.mode === 'payment') // 水单提交模式
-const isMaterialMode = ref(route.query.mode === 'material') // 资料提交/查看模式
+const isMaterialMode = ref(route.query.mode === 'material' || route.query.mode === 'exemptionAudit') // 资料提交/查看/豁免审核模式
 const isMaterialAuditMode = ref(route.query.mode === 'materialAudit') // 资料审核模式
+const isExemptionAuditMode = ref(route.query.mode === 'exemptionAudit') // 豁免审核模式
 const isInvoiceAuditMode = ref(route.query.mode === 'invoiceAudit') // 发票审核模式
 const isInvoiceUploadMode = ref(route.query.mode === 'invoiceUpload') // 发票上传模式
 const isSupplementMode = ref(route.query.mode === 'supplement') // 补充资料提交模式
@@ -695,7 +769,7 @@ const activeTasks = ref<any[]>([])
 const measurementUnits = ref<MeasurementUnit[]>([])
 
 // 基本信息是否只读（审核模式、查看模式、水单提交模式、资料模式、资料审核模式、发票上传模式都只读）
-const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value || isMaterialMode.value || isMaterialAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value || isSupplementMode.value || isSupplementAuditMode.value || isInvoiceAmountMode.value || isInvoiceAmountAuditMode.value)
+const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value || isMaterialMode.value || isMaterialAuditMode.value || isExemptionAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value || isSupplementMode.value || isSupplementAuditMode.value || isInvoiceAmountMode.value || isInvoiceAmountAuditMode.value)
 
 // 运输方式是否锁定（新建弹窗预选后不可修改）
 const transportModeLocked = ref(false)
@@ -1148,6 +1222,8 @@ const materialManagerMode = computed<'submit' | 'audit'>(() => {
 /** MaterialManager 可操作性判断：从流程配置动态匹配 nodeKey → targetStatus */
 const canOperateMaterialStage = (section: { submitKey?: string; auditTaskKey?: string }): boolean => {
   if (route.query.readonly === 'true' || isAudit.value) return false
+  // 豁免审批中：资料区域只读
+  if (pendingExemption.value) return false
   const s = formStatus.value
   if (s == null) return false
   const map = stepStatusMap.value
@@ -1330,6 +1406,108 @@ const loadMaterialItems = async () => {
   }
 }
 
+// ==================== 豁免审批 ====================
+const pendingExemption = ref<any>(null)
+const exemptionTaskInfo = ref<any>(null)
+const exemptionHistory = ref<any[]>([])
+const exemptionHistoryModalVisible = ref(false)
+
+const loadExemptionStatus = async () => {
+  if (!formId.value) return
+  try {
+    const res = await getExemptionList(formId.value)
+    if (res.data?.code === 200) {
+      const list = res.data.data || []
+      exemptionHistory.value = list
+      pendingExemption.value = list.find((e: any) => e.status === 0) || null
+      // 加载当前流程步骤信息
+      if (pendingExemption.value) {
+        const taskRes = await getExemptionCurrentTask(pendingExemption.value.id)
+        if (taskRes.data?.code === 200) {
+          exemptionTaskInfo.value = taskRes.data.data
+        }
+      } else {
+        exemptionTaskInfo.value = null
+      }
+    }
+  } catch { /* silent */ }
+}
+
+const parseExemptionMissingItems = (exemption: any): any[] => {
+  if (!exemption?.missingItems) return []
+  try {
+    return typeof exemption.missingItems === 'string'
+      ? JSON.parse(exemption.missingItems)
+      : exemption.missingItems
+  } catch { return [] }
+}
+
+const handleExemptionAudit = (approved: boolean) => {
+  if (!pendingExemption.value) return
+
+  if (approved) {
+    // 通过：直接确认
+    Modal.confirm({
+      title: '确认通过豁免审核？',
+      content: '通过后主流程将继续推进。',
+      okText: '确认通过',
+      onOk: async () => {
+        try {
+          submitting.value = true
+          const res = await auditExemption({ id: pendingExemption.value.id, result: 1, remark: '' })
+          if (res.data?.code === 200) {
+            message.success('豁免审核通过')
+            goBack()
+          } else {
+            message.error(res.data?.message || '操作失败')
+          }
+        } catch (e) {
+          message.error('操作失败')
+        } finally {
+          submitting.value = false
+        }
+      }
+    })
+  } else {
+    // 驳回：弹窗输入原因
+    let remark = ''
+    Modal.confirm({
+      title: '确认驳回豁免申请？',
+      content: () => h('div', [
+        h('div', { style: 'margin-bottom:8px;color:#d46b08;' }, '驳回后申报人需补充资料后重新提交豁免申请。'),
+        h(Textarea, {
+          rows: 3,
+          maxlength: 500,
+          placeholder: '请输入驳回原因（必填）',
+          'onUpdate:value': (v: string) => { remark = v }
+        })
+      ]),
+      okText: '确认驳回',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        if (!remark.trim()) {
+          message.warning('请填写驳回原因')
+          return Promise.reject()
+        }
+        try {
+          submitting.value = true
+          const res = await auditExemption({ id: pendingExemption.value.id, result: 2, remark })
+          if (res.data?.code === 200) {
+            message.success('豁免已驳回')
+            goBack()
+          } else {
+            message.error(res.data?.message || '操作失败')
+          }
+        } catch (e) {
+          message.error('操作失败')
+        } finally {
+          submitting.value = false
+        }
+      }
+    })
+  }
+}
+
 const saveMaterialRowFields = async (record: MaterialItem) => {
   if (!isMaterialEditable.value) return
   try {
@@ -1476,10 +1654,7 @@ const handleSubmitMaterial = async () => {
   // 只校验资料提交阶段的项，不包含非资料提交环节
   const submitItems = materialItems.value.filter((i) => !excludedStages.value.has(getItemStage(i)))
   const missing = submitItems.filter((i) => i.required === 1 && i.status !== 1)
-  if (missing.length > 0) {
-    message.warning(`还有 ${missing.length} 项必填资料未上传：${missing.map((m) => m.name).join('、')}`)
-    return
-  }
+
   const schemaMissing = validateMaterialSchemaFields()
   if (schemaMissing) {
     message.warning(schemaMissing)
@@ -1506,12 +1681,12 @@ const handleSubmitMaterial = async () => {
     return
   }
 
-  const doSubmit = async () => {
+  const doSubmit = async (skipRequiredCheck: boolean) => {
     try {
       submitting.value = true
-      const res = await submitMaterial(formId.value!)
+      const res = await submitMaterial(formId.value!, skipRequiredCheck)
       if (res.data?.code === 200) {
-        message.success('资料提交成功，等待审核')
+        message.success(skipRequiredCheck ? '资料已提交，等待豁免审核' : '资料提交成功，等待审核')
         goBack()
       } else {
         message.error(res.data?.message || '提交失败')
@@ -1523,13 +1698,23 @@ const handleSubmitMaterial = async () => {
     }
   }
 
-  const confirmText = '提交后将进入资料审核流程，无法修改。'
+  if (missing.length > 0) {
+    // 必填不全：弹确认框允许强制提交（走豁免流程）
+    Modal.confirm({
+      title: `还有 ${missing.length} 项必填资料未上传`,
+      content: `缺失项：${missing.map((m) => m.name).join('、')}。\n确认提交？系统将创建豁免审批流程，审核通过后主流程继续。`,
+      okText: '确认提交',
+      cancelText: '取消',
+      onOk: () => doSubmit(true)
+    })
+    return
+  }
 
   Modal.confirm({
     title: '确认提交资料审核？',
-    content: confirmText,
+    content: '提交后将进入资料审核流程，无法修改。',
     okText: '确认提交',
-    onOk: doSubmit
+    onOk: () => doSubmit(false)
   })
 }
 
@@ -2039,6 +2224,8 @@ const formData = reactive({
   consigneeAddress: '',
   invoiceNo: '',
   transportMode: undefined as string | undefined,
+  tradeTerm: undefined as string | undefined,
+  arrivalPort: '',
   paymentMethod: undefined as string | undefined,
   departureCity: '',
   departureCityChinese: '',
@@ -2069,6 +2256,9 @@ const paymentMethodOptions = ref<any[]>([])
 
 // 运输方式选项
 const transportModeOptions = ref<any[]>([])
+
+// 贸易方式选项
+const tradeTermOptions = ref<any[]>([])
 
 // 国家选项
 const countryOptions = ref<any[]>([])
@@ -2149,7 +2339,8 @@ const loadTransportModes = async () => {
     if (response.data.code === 200 && response.data.data.length > 0) {
       transportModeOptions.value = response.data.data.map((item: any) => ({
         label: item.chineseName || item.name,
-        value: item.name || item.name
+        value: item.name || item.name,
+        code: item.code || item.name
       }))
       console.log('加载运输方式成功:', transportModeOptions.value)
     }
@@ -2157,11 +2348,29 @@ const loadTransportModes = async () => {
     console.warn('加载运输方式失败:', error)
     // 使用默认运输方式
     transportModeOptions.value = [
-      { label: '海运', value: 'SEA' },
-      { label: '空运', value: 'AIR' },
-      { label: '陆运', value: 'LAND' },
-      { label: '快递', value: 'EXPRESS' }
+      { label: '海运', value: 'SEA', code: 'SEA' },
+      { label: '空运', value: 'AIR', code: 'AIR' },
+      { label: '陆运', value: 'LAND', code: 'TRUCK' },
+      { label: '快递', value: 'EXPRESS', code: 'EXPRESS' }
     ]
+  }
+}
+
+// 加载贸易方式选项
+const loadTradeTerms = async () => {
+  try {
+    const response = await getEnabledTradeTerms()
+    if (response.data.code === 200 && response.data.data.length > 0) {
+      tradeTermOptions.value = response.data.data.map((item: any) => ({
+        label: item.code ? `${item.code} (${item.chineseName || item.name})` : (item.chineseName || item.name),
+        value: item.code,
+        groupName: item.groupName,
+        transportModes: item.transportModes || []
+      }))
+      console.log('加载贸易方式成功:', tradeTermOptions.value)
+    }
+  } catch (error) {
+    console.warn('加载贸易方式失败:', error)
   }
 }
 
@@ -3083,8 +3292,18 @@ const handleSubmit = async () => {
       message.error('请选择运输方式')
       return
     }
+    // 贸易方式校验：C组和D组需要到达港口
+    if (formData.tradeTerm) {
+      const tradeTermOption = tradeTermOptions.value.find((opt: any) => opt.value === formData.tradeTerm)
+      if (tradeTermOption && (tradeTermOption.groupName === 'C组' || tradeTermOption.groupName === 'D组')) {
+        if (!formData.arrivalPort || !formData.arrivalPort.trim()) {
+          message.error('选择C组或D组贸易方式时，必须填写到达港口')
+          return
+        }
+      }
+    }
     if (!formData.departureCity) {
-      message.error('请选择出发城市')
+      message.error('请选择出发口岸')
       return
     }
     if(!formData.currency){
@@ -3263,10 +3482,24 @@ const handleSubmit = async () => {
 
 // 加载数据
 const loadData = async () => {
+  // 豁免审核模式：通过 exemptionId 反查 formId
+  if (!formId.value && route.query.exemptionId) {
+    try {
+      const exDetail = await getExemptionDetail(route.query.exemptionId as string)
+      if (exDetail.data?.code === 200 && exDetail.data.data) {
+        formId.value = exDetail.data.data.formId
+        formStatus.value = 2 // 豁免审核时主流程状态必然是2
+      }
+    } catch (e) {
+      console.error('加载豁免记录失败', e)
+    }
+  }
+
   // 并行加载配置数据
   await Promise.all([
     loadProductTypes(),
     loadTransportModes(),
+    loadTradeTerms(),
     loadPaymentMethods(),
     loadCountries(),
     loadCurrencies(),
@@ -3345,6 +3578,8 @@ const loadData = async () => {
         formData.consigneeAddress = detailData.consigneeAddress || ''
         formData.invoiceNo = detailData.invoiceNo || ''
         formData.transportMode = detailData.transportMode
+        formData.tradeTerm = detailData.tradeTerm || undefined
+        formData.arrivalPort = detailData.arrivalPort || ''
         formData.paymentMethod = detailData.paymentMethod
         formData.departureCity = detailData.departureCity || 'SHANGHAI, CHINA'
                 formData.departureCityChinese = detailData.departureCityChinese || '上海'
@@ -3459,6 +3694,7 @@ const loadData = async () => {
         // 加载申报资料（状态 >=2 资料模块即可浏览/操作）
         if (formId.value && submittedStatus >= 2) {
           await loadMaterialItems()
+          await loadExemptionStatus()
           // 申报资料区仅展示「资料上传」环节；业务发票在下方独立区域编辑
           const stages = availableStages.value
           if (stages.length > 0) {
@@ -3466,7 +3702,17 @@ const loadData = async () => {
           } else {
             activeStageTab.value = DEFAULT_STAGE
           }
-          scrollToQuerySection()
+          // 豁免审核模式：自动滚动到资料区域
+          if (isExemptionAuditMode.value) {
+            nextTick(() => {
+              setTimeout(() => {
+                const el = document.querySelector('.material-manager')
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }, 200)
+            })
+          } else {
+            scrollToQuerySection()
+          }
         }
 
         // 补充资料审过后（status>5）：任意入口进入都加载开票金额详情（自用申报跳过）
@@ -3623,7 +3869,7 @@ provideFormState({
   // 核心数据
   formData, formId, formStatus, submitting,
   // 模式标志
-  isMaterialMode, isMaterialAuditMode, isSupplementMode, isSupplementAuditMode,
+  isMaterialMode, isMaterialAuditMode, isExemptionAuditMode, isSupplementMode, isSupplementAuditMode,
   isInvoiceAmountMode, isInvoiceAmountAuditMode, isInvoiceUploadMode, isInvoiceAuditMode,
   isReadonly, isAudit,
   // 表单只读
@@ -3633,7 +3879,7 @@ provideFormState({
   // 配置数据
   entityList, productList, cartonList,
   cityOptions, countryOptions, currencyOptions,
-  transportModeOptions, paymentMethodOptions, productOptions,
+  transportModeOptions, tradeTermOptions, paymentMethodOptions, productOptions,
   productAutoCompleteOptionsWithCustom,
   hsOptions, measurementUnits,
   productColumns, cartonColumns,

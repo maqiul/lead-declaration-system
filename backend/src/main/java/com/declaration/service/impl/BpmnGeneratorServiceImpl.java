@@ -65,15 +65,16 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
         FlowTemplate template = flowTemplateService.getById(templateId);
 
         String processKey = template.getCode();
+        String processType = template.getProcessType() != null ? template.getProcessType() : "declaration";
 
         ProcessDefinition pd = new ProcessDefinition();
         pd.setProcessKey(processKey);
-        pd.setProcessName("申报流程-" + template.getName());
-        pd.setCategory("declaration");
+        pd.setProcessName(("exemption".equals(processType) ? "豁免流程-" : "申报流程-") + template.getName());
+        pd.setCategory(processType);
         pd.setDescription("由模板[" + template.getCode() + "]自动生成");
 
         processDefinitionService.deployProcess(bpmnXml, pd);
-        log.info("模板 {} BPMN 已生成并部署, processKey={}", templateId, processKey);
+        log.info("模板 {} BPMN 已生成并部署, processKey={}, category={}", templateId, processKey, processType);
 
         return "deployed";
     }
@@ -85,6 +86,8 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
      * @param enabledNodes  已启用节点（按编排顺序，混合 serviceTask + userTask）
      */
     private String buildBpmnXml(FlowTemplate template, List<FlowTemplateNode> enabledNodes) {
+        // 根据流程类型确定监听器
+        String listenerExpr = getListenerExpression(template.getProcessType());
         StringBuilder xml = new StringBuilder();
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.append("<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\"\n");
@@ -153,7 +156,7 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
                    .append("\" name=\"").append(escapeXml(node.getNodeName())).append("\"\n");
                 xml.append("      flowable:delegateExpression=\"").append(delegateExpr).append("\">\n");
                 xml.append("      <extensionElements>\n");
-                xml.append("        <flowable:executionListener event=\"end\" delegateExpression=\"${declarationTaskListener}\" />\n");
+                xml.append("        <flowable:executionListener event=\"end\" delegateExpression=\"").append(listenerExpr).append("\" />\n");
                 xml.append("      </extensionElements>\n");
                 xml.append("    </serviceTask>\n\n");
 
@@ -172,7 +175,7 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
                 boolean isAudit = isAuditNode(effectiveCandidateGroups, node.getNodeKey());
                 String nodeId = node.getNodeKey();
 
-                appendUserTask(xml, node, effectiveAssignee, effectiveCandidateGroups);
+                appendUserTask(xml, node, effectiveAssignee, effectiveCandidateGroups, listenerExpr);
 
                 if (lastSubmitId.startsWith("gw_")) {
                     sequenceFlows.add(lastSubmitId + " -> " + nodeId + " [approved==true]");
@@ -211,22 +214,30 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
                         sequenceFlows.add(gwId + " -> endEvent [approved==true]");
                     }
 
-                    // 驳回处理：找前置提交节点，找不到则回到当前审核节点自身（自循环）
-                    String prevSubmit = findPreviousSubmitId(enabledNodes, i);
-                    String rejectTarget = (prevSubmit != null) ? prevSubmit : nodeId;
+                    // 驳回处理：检查节点是否配置了 rejectToEnd
+                    boolean nodeRejectToEnd = node.getRejectToEnd() != null && node.getRejectToEnd() == 1;
 
-                    // 检查当前审核节点与前一个提交节点之间是否配置了 rejectHandler
-                    boolean thisAuditHasRejectHandler = hasRejectHandlerBetween(enabledNodes, i);
-
-                    if (thisAuditHasRejectHandler) {
-                        // 配置了 rejectHandler：网关 → rejectHandler → 目标节点
-                        String rejectId = "rejectHandler_" + gwIndex;
-                        sequenceFlows.add(gwId + " -> " + rejectId + " [approved==false]");
-                        sequenceFlows.add(rejectId + " -> " + rejectTarget);
-                        rejectHandlerInfos.add(new int[]{gwIndex, curX - hSpacing});
+                    if (nodeRejectToEnd) {
+                        // 驳回直接结束流程
+                        sequenceFlows.add(gwId + " -> endEvent [approved==false]");
                     } else {
-                        // 未配置 rejectHandler：网关驳回直接回到上一个提交节点
-                        sequenceFlows.add(gwId + " -> " + rejectTarget + " [approved==false]");
+                        // 驳回处理：找前置提交节点，找不到则回到当前审核节点自身（自循环）
+                        String prevSubmit = findPreviousSubmitId(enabledNodes, i);
+                        String rejectTarget = (prevSubmit != null) ? prevSubmit : nodeId;
+
+                        // 检查当前审核节点与前一个提交节点之间是否配置了 rejectHandler
+                        boolean thisAuditHasRejectHandler = hasRejectHandlerBetween(enabledNodes, i);
+
+                        if (thisAuditHasRejectHandler) {
+                            // 配置了 rejectHandler：网关 → rejectHandler → 目标节点
+                            String rejectId = "rejectHandler_" + gwIndex;
+                            sequenceFlows.add(gwId + " -> " + rejectId + " [approved==false]");
+                            sequenceFlows.add(rejectId + " -> " + rejectTarget);
+                            rejectHandlerInfos.add(new int[]{gwIndex, curX - hSpacing});
+                        } else {
+                            // 未配置 rejectHandler：网关驳回直接回到上一个提交节点
+                            sequenceFlows.add(gwId + " -> " + rejectTarget + " [approved==false]");
+                        }
                     }
                 }
             }
@@ -240,8 +251,8 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
             xml.append("    <userTask id=\"").append(rejectId)
                .append("\" name=\"驳回修改\" flowable:assignee=\"${starterId}\">\n");
             xml.append("      <extensionElements>\n");
-            xml.append("        <flowable:taskListener event=\"create\" delegateExpression=\"${declarationTaskListener}\" />\n");
-            xml.append("        <flowable:taskListener event=\"complete\" delegateExpression=\"${declarationTaskListener}\" />\n");
+            xml.append("        <flowable:taskListener event=\"create\" delegateExpression=\"").append(listenerExpr).append("\" />\n");
+            xml.append("        <flowable:taskListener event=\"complete\" delegateExpression=\"").append(listenerExpr).append("\" />\n");
             xml.append("      </extensionElements>\n");
             xml.append("    </userTask>\n\n");
 
@@ -252,7 +263,7 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
         // 4. EndEvent
         xml.append("    <endEvent id=\"endEvent\" name=\"结束\">\n");
         xml.append("      <extensionElements>\n");
-        xml.append("        <flowable:executionListener event=\"end\" delegateExpression=\"${declarationTaskListener}\" />\n");
+        xml.append("        <flowable:executionListener event=\"end\" delegateExpression=\"").append(listenerExpr).append("\" />\n");
         xml.append("      </extensionElements>\n");
         xml.append("    </endEvent>\n\n");
         diagramShapes.add(new String[]{"endEvent", String.valueOf(curX), String.valueOf(mainY), "36", "36"});
@@ -272,7 +283,12 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
             parts = flow.split(" -> ");
             String source = parts[0].trim();
             String target = parts[1].trim();
-            String flowId = "flow_" + source + "_" + target;
+            // 当有条件时加入后缀避免同一 source→target 多条线 ID 冲突
+            String condSuffix = "";
+            if (condition != null) {
+                condSuffix = condition.contains("true") ? "_pass" : "_reject";
+            }
+            String flowId = "flow_" + source + "_" + target + condSuffix;
 
             xml.append("    <sequenceFlow id=\"").append(flowId)
                .append("\" sourceRef=\"").append(source)
@@ -423,7 +439,7 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
     /**
      * 生成 userTask XML 片段（使用覆盖后的 assignee / candidateGroups）
      */
-    private void appendUserTask(StringBuilder xml, FlowNode node, String assignee, String candidateGroups) {
+    private void appendUserTask(StringBuilder xml, FlowNode node, String assignee, String candidateGroups, String listenerExpr) {
         xml.append("    <userTask id=\"").append(node.getNodeKey())
            .append("\" name=\"").append(escapeXml(node.getNodeName())).append("\"");
 
@@ -441,8 +457,8 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
 
         // TaskListener
         xml.append("      <extensionElements>\n");
-        xml.append("        <flowable:taskListener event=\"create\" delegateExpression=\"${declarationTaskListener}\" />\n");
-        xml.append("        <flowable:taskListener event=\"complete\" delegateExpression=\"${declarationTaskListener}\" />\n");
+        xml.append("        <flowable:taskListener event=\"create\" delegateExpression=\"").append(listenerExpr).append("\" />\n");
+        xml.append("        <flowable:taskListener event=\"complete\" delegateExpression=\"").append(listenerExpr).append("\" />\n");
         xml.append("      </extensionElements>\n");
 
         xml.append("    </userTask>\n\n");
@@ -489,6 +505,17 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
             return prev.getNodeKey();
         }
         return null;
+    }
+
+    /**
+     * 根据流程类型返回对应的监听器表达式
+     */
+    private String getListenerExpression(String processType) {
+        if ("exemption".equals(processType)) {
+            return "${exemptionTaskListener}";
+        }
+        // 默认使用申报流程监听器
+        return "${declarationTaskListener}";
     }
 
     private String escapeXml(String s) {

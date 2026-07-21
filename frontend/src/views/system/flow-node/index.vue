@@ -183,6 +183,10 @@
             <a-select-option v-for="opt in formSectionOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
           </a-select>
         </a-form-item>
+        <a-form-item label="驳回结束" v-if="modalForm.nodeType === 'userTask'">
+          <a-switch v-model:checked="rejectToEndChecked" checked-children="是" un-checked-children="否" />
+          <div class="text-xs text-gray-400 mt-1">开启后审核驳回将直接结束流程，而非回退到上一个提交节点</div>
+        </a-form-item>
         <a-form-item label="节点说明">
           <a-textarea v-model:value="modalForm.description" placeholder="可选" :rows="2" :maxlength="500" />
         </a-form-item>
@@ -192,7 +196,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import {
@@ -251,7 +255,13 @@ const modalForm = ref({
   formSection: undefined as string | undefined,
   processType: 'declaration' as string,
   delegateExpression: '' as string | undefined,
+  rejectToEnd: 0 as number,
   description: '' as string | undefined,
+})
+
+const rejectToEndChecked = computed({
+  get: () => modalForm.value.rejectToEnd === 1,
+  set: (val: boolean) => { modalForm.value.rejectToEnd = val ? 1 : 0 }
 })
 
 function openAddModal() {
@@ -264,6 +274,7 @@ function openAddModal() {
     targetStatus: undefined, formSection: undefined,
     processType: filterProcessType.value,
     delegateExpression: undefined,
+    rejectToEnd: 0,
     description: undefined,
   }
   modalVisible.value = true
@@ -283,6 +294,7 @@ function openEditModal(record: FlowNode) {
     formSection: record.formSection,
     processType: record.processType || 'declaration',
     delegateExpression: record.delegateExpression,
+    rejectToEnd: record.rejectToEnd ?? 0,
     description: record.description,
   }
   modalVisible.value = true

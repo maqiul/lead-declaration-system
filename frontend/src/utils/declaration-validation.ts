@@ -29,7 +29,7 @@ export function validateDeclarationCompleteness(form: any): DeclarationCompleten
   if (!form.destinationCountry) return fail('目的地国家未选择，无法提交')
   if (!form.tradeCountry) return fail('贸易国家未选择，无法提交')
   if (!form.transportMode) return fail('运输方式未选择，无法提交')
-  if (!form.departureCity) return fail('出发城市未选择，无法提交')
+  if (!form.departureCity) return fail('出发口岸未选择，无法提交')
   if (!form.currency) return fail('货币未选择，无法提交')
 
   const products: any[] = form.products || []

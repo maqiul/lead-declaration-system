@@ -339,6 +339,14 @@ const handleTabChange = (key: any) => {
 }
 
 const handleView = (task: Task) => {
+  // 豁免审核任务：跳转到豁免审核模式
+  if (task.activityId === 'exemptionAudit' || task.activityId === 'exemptionInvoiceAudit') {
+    router.push({
+      path: '/declaration/form-v2',
+      query: { exemptionId: task.businessKey, mode: 'exemptionAudit' }
+    })
+    return
+  }
   // 跳转到申报单管理页面并打开审核/查看模式，或者直接显示任务详情
   // 统一逻辑：跳转到业务单据页
   if (task.businessKey) {
@@ -398,6 +406,18 @@ const handleComplete = (task: Task) => {
         taskId: task.taskId, 
         mode: 'audit',
         status: 7  // 提货单待审状态
+      }
+    })
+    return
+  }
+  // 豁免审核任务：跳转到申报单详情页，豁免审核模式
+  if (task.activityId === 'exemptionAudit' || task.activityId === 'exemptionInvoiceAudit') {
+    router.push({
+      path: '/declaration/form-v2',
+      query: {
+        exemptionId: task.businessKey,
+        taskId: task.taskId,
+        mode: 'exemptionAudit'
       }
     })
     return

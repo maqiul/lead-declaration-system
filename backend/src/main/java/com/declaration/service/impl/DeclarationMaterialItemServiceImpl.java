@@ -6,6 +6,7 @@ import com.declaration.dao.BusinessAuditRecordDao;
 import com.declaration.dao.DeclarationMaterialItemDao;
 import com.declaration.entity.BusinessAuditRecord;
 import com.declaration.entity.DeclarationForm;
+import com.declaration.entity.DeclarationMaterialExemption;
 import com.declaration.entity.DeclarationMaterialItem;
 import com.declaration.entity.DeclarationMaterialTemplate;
 import com.declaration.entity.FinancialSupplement;
@@ -14,6 +15,7 @@ import com.declaration.entity.MaterialTemplateBinding;
 import com.declaration.entity.SysDictItem;
 import com.declaration.entity.User;
 import com.declaration.service.DeclarationFormService;
+import com.declaration.service.DeclarationMaterialExemptionService;
 import com.declaration.service.DeclarationMaterialItemService;
 import com.declaration.service.DeclarationMaterialTemplateService;
 import com.declaration.service.DeclarationRemittanceService;
@@ -68,6 +70,7 @@ public class DeclarationMaterialItemServiceImpl
     private FinancialSupplementService financialSupplementService;
     private final DeclarationRemittanceService remittanceService;
     private final SysDictService sysDictService;
+    private final DeclarationMaterialExemptionService exemptionService;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
@@ -460,11 +463,11 @@ public class DeclarationMaterialItemServiceImpl
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void submit(Long formId, Long currentUserId) {
+    public void submit(Long formId, Long currentUserId, boolean skipRequiredCheck) {
         if (formId == null) {
             throw new RuntimeException("申报单ID不能为空");
         }
-        // 懒创建模式下，必填校验必须基于"模板 + 手动项"而非仅仅已落库的实例
+        // 懒创建模式下，必填校验必须基于“模板 + 手动项”而非仅仅已落库的实例
         // 只校验资料提交阶段的项，不包含补充资料(SUPPLEMENT)和发票(INVOICE)阶段
         List<DeclarationMaterialItem> items = listByFormId(formId);
         Map<String, DeclarationMaterialItem> itemByCode = new HashMap<>();
@@ -484,7 +487,7 @@ public class DeclarationMaterialItemServiceImpl
         DeclarationForm form = declarationFormService.getById(formId);
         String formFlowCode = (form != null) ? form.getTemplateCode() : null;
         String formTransportMode = (form != null) ? form.getTransportMode() : null;
-
+    
         List<DeclarationMaterialTemplate> templates = templateService.listEnabled();
         // 批量查询模板的绑定规则
         Map<Long, List<MaterialTemplateBinding>> tplBindingMap = Collections.emptyMap();
@@ -492,6 +495,9 @@ public class DeclarationMaterialItemServiceImpl
             List<Long> tplIds = templates.stream().map(DeclarationMaterialTemplate::getId).collect(Collectors.toList());
             tplBindingMap = templateService.batchGetBindings(tplIds);
         }
+    
+        // 收集缺失的必填项
+        List<Map<String, Object>> missingItems = new ArrayList<>();
         if (templates != null) {
             for (DeclarationMaterialTemplate tpl : templates) {
                 // 跳过补充资料和发票阶段的模板
@@ -509,7 +515,14 @@ public class DeclarationMaterialItemServiceImpl
                 boolean uploaded = it != null && it.getStatus() != null && it.getStatus() == 1
                         && it.getFileUrl() != null && !it.getFileUrl().isEmpty();
                 if (required && !uploaded) {
-                    throw new RuntimeException("资料「" + tpl.getName() + "」为必填项，请先上传附件");
+                    if (!skipRequiredCheck) {
+                        throw new RuntimeException("资料「" + tpl.getName() + "」为必填项，请先上传附件");
+                    }
+                    Map<String, Object> miss = new HashMap<>();
+                    miss.put("code", tpl.getCode());
+                    miss.put("name", tpl.getName());
+                    miss.put("invoiceMode", tpl.getInvoiceMode() != null ? tpl.getInvoiceMode() : 0);
+                    missingItems.add(miss);
                 }
                 if (it != null) {
                     String missing = validateSchemaFields(it);
@@ -525,13 +538,61 @@ public class DeclarationMaterialItemServiceImpl
             boolean uploaded = it.getStatus() != null && it.getStatus() == 1
                     && it.getFileUrl() != null && !it.getFileUrl().isEmpty();
             if (required && !uploaded) {
-                throw new RuntimeException("资料「" + it.getName() + "」为必填项，请先上传附件");
+                if (!skipRequiredCheck) {
+                    throw new RuntimeException("资料「" + it.getName() + "」为必填项，请先上传附件");
+                }
+                Map<String, Object> miss = new HashMap<>();
+                miss.put("code", it.getCode());
+                miss.put("name", it.getName());
+                miss.put("invoiceMode", it.getInvoiceMode() != null ? it.getInvoiceMode() : 0);
+                missingItems.add(miss);
             }
             String missing = validateSchemaFields(it);
             if (missing != null) {
                 throw new RuntimeException("资料「" + it.getName() + "」的「" + missing + "」为必填项");
             }
         }
+    
+        // 如果有缺失必填项且 skipRequiredCheck=true，走豁免流程
+        if (!missingItems.isEmpty()) {
+            // 查找当前 materialSubmit 任务（用于判断豁免时效性）
+            Task currentMaterialTask = findTask(formId, "materialSubmit");
+            if (currentMaterialTask == null) {
+                throw new RuntimeException("当前申报单没有待提交的资料任务");
+            }
+
+            // 检查是否已有通过的豁免记录，且是在当前提交周期内通过的
+            DeclarationMaterialExemption approved = exemptionService.getApprovedExemption(formId, "materialSubmit");
+            boolean exemptionStillValid = false;
+            if (approved != null && approved.getAuditTime() != null) {
+                // 豁免通过时间必须晚于当前任务的创建时间（即本轮提交周期内通过的）
+                java.util.Date taskCreateTime = currentMaterialTask.getCreateTime();
+                if (taskCreateTime != null) {
+                    exemptionStillValid = !approved.getAuditTime().isBefore(
+                            taskCreateTime.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
+                }
+            }
+
+            if (exemptionStillValid) {
+                // 本轮已通过豁免，继续正常提交
+                log.info("申报单 {} 本轮已有通过的豁免记录 exemptionId={}，继续提交", formId, approved.getId());
+            } else {
+                // 检查是否已有待审核的豁免记录
+                DeclarationMaterialExemption pending = exemptionService.getPendingExemption(formId, "materialSubmit");
+                if (pending != null) {
+                    throw new RuntimeException("已有待审核的豁免申请，请等待审核结果");
+                }
+                // 创建豁免记录，阻塞主流程
+                String exemptionType = determineExemptionType(missingItems);
+                String missingJson;
+                try { missingJson = MAPPER.writeValueAsString(missingItems); }
+                catch (Exception e) { missingJson = "[]"; }
+                exemptionService.createExemption(formId, "materialSubmit", missingJson, exemptionType, currentMaterialTask.getId(), currentUserId);
+                log.info("申报单 {} 必填不全，已创建豁免记录并阻塞主流程 taskId={}", formId, currentMaterialTask.getId());
+                return; // 不 complete 任务，主流程阻塞
+            }
+        }
+    
         // 完成 Flowable 任务 materialSubmit
         Task task = findTask(formId, "materialSubmit");
         if (task == null) {
@@ -819,7 +880,7 @@ public class DeclarationMaterialItemServiceImpl
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void submitStage(Long formId, String stage, Long currentUserId) {
+    public void submitStage(Long formId, String stage, Long currentUserId, boolean skipRequiredCheck) {
         if (formId == null) {
             throw new RuntimeException("申报单ID不能为空");
         }
@@ -868,7 +929,42 @@ public class DeclarationMaterialItemServiceImpl
         }
 
         // 通用模板绑定校验
-        validateStageTemplates(formId, stageFilter, stageItems, labelPrefix, attachmentChecker);
+        List<Map<String, Object>> missingItems = new ArrayList<>();
+        validateStageTemplates(formId, stageFilter, stageItems, labelPrefix, attachmentChecker, skipRequiredCheck, missingItems);
+
+        // 如果有缺失必填项且 skipRequiredCheck=true，走豁免流程
+        if (!missingItems.isEmpty()) {
+            Task currentStageTask = findTask(formId, stage);
+            if (currentStageTask == null) {
+                throw new RuntimeException("当前申报单没有待" + labelPrefix + "提交任务");
+            }
+
+            DeclarationMaterialExemption approved = exemptionService.getApprovedExemption(formId, stage);
+            boolean exemptionStillValid = false;
+            if (approved != null && approved.getAuditTime() != null) {
+                java.util.Date taskCreateTime = currentStageTask.getCreateTime();
+                if (taskCreateTime != null) {
+                    exemptionStillValid = !approved.getAuditTime().isBefore(
+                            taskCreateTime.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
+                }
+            }
+
+            if (exemptionStillValid) {
+                log.info("申报单 {} stage={} 本轮已有通过的豁免记录，继续提交", formId, stage);
+            } else {
+                DeclarationMaterialExemption pending = exemptionService.getPendingExemption(formId, stage);
+                if (pending != null) {
+                    throw new RuntimeException("已有待审核的豁免申请，请等待审核结果");
+                }
+                String exemptionType = determineExemptionType(missingItems);
+                String missingJson;
+                try { missingJson = MAPPER.writeValueAsString(missingItems); }
+                catch (Exception e) { missingJson = "[]"; }
+                exemptionService.createExemption(formId, stage, missingJson, exemptionType, currentStageTask.getId(), currentUserId);
+                log.info("申报单 {} stage={} 必填不全，已创建豁免记录并阻塞主流程", formId, stage);
+                return;
+            }
+        }
 
         // 至少一个附件校验：由字典 requireAnyAttachment 驱动
         if (requireAnyAttachment && !stageItems.isEmpty()) {
@@ -993,6 +1089,13 @@ public class DeclarationMaterialItemServiceImpl
     private Set<String> validateStageTemplates(Long formId, Predicate<String> stageMatch,
                                                 List<DeclarationMaterialItem> items, String labelPrefix,
                                                 Function<DeclarationMaterialItem, Boolean> attachmentChecker) {
+        return validateStageTemplates(formId, stageMatch, items, labelPrefix, attachmentChecker, false, null);
+    }
+
+    private Set<String> validateStageTemplates(Long formId, Predicate<String> stageMatch,
+                                                List<DeclarationMaterialItem> items, String labelPrefix,
+                                                Function<DeclarationMaterialItem, Boolean> attachmentChecker,
+                                                boolean skipRequiredCheck, List<Map<String, Object>> missingCollector) {
         DeclarationForm form = declarationFormService.getById(formId);
         String formFlowCode = form != null ? form.getTemplateCode() : null;
         String formTransportMode = form != null ? form.getTransportMode() : null;
@@ -1028,7 +1131,15 @@ public class DeclarationMaterialItemServiceImpl
                 if (resolveRequired(bindings, formFlowCode, formTransportMode, tpl) != 1) continue;
                 DeclarationMaterialItem it = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
                 if (it == null || !attachmentChecker.apply(it)) {
-                    throw new RuntimeException(labelPrefix + "「" + tpl.getName() + "」为必填项，请先上传附件");
+                    if (skipRequiredCheck && missingCollector != null) {
+                        Map<String, Object> miss = new HashMap<>();
+                        miss.put("code", tpl.getCode());
+                        miss.put("name", tpl.getName());
+                        miss.put("invoiceMode", tpl.getInvoiceMode() != null ? tpl.getInvoiceMode() : 0);
+                        missingCollector.add(miss);
+                    } else {
+                        throw new RuntimeException(labelPrefix + "「" + tpl.getName() + "」为必填项，请先上传附件");
+                    }
                 }
             }
         }
@@ -1111,5 +1222,22 @@ public class DeclarationMaterialItemServiceImpl
         if (v == null) return true;
         if (v instanceof String) return !StringUtils.hasText((String) v);
         return false;
+    }
+
+    /**
+     * 根据缺失项的 invoiceMode 判断豁免类型
+     * 全普通=NORMAL，全发票=INVOICE，混合=MIXED
+     */
+    private String determineExemptionType(List<Map<String, Object>> missingItems) {
+        boolean hasNormal = false;
+        boolean hasInvoice = false;
+        for (Map<String, Object> item : missingItems) {
+            int mode = item.get("invoiceMode") != null ? ((Number) item.get("invoiceMode")).intValue() : 0;
+            if (mode == 1) hasInvoice = true;
+            else hasNormal = true;
+        }
+        if (hasNormal && hasInvoice) return "MIXED";
+        if (hasInvoice) return "INVOICE";
+        return "NORMAL";
     }
 }

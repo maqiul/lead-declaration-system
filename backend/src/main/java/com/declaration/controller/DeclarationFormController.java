@@ -1624,7 +1624,7 @@ public class DeclarationFormController {
             return "运输方式未选择，无法提交";
         }
         if (!StringUtils.hasText(form.getDepartureCity())) {
-            return "出发城市未选择，无法提交";
+            return "出发口岸未选择，无法提交";
         }
         if (!StringUtils.hasText(form.getCurrency())) {
             return "货币未选择，无法提交";
@@ -1869,7 +1869,7 @@ public class DeclarationFormController {
             createInfoRow(sheet, rowNum++, "收货人公司", form.getConsigneeCompany(), headerStyle);
             createInfoRow(sheet, rowNum++, "收货人地址", form.getConsigneeAddress(), headerStyle);
             createInfoRow(sheet, rowNum++, "运输方式", form.getTransportMode(), headerStyle);
-            createInfoRow(sheet, rowNum++, "出发城市", form.getDepartureCity(), headerStyle);
+            createInfoRow(sheet, rowNum++, "出发口岸", form.getDepartureCity(), headerStyle);
             createInfoRow(sheet, rowNum++, "目的国", form.getDestinationCountry(), headerStyle);
             createInfoRow(sheet, rowNum++, "币种", form.getCurrency(), headerStyle);
             createInfoRow(sheet, rowNum++, "总数量",

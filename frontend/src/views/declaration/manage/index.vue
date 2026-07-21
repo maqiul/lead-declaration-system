@@ -132,6 +132,14 @@
                 </a-button>
               </template>
 
+              <!-- 待资料提交 + 当前用户有权审核豁免: 豁免审核按钮 -->
+              <template v-if="record.status === 2 && record.canAuditExemption">
+                <a-button type="link" size="small" style="color: #fa541c;" @click="handleExemptionAudit(record as any)">
+                  <template #icon><AuditOutlined /></template>
+                  豁免审核
+                </a-button>
+              </template>
+
               <!-- 待资料审核状态: 资料审核按钮 -->
               <template v-if="record.status === 3">
                 <a-button type="link" size="small" style="color: #52c41a;" @click="handleMaterialAudit(record as any)" v-permission="['business:declaration:audit:material']">
@@ -728,6 +736,7 @@ import { useRoute } from 'vue-router'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
 import { getAvailableFlowTemplates } from '@/api/business/declaration'
 import { getEnabledCurrencies } from '@/api/system/currency'
+import { getBatchPendingExemptions } from '@/api/business/materialItem'
 
 import FinanceModal from '../finance/components/FinanceModal.vue'
 import RemittanceRelationModal from './components/RemittanceRelationModal.vue'
@@ -776,6 +785,7 @@ interface DeclarationRecord {
   regenerateButtons?: any[]
   activeTasks?: string[]
   needsFlowMigration?: boolean
+  pendingExemptionId?: number
 }
 
 const dataSource = ref<DeclarationRecord[]>([])
@@ -1015,6 +1025,24 @@ const loadData = async () => {
           message.error('获取任务信息失败: ' + (e.response?.data?.message || e.message || '未知错误'))
         }
       }
+      // 查询所有申报单的豁免状态
+      const exemptionCheckIds = dataSource.value.map((r: any) => r.id)
+      if (exemptionCheckIds.length > 0) {
+        try {
+          const exRes = await getBatchPendingExemptions(exemptionCheckIds.join(','))
+          if (exRes.data?.code === 200 && exRes.data.data) {
+            const exMap = exRes.data.data as Record<string, { id: number; status: number; canAudit?: boolean }>
+            dataSource.value.forEach((r: any) => {
+              const ex = exMap[String(r.id)]
+              if (ex) {
+                r.pendingExemptionId = ex.status === 0 ? ex.id : undefined
+                r.exemptionStatus = ex.status
+                r.canAuditExemption = ex.canAudit === true
+              }
+            })
+          }
+        } catch (e: any) { console.error('查询豁免状态失败:', e) }
+      }
     } else {
       dataSource.value = []
       pagination.total = 0
@@ -1221,6 +1249,11 @@ const handleMaterialSubmit = (record: DeclarationRecord) => {
 // 资料审核（跳转到详情页审核）
 const handleMaterialAudit = (record: DeclarationRecord) => {
   router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=materialAudit`)
+}
+
+// 豁免审核（跳转到豁免审核模式）
+const handleExemptionAudit = (record: DeclarationRecord) => {
+  router.push(`${declarationPrefix.value}/form-v2?exemptionId=${record.pendingExemptionId}&mode=exemptionAudit`)
 }
 
 // 提交业务发票——跳转到主表单 mode=invoiceUpload

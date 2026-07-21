@@ -30,8 +30,9 @@ public interface DeclarationMaterialItemService extends IService<DeclarationMate
     /**
      * 资料提交：完成 materialSubmit 任务
      * 校验：所有 required=1 的项都必须已上传
+     * @param skipRequiredCheck 为true时，必填不全不报错，而是创建豁免记录并阻塞主流程
      */
-    void submit(Long formId, Long currentUserId);
+    void submit(Long formId, Long currentUserId, boolean skipRequiredCheck);
 
     /**
      * 资料审核：完成 materialAudit 任务
@@ -77,8 +78,9 @@ public interface DeclarationMaterialItemService extends IService<DeclarationMate
      * 通用阶段提交：根据 stage（Flowable taskKey）完成对应任务
      * 支持 materialSubmit / supplementSubmit / invoiceSubmit 等
      * 与 form_section 字典的 submitKey 配合使用
+     * @param skipRequiredCheck 为true时，必填不全不报错，而是创建豁免记录并阻塞主流程
      */
-    void submitStage(Long formId, String stage, Long currentUserId);
+    void submitStage(Long formId, String stage, Long currentUserId, boolean skipRequiredCheck);
 
     /**
      * 通用阶段审核：根据 stage（Flowable auditTaskKey）完成对应审核任务

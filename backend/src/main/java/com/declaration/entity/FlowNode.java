@@ -51,6 +51,9 @@ public class FlowNode {
     /** serviceTask 的委托表达式（如 ${declarationServiceTask}） */
     private String delegateExpression;
 
+    /** 驳回时是否直接结束流程 0-否(回退) 1-是(结束) */
+    private Integer rejectToEnd;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

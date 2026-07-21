@@ -13,6 +13,7 @@ export interface FlowNode {
   isSystem?: number          // 是否系统节点 0/1
   processType?: string       // 所属流程类型
   delegateExpression?: string // serviceTask 委托表达式
+  rejectToEnd?: number        // 驳回时是否直接结束流程 0-否 1-是
   description?: string       // 说明
   createTime?: string
   updateTime?: string

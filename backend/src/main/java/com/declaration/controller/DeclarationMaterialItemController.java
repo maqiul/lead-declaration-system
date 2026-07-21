@@ -263,10 +263,11 @@ public class DeclarationMaterialItemController {
     @PostMapping("/submit")
     @Operation(summary = "提交资料")
     @RequiresPermissions("business:declaration:material:submit")
-    public Result<String> submit(@RequestParam Long formId) {
+    public Result<String> submit(@RequestParam Long formId,
+                                 @RequestParam(required = false, defaultValue = "false") boolean skipRequiredCheck) {
         Long userId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
         try {
-            itemService.submit(formId, userId);
+            itemService.submit(formId, userId, skipRequiredCheck);
             return Result.success("资料提交成功");
         } catch (Exception e) {
             log.warn("资料提交失败 formId={} : {}", formId, e.getMessage());
@@ -398,10 +399,11 @@ public class DeclarationMaterialItemController {
     /** 通用阶段提交（字典驱动，stage = form_section 字典的 submitKey） */
     @PostMapping("/stage/submit")
     @Operation(summary = "通用阶段提交")
-    public Result<String> submitStage(@RequestParam Long formId, @RequestParam String stage) {
+    public Result<String> submitStage(@RequestParam Long formId, @RequestParam String stage,
+                                       @RequestParam(required = false, defaultValue = "false") boolean skipRequiredCheck) {
         Long userId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
         try {
-            itemService.submitStage(formId, stage, userId);
+            itemService.submitStage(formId, stage, userId, skipRequiredCheck);
             return Result.success("提交成功");
         } catch (Exception e) {
             log.warn("阶段提交失败 formId={} stage={} : {}", formId, stage, e.getMessage());
