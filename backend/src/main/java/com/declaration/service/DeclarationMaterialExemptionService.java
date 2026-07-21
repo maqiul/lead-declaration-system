@@ -38,4 +38,10 @@ public interface DeclarationMaterialExemptionService extends IService<Declaratio
      * 驳回时：标记状态，主流程保持阻塞
      */
     void auditExemption(Long exemptionId, boolean approved, String remark, Long auditorId);
+
+    /**
+     * 清理指定申报单的所有豁免记录及其关联的 Flowable 流程实例
+     * （用于退回草稿时清除豁免流程）
+     */
+    void cleanupByFormId(Long formId);
 }

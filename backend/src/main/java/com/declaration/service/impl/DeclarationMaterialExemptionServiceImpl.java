@@ -261,4 +261,34 @@ public class DeclarationMaterialExemptionServiceImpl
             log.info("豁免驳回(直接模式) exemptionId={}", exemption.getId());
         }
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cleanupByFormId(Long formId) {
+        List<DeclarationMaterialExemption> exemptions = listByFormId(formId);
+        if (exemptions.isEmpty()) {
+            return;
+        }
+        for (DeclarationMaterialExemption exemption : exemptions) {
+            // 终止关联的 Flowable 流程实例
+            String piId = exemption.getProcessInstanceId();
+            if (piId != null && !piId.isEmpty()) {
+                try {
+                    ProcessInstance pi = runtimeService.createProcessInstanceQuery()
+                            .processInstanceId(piId)
+                            .singleResult();
+                    if (pi != null) {
+                        runtimeService.deleteProcessInstance(piId, "申报单退回草稿，清理豁免流程");
+                        log.info("已终止豁免流程实例 exemptionId={} processInstanceId={}", exemption.getId(), piId);
+                    }
+                } catch (Exception e) {
+                    log.warn("终止豁免流程实例失败 exemptionId={}: {}", exemption.getId(), e.getMessage());
+                }
+            }
+        }
+        // 删除所有豁免记录
+        this.remove(new LambdaQueryWrapper<DeclarationMaterialExemption>()
+                .eq(DeclarationMaterialExemption::getFormId, formId));
+        log.info("已清理申报单 {} 的 {} 条豁免记录", formId, exemptions.size());
+    }
 }

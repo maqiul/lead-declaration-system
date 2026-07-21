@@ -60,6 +60,7 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     private final RepositoryService repositoryService;
     private final UserService userService;
     private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
+    private final DeclarationMaterialExemptionService exemptionService;
 
     /**
      * 流程阶段定义：submitStatus → (提交活动ID, 审核活动ID, 退回后目标状态)
@@ -828,6 +829,14 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             } catch (Exception e) {
                 log.error("处理水单关联关系失败", e);
                 // 水单处理失败不影响主流程，继续执行
+            }
+
+            // 清理豁免流程：终止豁免流程实例并删除豁免记录
+            try {
+                exemptionService.cleanupByFormId(id);
+            } catch (Exception e) {
+                log.error("清理豁免流程失败", e);
+                // 豁免清理失败不影响主流程
             }
         } else {
             // 驳回：恢复到之前的状态
