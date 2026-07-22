@@ -89,9 +89,56 @@
         </div>
       </a-layout-header>
 
+      <!-- 多标签页导航 -->
+      <div class="tabs-bar">
+        <div ref="tabsScrollRef" class="tabs-scroll">
+          <div
+            v-for="tab in visitedTabs"
+            :key="tab.path"
+            :class="['tab-item', { 'tab-item--active': tab.path === activeTabPath }]"
+            @click="goTab(tab)"
+            @contextmenu="openTabMenu($event, tab)"
+          >
+            <span class="tab-dot" />
+            <span class="tab-label">{{ tab.title }}</span>
+            <close-outlined
+              v-if="!tab.affix"
+              class="tab-close"
+              @click.stop="closeTab(tab)"
+            />
+          </div>
+        </div>
+        <a-dropdown placement="bottomRight" :trigger="['click']">
+          <div class="tabs-action">
+            <down-outlined />
+          </div>
+          <template #overlay>
+            <a-menu @click="handleTabAction">
+              <a-menu-item key="refresh">
+                <reload-outlined />
+                <span style="margin-left: 8px">刷新当前页</span>
+              </a-menu-item>
+              <a-menu-item key="closeOthers">
+                <close-outlined />
+                <span style="margin-left: 8px">关闭其他</span>
+              </a-menu-item>
+              <a-menu-item key="closeAll">
+                <close-circle-outlined />
+                <span style="margin-left: 8px">关闭全部</span>
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+      </div>
+
       <!-- 内容区域 -->
       <a-layout-content class="content">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <keep-alive :max="20">
+            <component :is="Component" v-if="isCacheable" :key="cacheKey" />
+          </keep-alive>
+          <component :is="Component" v-if="!isCacheable" :key="cacheKey" />
+        </router-view>
       </a-layout-content>
 
       <!-- 底部 -->
@@ -122,10 +169,31 @@
       </a-form-item>
     </a-form>
   </a-modal>
+
+  <!-- 标签右键菜单 -->
+  <teleport to="body">
+    <div
+      v-if="ctxVisible"
+      class="tab-ctx-mask"
+      @click="closeCtx"
+      @contextmenu.prevent="closeCtx"
+    >
+      <ul class="tab-ctx-menu" :style="{ left: ctxX + 'px', top: ctxY + 'px' }" @click.stop>
+        <li @click="onCtx('refresh')"><reload-outlined /><span>刷新</span></li>
+        <li :class="{ 'ctx-disabled': ctxTab?.affix }" @click="onCtx('close')"><close-outlined /><span>关闭</span></li>
+        <li class="ctx-divider" />
+        <li @click="onCtx('closeLeft')"><vertical-right-outlined /><span>关闭左侧</span></li>
+        <li @click="onCtx('closeRight')"><vertical-left-outlined /><span>关闭右侧</span></li>
+        <li class="ctx-divider" />
+        <li @click="onCtx('closeOthers')"><close-outlined /><span>关闭其他</span></li>
+        <li @click="onCtx('closeAll')"><close-circle-outlined /><span>关闭全部</span></li>
+      </ul>
+    </div>
+  </teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, h, watch, reactive } from 'vue'
+import { ref, computed, onMounted, h, watch, reactive, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { getUserRoutes } from '@/api/system'
@@ -176,7 +244,13 @@ import {
   LinkOutlined,
   AuditOutlined,
   HistoryOutlined,
-  BarChartOutlined
+  BarChartOutlined,
+  CloseOutlined,
+  CloseCircleOutlined,
+  ReloadOutlined,
+  DownOutlined,
+  VerticalRightOutlined,
+  VerticalLeftOutlined
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
@@ -199,6 +273,215 @@ const breadcrumbItems = computed(() => {
   })
   return items.length > 0 ? items : ['系统管理']
 })
+
+// ========== 多标签页 ==========
+interface TabItem { path: string; title: string; affix?: boolean }
+const HOME_TAB: TabItem = { path: '/dashboard', title: '首页', affix: true }
+const visitedTabs = ref<TabItem[]>([{ ...HOME_TAB }])
+const tabsScrollRef = ref<HTMLElement | null>(null)
+const activeTabPath = computed(() => route.path)
+
+// ========== 页面缓存（keep-alive）==========
+// 不缓存的页面（表单/详情类，需要每次打开获取最新数据）
+const NO_CACHE_PATTERNS = ['/form', '/form-v2']
+const isCacheable = computed(() => !NO_CACHE_PATTERNS.some(p => route.path.includes(p)))
+// 刷新计数：同一路径 nonce 变化时强制重新挂载
+const refreshNonce = ref<Record<string, number>>({})
+const cacheKey = computed(() => {
+  // 可缓存页按 path 缓存（忽略 query，保留组件内的搜索/分页状态）；不缓存页按 fullPath 区分
+  const base = isCacheable.value ? route.path : route.fullPath
+  const n = refreshNonce.value[route.path] || 0
+  return n ? `${base}#r${n}` : base
+})
+
+// 取当前路由标题（拼接上一级菜单名，如“出口申报 / 申报管理”）
+const getRouteTitle = (): string => {
+  const titles: string[] = []
+  route.matched.forEach(r => {
+    if (r.meta?.title && r.path !== '/') {
+      titles.push(r.meta.title as string)
+    }
+  })
+  if (titles.length === 0) {
+    return (route.meta?.title as string) || '未命名页面'
+  }
+  // 取最后两级（上一级 + 当前），避免标题过长
+  return titles.slice(-2).join(' / ')
+}
+
+// 滚动使激活标签可见
+const scrollToActive = () => {
+  nextTick(() => {
+    const el = tabsScrollRef.value?.querySelector('.tab-item--active') as HTMLElement | null
+    el?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' })
+  })
+}
+
+// 记录已访问页面
+const addTab = () => {
+  const path = route.path
+  if (path === '/login' || path === '/404') return
+  if (!visitedTabs.value.some(t => t.path === path)) {
+    visitedTabs.value.push({ path, title: getRouteTitle() })
+  }
+  scrollToActive()
+}
+
+const goTab = (tab: TabItem) => {
+  if (tab.path !== activeTabPath.value) {
+    router.push(tab.path).catch(() => {})
+  }
+}
+
+const closeTab = (tab: TabItem) => {
+  const idx = visitedTabs.value.findIndex(t => t.path === tab.path)
+  if (idx === -1) return
+  visitedTabs.value.splice(idx, 1)
+  // 关闭的是当前活跃标签时，跳转到相邻标签
+  if (tab.path === activeTabPath.value) {
+    const next = visitedTabs.value[idx] || visitedTabs.value[idx - 1] || HOME_TAB
+    router.push(next.path).catch(() => {})
+  }
+}
+
+// 关闭指定标签左侧的所有标签（保留 affix）
+const closeLeftOf = (tab: TabItem) => {
+  const idx = visitedTabs.value.findIndex(t => t.path === tab.path)
+  if (idx <= 0) return
+  visitedTabs.value = visitedTabs.value.filter((t, i) => t.affix || i >= idx)
+  if (!visitedTabs.value.some(t => t.path === activeTabPath.value)) {
+    router.push(tab.path).catch(() => {})
+  }
+}
+
+// 关闭指定标签右侧的所有标签（保留 affix）
+const closeRightOf = (tab: TabItem) => {
+  const idx = visitedTabs.value.findIndex(t => t.path === tab.path)
+  if (idx === -1) return
+  visitedTabs.value = visitedTabs.value.filter((t, i) => t.affix || i <= idx)
+  if (!visitedTabs.value.some(t => t.path === activeTabPath.value)) {
+    router.push(tab.path).catch(() => {})
+  }
+}
+
+// 关闭除指定标签外的其他标签（保留 affix）
+const closeOthersOf = (tab: TabItem) => {
+  visitedTabs.value = visitedTabs.value.filter(t => t.affix || t.path === tab.path)
+  if (activeTabPath.value !== tab.path) {
+    router.push(tab.path).catch(() => {})
+  }
+}
+
+// 关闭全部（保留 affix，回到首页）
+const closeAllTabs = () => {
+  visitedTabs.value = visitedTabs.value.filter(t => t.affix)
+  if (activeTabPath.value !== HOME_TAB.path) {
+    router.push(HOME_TAB.path).catch(() => {})
+  }
+}
+
+// 刷新当前页（通过变更 cacheKey 强制重新挂载，不影响其他标签缓存）
+const refreshCurrent = () => {
+  const p = route.path
+  refreshNonce.value = { ...refreshNonce.value, [p]: (refreshNonce.value[p] || 0) + 1 }
+}
+
+// 右上角下拉菜单（作用于当前活跃标签）
+const handleTabAction = ({ key }: { key: string | number }) => {
+  const active = visitedTabs.value.find(t => t.path === activeTabPath.value) || HOME_TAB
+  const k = String(key)
+  if (k === 'refresh') {
+    refreshCurrent()
+  } else if (k === 'closeOthers') {
+    closeOthersOf(active)
+  } else if (k === 'closeAll') {
+    closeAllTabs()
+  }
+}
+
+// ========== 右键菜单 ==========
+const ctxVisible = ref(false)
+const ctxX = ref(0)
+const ctxY = ref(0)
+const ctxTab = ref<TabItem | null>(null)
+
+const openTabMenu = (e: MouseEvent, tab: TabItem) => {
+  e.preventDefault()
+  ctxTab.value = tab
+  ctxX.value = e.clientX
+  ctxY.value = e.clientY
+  ctxVisible.value = true
+}
+
+const closeCtx = () => {
+  ctxVisible.value = false
+}
+
+const onCtx = (action: string) => {
+  const tab = ctxTab.value
+  if (!tab) return
+  switch (action) {
+    case 'refresh':
+      if (tab.path !== activeTabPath.value) {
+        router.push(tab.path).then(() => refreshCurrent()).catch(() => {})
+      } else {
+        refreshCurrent()
+      }
+      break
+    case 'close':
+      if (!tab.affix) closeTab(tab)
+      break
+    case 'closeLeft':
+      closeLeftOf(tab)
+      break
+    case 'closeRight':
+      closeRightOf(tab)
+      break
+    case 'closeOthers':
+      closeOthersOf(tab)
+      break
+    case 'closeAll':
+      closeAllTabs()
+      break
+  }
+  closeCtx()
+}
+
+// ========== 标签持久化 ==========
+const TABS_STORAGE_KEY = 'app_visited_tabs'
+
+const restoreTabs = () => {
+  try {
+    const raw = localStorage.getItem(TABS_STORAGE_KEY)
+    if (!raw) return
+    const arr = JSON.parse(raw) as TabItem[]
+    if (Array.isArray(arr) && arr.length > 0) {
+      const hasHome = arr.some(t => t.path === HOME_TAB.path)
+      visitedTabs.value = hasHome ? arr : [{ ...HOME_TAB }, ...arr]
+    }
+  } catch {
+    // 解析失败时保留默认
+  }
+}
+
+// 先恢复持久化标签，再监听路由新增当前页
+restoreTabs()
+
+watch(visitedTabs, (val) => {
+  localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(val))
+}, { deep: true })
+
+// 监听路由变化，自动新增标签；离开表单/详情类页面时自动关闭其标签
+let prevTabPath = ''
+watch(() => route.path, (newPath) => {
+  if (prevTabPath && prevTabPath !== newPath
+      && NO_CACHE_PATTERNS.some(p => prevTabPath.includes(p))) {
+    const idx = visitedTabs.value.findIndex(t => t.path === prevTabPath)
+    if (idx !== -1) visitedTabs.value.splice(idx, 1)
+  }
+  addTab()
+  prevTabPath = newPath
+}, { immediate: true })
 
 // 系统配置
 const systemConfig = ref<Record<string, string>>({
@@ -743,6 +1026,164 @@ onMounted(() => {
   font-size: 14px;
 }
 
+/* 多标签页导航 */
+.tabs-bar {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px;
+  background: #FFFFFF;
+  border-bottom: 1px solid #F0F0F0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+}
+
+.tabs-scroll {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  height: 100%;
+  padding: 6px 0;
+}
+
+.tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: #475569;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tab-item:hover {
+  color: #FA8C16;
+  border-color: #FFD591;
+}
+
+.tab-item--active {
+  color: #FA8C16;
+  background: #FFF7E6;
+  border-color: #FFD591;
+  font-weight: 600;
+}
+
+.tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.tab-item--active .tab-dot {
+  opacity: 1;
+}
+
+.tab-label {
+  line-height: 1;
+}
+
+.tab-close {
+  font-size: 11px;
+  color: #94A3B8;
+  border-radius: 50%;
+  padding: 2px;
+  transition: all 0.2s;
+}
+
+.tab-close:hover {
+  color: #fff;
+  background: #FA8C16;
+}
+
+.tabs-action {
+  flex-shrink: 0;
+  width: 32px;
+  height: 28px;
+  margin-left: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: #64748B;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tabs-action:hover {
+  color: #FA8C16;
+  background: #FFF7E6;
+}
+
+/* 标签右键菜单 */
+.tab-ctx-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+
+.tab-ctx-menu {
+  position: fixed;
+  min-width: 140px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  border: 1px solid #F0F0F0;
+}
+
+.tab-ctx-menu li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: #475569;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tab-ctx-menu li:hover {
+  color: #FA8C16;
+  background: #FFF7E6;
+}
+
+.tab-ctx-menu li.ctx-disabled {
+  color: #CBD5E1;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.tab-ctx-menu li.ctx-divider {
+  height: 1px;
+  margin: 4px 6px;
+  padding: 0;
+  background: #F0F0F0;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* 内容区域 */
 .content {
   margin: 24px;
@@ -751,7 +1192,7 @@ onMounted(() => {
   border-radius: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   border: 1px solid #E2E8F0;
-  min-height: calc(100vh - 64px - 64px - 48px);
+  min-height: calc(100vh - 64px - 40px - 64px - 48px);
   box-sizing: border-box;
   overflow-x: auto;
 }
