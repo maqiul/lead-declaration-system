@@ -41,6 +41,7 @@ import java.util.*;
 import java.util.function.Function;
 
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import org.apache.fesod.sheet.write.builder.ExcelWriterBuilder;
@@ -298,7 +299,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         fillData.put("destinationRegion", form.getDestinationCountry());
         fillData.put("totalAmount", form.getTotalAmount());
         fillData.put("tradeTerm",form.getTradeTerm());
-        fillData.put("port",form.getArrivalPort().isBlank() ? form.getDepartureCityEnglish() : form.getArrivalPort());
+        fillData.put("port", StrUtil.blankToDefault(form.getArrivalPort(), form.getDepartureCityEnglish()));
         // 总金额英文大写
         if (form.getTotalAmount() != null) {
             fillData.put("totalAmountWords", convertAmountToWords(form.getTotalAmount().doubleValue(),form.getCurrency()));
