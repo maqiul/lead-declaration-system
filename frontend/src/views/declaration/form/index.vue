@@ -4627,14 +4627,9 @@ const loadData = async () => {
           }
         }
         
-        // 根据已加载的国家信息加载对应的城市
-        if (formData.destinationCountry) {
-          const selectedCountry = countryOptions.value.find(country => country.value === formData.destinationCountry);
-          if (selectedCountry) {
-            loadCities(selectedCountry.englishName || selectedCountry.chineseName);
-          }
-        }
-        
+        // 出发口岸始终为中国口岸，cityOptions 已在初始化 loadCities() 中加载为中国城市，
+        // 不能用目的国重新加载覆盖（否则出发口岸下拉会变空/失配）
+
         message.success('数据加载成功')
       } else {
         console.error('API返回异常:', response.data)
