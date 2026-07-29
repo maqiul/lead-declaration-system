@@ -1277,7 +1277,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         data.put("totalQuantity", calculateTotalQuantity(form));
         data.put("totalVolume", calculateTotalVolume(form));
         data.put("totalAmount", form.getTotalAmount());
-        data.put("tradeTerm", "FOB");
+        data.put("tradeTerm", form.getTradeTerm());
         data.put("freight", "");
         data.put("premium", "");
         data.put("miscFee", "");
