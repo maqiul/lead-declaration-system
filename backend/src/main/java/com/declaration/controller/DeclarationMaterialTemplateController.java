@@ -28,6 +28,19 @@ public class DeclarationMaterialTemplateController {
 
     private final DeclarationMaterialTemplateService templateService;
 
+    /**
+     * 校验逗号分隔的多环节值，返回第一个非法环节，全部合法返回 null
+     */
+    private String validateStages(String stageValue) {
+        for (String s : stageValue.split(",")) {
+            String trimmed = s.trim();
+            if (trimmed.isEmpty() || !templateService.validStages().contains(trimmed)) {
+                return trimmed.isEmpty() ? stageValue : trimmed;
+            }
+        }
+        return null;
+    }
+
     @GetMapping
     @Operation(summary = "获取资料项模板列表")
     @RequiresPermissions("system:material:template:view")
@@ -42,7 +55,8 @@ public class DeclarationMaterialTemplateController {
             if (!templateService.validStages().contains(stage)) {
                 return Result.fail("非法的环节类型：" + stage);
             }
-            wrapper.eq(DeclarationMaterialTemplate::getStage, stage);
+            // stage 支持多环节逗号分隔，FIND_IN_SET 包含匹配
+            wrapper.apply("FIND_IN_SET({0}, stage)", stage);
         }
         wrapper.orderByAsc(DeclarationMaterialTemplate::getSort)
                .orderByAsc(DeclarationMaterialTemplate::getId);
@@ -68,11 +82,14 @@ public class DeclarationMaterialTemplateController {
         if (!StringUtils.hasText(entity.getName())) {
             return Result.fail("资料名称不能为空");
         }
-        // stage 默认值与校验
+        // stage 默认值与校验（支持多环节逗号分隔）
         if (!StringUtils.hasText(entity.getStage())) {
             entity.setStage("MATERIAL_SUBMIT");
-        } else if (!templateService.validStages().contains(entity.getStage())) {
-            return Result.fail("非法的环节类型：" + entity.getStage());
+        } else {
+            String invalid = validateStages(entity.getStage());
+            if (invalid != null) {
+                return Result.fail("非法的环节类型：" + invalid);
+            }
         }
         long codeCount = templateService.count(new LambdaQueryWrapper<DeclarationMaterialTemplate>()
                 .eq(DeclarationMaterialTemplate::getCode, entity.getCode()));
@@ -96,9 +113,12 @@ public class DeclarationMaterialTemplateController {
         if (entity.getId() == null) {
             return Result.fail("ID不能为空");
         }
-        // stage 校验
-        if (entity.getStage() != null && !templateService.validStages().contains(entity.getStage())) {
-            return Result.fail("非法的环节类型：" + entity.getStage());
+        // stage 校验（支持多环节逗号分隔）
+        if (entity.getStage() != null) {
+            String invalid = validateStages(entity.getStage());
+            if (invalid != null) {
+                return Result.fail("非法的环节类型：" + invalid);
+            }
         }
         if (StringUtils.hasText(entity.getCode())) {
             long codeCount = templateService.count(new LambdaQueryWrapper<DeclarationMaterialTemplate>()

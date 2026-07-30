@@ -70,7 +70,7 @@
                   <a-tag v-if="(record as any).required === 1" color="red" class="ui-tag">必填</a-tag>
                   <a-tag v-else class="ui-tag">选填</a-tag>
                   <div class="name-upload-actions" v-if="isInvoiceEditable">
-                    <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as any)">
+                    <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as any, 'INVOICE')">
                       <a-button type="primary" size="small" class="material-upload-btn">
                         <template #icon><UploadOutlined v-if="(record as any).status !== 1" /><PlusOutlined v-else /></template>
                         {{ (record as any).status === 1 ? '追加' : '上传' }}
@@ -107,7 +107,7 @@
                         <span class="att-val-tag">{{ att.invoiceNo || '-' }}</span>
                         <span class="att-val-tag">{{ att.invoiceDate || '-' }}</span>
                       </template>
-                      <a-popconfirm v-if="isInvoiceEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as any, att)">
+                      <a-popconfirm v-if="isInvoiceEditable && canDeleteAttachment(att, 'INVOICE')" title="确定删除？" @confirm="handleDeleteAttachment(record as any, att, 'INVOICE')">
                         <DeleteOutlined class="file-delete-btn" />
                       </a-popconfirm>
                     </div>
@@ -142,6 +142,7 @@
 import { toRefs } from 'vue'
 import dayjs from 'dayjs'
 import { useFormState } from '../composables/useDeclarationForm'
+import { canDeleteAttachment } from '@/api/business/materialItem'
 // import type { MaterialItem } from '@/api/business/materialItem'
 import {
   UploadOutlined, CheckCircleOutlined, CloseCircleOutlined,

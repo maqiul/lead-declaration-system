@@ -38,6 +38,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -106,6 +107,31 @@ public class DeclarationMaterialItemServiceImpl
     public static final String BT_SUPPLEMENT_AUDIT = "DECLARATION_SUPPLEMENT_AUDIT";
     public static final String BT_INVOICE_AMOUNT_AUDIT = "DECLARATION_INVOICE_AMOUNT_AUDIT";
     public static final String BT_INVOICE_AUDIT   = "DECLARATION_INVOICE_AUDIT";
+
+    /** 不属于资料提交阶段的环节（基础资料/补充资料/业务发票各自独立校验） */
+    private static final Set<String> NON_MATERIAL_SUBMIT_STAGES = new HashSet<>(Arrays.asList("BASIC", "SUPPLEMENT", "INVOICE"));
+
+    /**
+     * stage 多环节支持：逗号分隔的 stage 值是否包含目标环节（空值兑底 MATERIAL_SUBMIT）
+     */
+    public static boolean hasStage(String stageValue, String target) {
+        String v = (stageValue == null || stageValue.isEmpty()) ? "MATERIAL_SUBMIT" : stageValue;
+        for (String s : v.split(",")) {
+            if (target.equals(s.trim())) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 是否参与资料提交阶段校验：拆分后存在任意一个不属于 BASIC/SUPPLEMENT/INVOICE 的环节即参与（空值默认参与）
+     */
+    public static boolean inMaterialSubmitStage(String stageValue) {
+        if (stageValue == null || stageValue.isEmpty()) return true;
+        for (String s : stageValue.split(",")) {
+            if (!NON_MATERIAL_SUBMIT_STAGES.contains(s.trim())) return true;
+        }
+        return false;
+    }
 
     /**
      * 提交时插入一条待审核记录（auditStatus=0）
@@ -476,9 +502,8 @@ public class DeclarationMaterialItemServiceImpl
             if (it.getTemplateId() != null && it.getCode() != null) {
                 itemByCode.put(it.getCode(), it);
             } else {
-                // 手动新增项：只校验非补充/发票阶段的
-                String stage = it.getStage();
-                if (!"SUPPLEMENT".equals(stage) && !"INVOICE".equals(stage)) {
+                // 手动新增项：只校验资料提交阶段的（排除基础资料/补充/发票阶段，支持多环节逗号分隔）
+                if (inMaterialSubmitStage(it.getStage())) {
                     manualItems.add(it);
                 }
             }
@@ -500,9 +525,8 @@ public class DeclarationMaterialItemServiceImpl
         List<Map<String, Object>> missingItems = new ArrayList<>();
         if (templates != null) {
             for (DeclarationMaterialTemplate tpl : templates) {
-                // 跳过补充资料和发票阶段的模板
-                String tplStage = tpl.getStage();
-                if ("SUPPLEMENT".equals(tplStage) || "INVOICE".equals(tplStage)) {
+                // 跳过不参与资料提交阶段的模板（基础资料在草稿阶段上传，多环节时任一环节属于资料提交即参与）
+                if (!inMaterialSubmitStage(tpl.getStage())) {
                     continue;
                 }
                 // 绑定过滤：无绑定=全适用；有绑定=任一行匹配即可
@@ -640,11 +664,12 @@ public class DeclarationMaterialItemServiceImpl
         String formFlowCode = (form != null) ? form.getTemplateCode() : null;
         String formTransportMode = (form != null) ? form.getTransportMode() : null;
 
-        // 已落库的补充资料实例
+        // 已落库的补充资料实例（stage 支持多环节逗号分隔，内存包含匹配）
         List<DeclarationMaterialItem> supplementItems = lambdaQuery()
                 .eq(DeclarationMaterialItem::getFormId, formId)
-                .eq(DeclarationMaterialItem::getStage, "SUPPLEMENT")
-                .list();
+                .list().stream()
+                .filter(it -> hasStage(it.getStage(), "SUPPLEMENT"))
+                .collect(Collectors.toList());
         Map<String, DeclarationMaterialItem> itemByCode = new HashMap<>();
         List<DeclarationMaterialItem> manualItems = new ArrayList<>();
         for (DeclarationMaterialItem it : supplementItems) {
@@ -664,7 +689,7 @@ public class DeclarationMaterialItemServiceImpl
         }
         if (templates != null) {
             for (DeclarationMaterialTemplate tpl : templates) {
-                if (!"SUPPLEMENT".equals(tpl.getStage())) continue;
+                if (!hasStage(tpl.getStage(), "SUPPLEMENT")) continue;
                 // 绑定过滤：无绑定=全适用；有绑定=任一行匹配即可
                 List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
                 if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
@@ -809,7 +834,7 @@ public class DeclarationMaterialItemServiceImpl
         boolean hasApplicableTemplate = false;
         if (templates != null) {
             for (DeclarationMaterialTemplate tpl : templates) {
-                if (!"INVOICE".equals(tpl.getStage())) continue;
+                if (!hasStage(tpl.getStage(), "INVOICE")) continue;
                 List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
                 if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
                     continue;
@@ -822,11 +847,12 @@ public class DeclarationMaterialItemServiceImpl
             throw new RuntimeException("没有业务发票资料项，请先在资料模板中配置");
         }
 
-        // 已落库的 INVOICE 实例
+        // 已落库的 INVOICE 实例（stage 支持多环节逗号分隔，内存包含匹配）
         List<DeclarationMaterialItem> invoiceItems = lambdaQuery()
                 .eq(DeclarationMaterialItem::getFormId, formId)
-                .eq(DeclarationMaterialItem::getStage, "INVOICE")
-                .list();
+                .list().stream()
+                .filter(it -> hasStage(it.getStage(), "INVOICE"))
+                .collect(Collectors.toList());
         // 检查绑定匹配的资料项是否已上传附件
         boolean hasAttachment = invoiceItems.stream().anyMatch(item -> {
             // 模板项须在适用集合中，手动项始终参与
@@ -902,11 +928,11 @@ public class DeclarationMaterialItemServiceImpl
         String labelPrefix = sectionConfig.path("btnText").asText("提交").replace("提交", "").replace("审核", "");
         if (labelPrefix.isEmpty()) labelPrefix = "资料";
 
-        // 模板阶段过滤器：完全由字典 templateStage 驱动
+        // 模板阶段过滤器：完全由字典 templateStage 驱动（stage 支持多环节逗号分隔，包含匹配）
         if (templateStage.isEmpty()) {
             throw new RuntimeException("字典 form_section 配置缺少 templateStage，submitKey=" + stage);
         }
-        Predicate<String> stageFilter = s -> templateStage.equals(s);
+        Predicate<String> stageFilter = s -> hasStage(s, templateStage);
 
         // 获取该阶段的已落库实例
         List<DeclarationMaterialItem> allItems = listByFormId(formId);

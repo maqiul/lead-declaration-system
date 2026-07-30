@@ -5,9 +5,11 @@ import com.declaration.annotation.RequiresPermissions;
 import com.declaration.common.Result;
 import com.declaration.entity.DeclarationAttachment;
 import com.declaration.entity.DeclarationMaterialItem;
+import com.declaration.entity.DeclarationMaterialTemplate;
 import com.declaration.entity.MaterialAttachment;
 import com.declaration.service.DeclarationAttachmentService;
 import com.declaration.service.DeclarationMaterialItemService;
+import com.declaration.service.DeclarationMaterialTemplateService;
 import com.declaration.service.FinancialSupplementService;
 import com.declaration.service.MaterialAttachmentService;
 import com.declaration.service.PdfInvoiceAmountParser;
@@ -37,6 +39,14 @@ public class DeclarationMaterialItemController {
     private final MaterialAttachmentService materialAttachmentService;
     private final FinancialSupplementService financialSupplementService;
     private final PdfInvoiceAmountParser pdfInvoiceAmountParser;
+    private final DeclarationMaterialTemplateService templateService;
+
+    /** 按环节获取启用的资料模板（未保存草稿时前端预览资料项用，不需要模板管理权限） */
+    @GetMapping("/template-preview")
+    @Operation(summary = "按环节获取启用的资料模板（草稿预览）")
+    public Result<List<DeclarationMaterialTemplate>> templatePreview(@RequestParam String stage) {
+        return Result.success(templateService.listByStage(stage));
+    }
 
     /** 获取某申报单的资料项视图（懒创建：未操作过的资料项以虚拟项 id=null 返回，不落库） */
     @GetMapping
@@ -132,7 +142,8 @@ public class DeclarationMaterialItemController {
     public Result<DeclarationMaterialItem> upload(@PathVariable Long id,
                                                   @RequestParam("file") MultipartFile file,
                                                   @RequestParam(value = "formId", required = false) Long formId,
-                                                  @RequestParam(value = "templateId", required = false) Long templateId) {
+                                                  @RequestParam(value = "templateId", required = false) Long templateId,
+                                                  @RequestParam(value = "uploadStage", required = false) String uploadStage) {
         DeclarationMaterialItem item = id == null || id <= 0 ? null : itemService.getById(id);
         if (item == null) {
             log.warn("上传时未找到资料项实例 id={} formId={} templateId={}", id, formId, templateId);
@@ -148,8 +159,8 @@ public class DeclarationMaterialItemController {
         }
         if (item == null) return Result.fail("资料项不存在");
         try {
-            // 上传文件并保存到附件子表
-            MaterialAttachment att = materialAttachmentService.uploadForItem(item.getId(), file);
+            // 上传文件并保存到附件子表（记录上传时所处环节）
+            MaterialAttachment att = materialAttachmentService.uploadForItem(item.getId(), file, uploadStage);
             // 同步主表冗余字段（指向最新文件）
             item.setFileName(att.getFileName());
             item.setFileUrl(att.getFileUrl());
@@ -171,35 +182,50 @@ public class DeclarationMaterialItemController {
 
     /** 删除已上传的附件（保留资料项，清空所有附件） */
     @DeleteMapping("/{id}/file")
-    @Operation(summary = "清除资料项所有附件")
-    public Result<Boolean> clearFile(@PathVariable Long id) {
+    @Operation(summary = "清除资料项附件（传 stage 时仅清除本环节上传及无环节标记的附件）")
+    public Result<Boolean> clearFile(@PathVariable Long id,
+                                     @RequestParam(value = "stage", required = false) String stage) {
         DeclarationMaterialItem item = itemService.getById(id);
         if (item == null) return Result.fail("资料项不存在");
-        // 删除子表所有附件
-        materialAttachmentService.removeAllByItemId(id);
-        // 清空主表冗余字段
-        item.setFileName(null);
-        item.setFileUrl(null);
-        item.setStatus(0);
-        item.setUploadBy(null);
-        item.setUploadTime(null);
-        if (StpUtil.isLogin()) {
-            item.setUpdateBy(StpUtil.getLoginIdAsLong());
+        if (stage == null || stage.isEmpty()) {
+            // 删除子表所有附件
+            materialAttachmentService.removeAllByItemId(id);
+        } else {
+            // 仅清除本环节上传的附件（含无环节标记的历史附件），前序环节文件保留
+            for (MaterialAttachment a : materialAttachmentService.listByItemId(id)) {
+                if (a.getStage() == null || a.getStage().isEmpty() || stage.equals(a.getStage())) {
+                    materialAttachmentService.removeAttachment(a.getId());
+                }
+            }
         }
-        item.setUpdateTime(LocalDateTime.now());
-        return Result.success(itemService.updateById(item));
+        syncItemAfterAttachmentChange(item);
+        return Result.success(true);
     }
 
     /** 删除单个附件 */
     @DeleteMapping("/{id}/file/{attachmentId}")
     @Operation(summary = "删除资料项的单个附件")
     public Result<Boolean> deleteAttachment(@PathVariable Long id,
-                                            @PathVariable Long attachmentId) {
+                                            @PathVariable Long attachmentId,
+                                            @RequestParam(value = "stage", required = false) String stage) {
         DeclarationMaterialItem item = itemService.getById(id);
         if (item == null) return Result.fail("资料项不存在");
+        // 环节保护：前序环节上传的附件，后续环节不可删除（无环节标记的历史附件放行）
+        MaterialAttachment target = materialAttachmentService.getById(attachmentId);
+        if (target == null) return Result.fail("附件不存在");
+        if (stage != null && !stage.isEmpty()
+                && target.getStage() != null && !target.getStage().isEmpty()
+                && !stage.equals(target.getStage())) {
+            return Result.fail("该附件由前序环节上传，当前环节不可删除");
+        }
         materialAttachmentService.removeAttachment(attachmentId);
-        // 检查是否还有附件
-        long remaining = materialAttachmentService.countByItemId(id);
+        syncItemAfterAttachmentChange(item);
+        return Result.success(true);
+    }
+
+    /** 附件增删后同步主表冗余字段（无附件时清空，否则指向最新附件） */
+    private void syncItemAfterAttachmentChange(DeclarationMaterialItem item) {
+        long remaining = materialAttachmentService.countByItemId(item.getId());
         if (remaining == 0) {
             // 清空主表冗余字段
             item.setFileName(null);
@@ -214,7 +240,7 @@ public class DeclarationMaterialItemController {
             itemService.updateById(item);
         } else {
             // 更新主表冗余字段为最新附件
-            List<MaterialAttachment> atts = materialAttachmentService.listByItemId(id);
+            List<MaterialAttachment> atts = materialAttachmentService.listByItemId(item.getId());
             if (!atts.isEmpty()) {
                 MaterialAttachment latest = atts.get(0);
                 item.setFileName(latest.getFileName());
@@ -226,7 +252,6 @@ public class DeclarationMaterialItemController {
                 itemService.updateById(item);
             }
         }
-        return Result.success(true);
     }
 
     /** 获取某资料项的附件列表 */
@@ -368,15 +393,17 @@ public class DeclarationMaterialItemController {
         }
     }
 
-    /** 获取开票金额计算详情 */
+    /** 获取开票金额（瘦身版：仅返回开票金额，计算明细不再下发） */
     @GetMapping("/invoice-amount/calculate")
-    @Operation(summary = "获取开票金额计算详情")
+    @Operation(summary = "获取开票金额")
     public Result<Map<String, Object>> getInvoiceAmountDetail(@RequestParam Long formId) {
         try {
             Map<String, Object> detail = financialSupplementService.getCalculationDetail(formId);
-            return Result.success(detail);
+            Map<String, Object> slim = new java.util.LinkedHashMap<>();
+            slim.put("invoiceAmount", detail.get("invoiceAmount"));
+            return Result.success(slim);
         } catch (Exception e) {
-            log.warn("获取开票金额计算详情失败 formId={} : {}", formId, e.getMessage());
+            log.warn("获取开票金额失败 formId={} : {}", formId, e.getMessage());
             return Result.fail(e.getMessage());
         }
     }

@@ -17,6 +17,8 @@ export interface MaterialAttachment {
   invoiceNo?: string | null
   /** 开票日期 */
   invoiceDate?: string | null
+  /** 上传时所处环节（多环节共享时，后续环节不可删除前序环节上传的附件） */
+  stage?: string | null
   /** 扩展字段 JSON */
   extraData?: string | null
   uploadBy?: number | string | null
@@ -79,6 +81,17 @@ export function getMaterialItems(formId: number | string) {
 }
 
 /**
+ * 按环节获取启用的资料模板（未保存草稿时预览资料项用，不需要模板管理权限）
+ */
+export function getMaterialTemplatePreview(stage: string) {
+  return request({
+    url: '/v1/material/items/template-preview',
+    method: 'get',
+    params: { stage }
+  })
+}
+
+/**
  * 单据内手动新增资料项（不入全局模板）
  */
 export function addMaterialItem(data: Partial<MaterialItem>) {
@@ -123,19 +136,28 @@ export function deleteMaterialItem(id: number | string) {
 }
 
 /**
+ * 附件是否允许在指定环节删除：只能删本环节上传的附件（无环节标记的历史附件放行）
+ */
+export function canDeleteAttachment(att: { stage?: string | null }, stage?: string | null): boolean {
+  return !att?.stage || !stage || att.stage === stage
+}
+
+/**
  * 上传附件
  * 额外可传 formId + templateId，后端在 id 找不到记录时会按模板兄弟 ensure 一条再上传（资料项懒创建兄底）
+ * uploadStage：上传时所处环节，落库后用于跨环节删除保护
  */
 export function uploadMaterialFile(
   id: number | string,
   file: File,
-  extras?: { formId?: number | string | null; templateId?: number | string | null }
+  extras?: { formId?: number | string | null; templateId?: number | string | null; uploadStage?: string | null }
 ) {
   const formData = new FormData()
   formData.append('file', file)
   const params: Record<string, any> = {}
   if (extras?.formId) params.formId = extras.formId
   if (extras?.templateId) params.templateId = extras.templateId
+  if (extras?.uploadStage) params.uploadStage = extras.uploadStage
   return request({
     url: `/v1/material/items/${id ?? 0}/upload`,
     method: 'post',
@@ -170,22 +192,24 @@ export function parseInvoicePdf(file: File): Promise<any> {
 }
 
 /**
- * 清除附件（保留资料项，清空所有附件）
+ * 清除附件（保留资料项；传 stage 时仅清除本环节上传及无环节标记的附件，前序环节文件保留）
  */
-export function clearMaterialFile(id: number | string) {
+export function clearMaterialFile(id: number | string, stage?: string | null) {
   return request({
     url: `/v1/material/items/${id}/file`,
-    method: 'delete'
+    method: 'delete',
+    params: stage ? { stage } : undefined
   })
 }
 
 /**
- * 删除单个附件
+ * 删除单个附件（传 stage 时后端校验：前序环节上传的附件不可在当前环节删除）
  */
-export function deleteMaterialAttachment(itemId: number | string, attachmentId: number | string) {
+export function deleteMaterialAttachment(itemId: number | string, attachmentId: number | string, stage?: string | null) {
   return request({
     url: `/v1/material/items/${itemId}/file/${attachmentId}`,
-    method: 'delete'
+    method: 'delete',
+    params: stage ? { stage } : undefined
   })
 }
 
@@ -281,7 +305,7 @@ export function auditInvoiceAmount(data: { formId: number | string; result: 1 | 
 }
 
 /**
- * 获取开票金额计算详情
+ * 获取开票金额（瘦身版接口，仅返回 invoiceAmount，计算明细不再下发）
  */
 export function getInvoiceAmountDetail(formId: number | string) {
   return request({

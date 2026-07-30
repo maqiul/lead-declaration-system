@@ -1,8 +1,8 @@
 @import 'ant-design-vue/dist/reset.css';
 @import './animations.less';
 
-// Lexend (Heading) & Source Sans 3 (Body) — 极简瑞士风格专业字体
-@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
+// Lexend (Heading) & Source Sans 3 (Body) 字体已移至 index.html 的 <link> 加载
+// （原 @import url(谷歌字体) 会在构建时被 less 拉取内联，无外网时导致 socket hang up 构建失败）
 
 // ========================================
 // 设计系统 — 全局 Design Tokens (Swiss Style)

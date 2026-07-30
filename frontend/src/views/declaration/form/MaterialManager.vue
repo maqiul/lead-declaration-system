@@ -125,7 +125,7 @@
                     <a-tag v-if="(record as MaterialItem).templateId == null" color="blue">自定义</a-tag>
                     <!-- 上传按钮 + 下拉菜单 -->
                     <div class="name-upload-actions" v-if="isEditableSection(section)">
-                      <a-upload :show-upload-list="false" :before-upload="(f: File) => handleUpload(f, record as MaterialItem)">
+                      <a-upload :show-upload-list="false" :before-upload="(f: File) => handleUpload(f, record as MaterialItem, section.config.templateStage || '')">
                         <a-button type="primary" size="small" class="material-upload-btn">
                           <template #icon><UploadOutlined v-if="(record as MaterialItem).status !== 1" /><PlusOutlined v-else /></template>
                           {{ (record as MaterialItem).status === 1 ? '追加' : '上传' }}
@@ -136,7 +136,7 @@
                         <template #overlay>
                           <a-menu>
                             <a-menu-item @click="openEditModal(record as MaterialItem)"><EditOutlined /> 编辑名称/说明</a-menu-item>
-                            <a-menu-item v-if="(record as MaterialItem).status === 1" @click="handleClearFile(record as MaterialItem)"><DeleteOutlined /> <span class="text-red-500">清除附件</span></a-menu-item>
+                            <a-menu-item v-if="(record as MaterialItem).status === 1" @click="handleClearFile(record as MaterialItem, section.config.templateStage || '')"><DeleteOutlined /> <span class="text-red-500">清除附件</span></a-menu-item>
                             <a-menu-item v-if="(record as MaterialItem).templateId == null" @click="handleDeleteRow(record as MaterialItem)"><CloseOutlined /> <span class="text-red-500">删除资料项</span></a-menu-item>
                           </a-menu>
                         </template>
@@ -172,7 +172,7 @@
                           <span class="att-val-tag">{{ att.invoiceNo || '-' }}</span>
                           <span class="att-val-tag">{{ att.invoiceDate || '-' }}</span>
                         </template>
-                        <a-popconfirm v-if="isEditableSection(section)" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                        <a-popconfirm v-if="isEditableSection(section) && canDeleteAttachment(att, section.config.templateStage || '')" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att, section.config.templateStage || '')">
                           <DeleteOutlined class="file-delete-btn" />
                         </a-popconfirm>
                       </div>
@@ -193,7 +193,7 @@
                           <FileTextOutlined class="file-icon-sm" />
                           <a @click.prevent="$emit('previewFile', att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ displayAttFileName(att) }}</a>
                         </div>
-                        <a-popconfirm v-if="isEditableSection(section)" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                        <a-popconfirm v-if="isEditableSection(section) && canDeleteAttachment(att, section.config.templateStage || '')" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att, section.config.templateStage || '')">
                           <DeleteOutlined class="file-delete-btn" />
                         </a-popconfirm>
                       </div>
@@ -277,11 +277,12 @@ import {
   uploadMaterialFile, ensureMaterialItem,
   addMaterialItem, updateMaterialItem, deleteMaterialItem,
   clearMaterialFile, deleteMaterialAttachment, updateMaterialAttachment,
-  parseInvoicePdf,
+  parseInvoicePdf, canDeleteAttachment,
   type MaterialItem,
 } from '@/api/business/materialItem'
 import { checkPermission } from '@/directives/permission'
 import { getEnabledDictItems } from '@/api/system/dict'
+import { hasStage } from '@/api/system/materialTemplate'
 
 // ==================== Props / Emits ====================
 const props = withDefaults(defineProps<{
@@ -425,10 +426,8 @@ const loadData = async () => {
 // ==================== 按环节分组 ====================
 const getSectionItems = (section: SectionInfo): MaterialItem[] => {
   return allItems.value
-    .filter(item => {
-      const stage = item.stage || 'MATERIAL_SUBMIT'
-      return stage === section.config.templateStage
-    })
+    // stage 支持多环节逗号分隔，包含匹配
+    .filter(item => hasStage(item.stage, section.config.templateStage || ''))
     .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
 }
 
@@ -712,13 +711,14 @@ const tryParseInvoicePdf = async (file: File, record: MaterialItem) => {
   if (parsedMsg) materialPdfMessages[materialRowKey(record)] = parsedMsg
 }
 
-const handleUpload = async (file: File, record: MaterialItem) => {
+const handleUpload = async (file: File, record: MaterialItem, stage?: string) => {
   try {
     const id = await resolveItemId(record)
     if (!id) return false
     const res = await uploadMaterialFile(id, file, {
       formId: props.formId,
-      templateId: record.templateId ?? null
+      templateId: record.templateId ?? null,
+      uploadStage: stage || null
     })
     if (res.data?.code === 200) {
       if (res.data.data?.id) record.id = res.data.data.id
@@ -808,7 +808,7 @@ const handleSaveModal = async () => {
 }
 
 // ==================== 清除附件 ====================
-const handleClearFile = (record: MaterialItem) => {
+const handleClearFile = (record: MaterialItem, stage?: string) => {
   Modal.confirm({
     title: '确定清除此附件吗？',
     okText: '确认',
@@ -817,7 +817,7 @@ const handleClearFile = (record: MaterialItem) => {
       try {
         const id = await resolveItemId(record)
         if (!id) return
-        await clearMaterialFile(id)
+        await clearMaterialFile(id, stage || null)
         message.success('已清除')
         await loadData()
       } catch (e: any) {
@@ -847,10 +847,10 @@ const handleDeleteRow = (record: MaterialItem) => {
 }
 
 // ==================== 删除单个附件 ====================
-const handleDeleteAttachment = async (record: MaterialItem, att: any) => {
+const handleDeleteAttachment = async (record: MaterialItem, att: any, stage?: string) => {
   try {
     if (!record.id || !att.id) return
-    await deleteMaterialAttachment(record.id, att.id)
+    await deleteMaterialAttachment(record.id, att.id, stage || null)
     message.success('已删除')
     await loadData()
   } catch (e: any) {

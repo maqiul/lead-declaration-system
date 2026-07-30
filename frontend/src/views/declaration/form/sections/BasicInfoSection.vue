@@ -659,6 +659,97 @@
             </a-table>
           </a-card>
 
+          <!-- 资料（基础资料环节，资料项来自资料模板，草稿阶段可预先上传） -->
+          <a-card v-if="showDraftMaterialBox" title="资料" size="small" class="section-card">
+            <a-spin :spinning="materialLoading">
+              <!-- 进度卡片（与其他资料环节样式统一） -->
+              <div class="progress-card">
+                <div class="progress-left">
+                  <div class="progress-title">
+                    <FileDoneOutlined class="progress-icon" />
+                    <span>资料上传进度</span>
+                  </div>
+                  <div class="progress-desc">
+                    共 <b>{{ draftMaterialStats.total }}</b> 项，
+                    必填 <b class="text-red-500">{{ draftMaterialStats.required }}</b> 项，
+                    已上传 <b :class="draftMaterialStats.uploaded === draftMaterialStats.required ? 'text-green-500' : 'text-blue-500'">{{ draftMaterialStats.uploaded }}</b> 项
+                  </div>
+                </div>
+                <div class="progress-right">
+                  <a-progress
+                    type="circle"
+                    :percent="draftMaterialStats.percent"
+                    :width="60"
+                    :stroke-color="draftMaterialStats.percent === 100 ? '#52c41a' : '#1677ff'"
+                  />
+                </div>
+              </div>
+              <a-alert
+                v-if="!formId && draftMaterialItems.length > 0"
+                type="info"
+                show-icon
+                message="首次上传资料时将自动保存草稿"
+                style="margin-bottom: 12px;"
+              />
+              <a-table
+                v-if="draftMaterialItems.length > 0"
+                :dataSource="draftMaterialItems"
+                :columns="draftMaterialColumns"
+                :pagination="false"
+                :rowKey="(r: any) => r.id ?? ('tpl-' + r.templateId)"
+                size="middle"
+                class="material-table"
+              >
+                <template #bodyCell="{ column, record }">
+                  <template v-if="column.key === 'name'">
+                    <div class="name-cell">
+                      <div class="name-main">
+                        <span class="name-text">{{ record.name }}</span>
+                        <a-tag v-if="record.required === 1" color="red">必填</a-tag>
+                        <a-tag v-else>选填</a-tag>
+                        <div class="name-upload-actions" v-if="draftMaterialEditable">
+                          <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record, 'BASIC')">
+                            <a-button type="primary" size="small" class="material-upload-btn">
+                              <template #icon><UploadOutlined v-if="record.status !== 1" /><PlusOutlined v-else /></template>
+                              {{ record.status === 1 ? '追加' : '上传' }}
+                            </a-button>
+                          </a-upload>
+                        </div>
+                      </div>
+                      <div v-if="record.remark" class="name-remark">{{ record.remark }}</div>
+                      <!-- 附件列表（与资料提交环节同款卡片样式） -->
+                      <template v-if="record.attachments && record.attachments.length > 0">
+                        <div v-for="att in record.attachments" :key="att.id" class="att-invoice-card">
+                          <div class="att-row-main">
+                            <div class="att-file-name">
+                              <FileTextOutlined class="file-icon-sm" />
+                              <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ att.fileName || '查看附件' }}</a>
+                            </div>
+                            <a-popconfirm v-if="draftMaterialEditable && canDeleteAttachment(att, 'BASIC')" title="确定删除？" @confirm="handleDeleteAttachment(record, att, 'BASIC')">
+                              <DeleteOutlined class="file-delete-btn" />
+                            </a-popconfirm>
+                          </div>
+                          <div class="att-row-meta">
+                            <span><UserOutlined /> 创建 {{ att.createByName || '-' }}</span>
+                            <span class="att-meta-dot"></span>
+                            <span><EditOutlined /> 更新 {{ att.updateByName || '-' }}</span>
+                            <span class="att-meta-dot"></span>
+                            <span><ClockCircleOutlined /> {{ att.uploadTime ? att.uploadTime.substring(0, 16) : '-' }}</span>
+                          </div>
+                        </div>
+                        <div class="file-count-hint" v-if="record.attachments.length > 1">共 {{ record.attachments.length }} 份文件</div>
+                      </template>
+                      <template v-else>
+                        <div class="file-cell file-empty"><CloudUploadOutlined class="file-icon" /><span>尚未上传</span></div>
+                      </template>
+                    </div>
+                  </template>
+                </template>
+              </a-table>
+              <a-empty v-else-if="!materialLoading" description="暂无资料项（请在资料模板中配置基础资料环节的资料项）" :image-style="{ height: '40px' }" />
+            </a-spin>
+          </a-card>
+
     <!-- 快速新增客户弹窗 -->
     <a-modal
       v-model:open="quickAddCustomerVisible"
@@ -718,9 +809,12 @@ import { AutoComplete as AAutoComplete } from 'ant-design-vue'
 import { useFormState } from '../composables/useDeclarationForm'
 import {
   PlusOutlined, DeleteOutlined, EnvironmentOutlined,
-  CloseOutlined, CheckOutlined,
+  CloseOutlined, CheckOutlined, UploadOutlined, FileTextOutlined,
+  FileDoneOutlined, UserOutlined, EditOutlined, ClockCircleOutlined, CloudUploadOutlined,
 } from '@ant-design/icons-vue'
 import { findUnitByCode } from '@/utils/measurement-unit'
+import { hasStage } from '@/api/system/materialTemplate'
+import { canDeleteAttachment } from '@/api/business/materialItem'
 
 // emit：结构性操作（父组件处理数据增删 + API）
 const emit = defineEmits<{
@@ -736,6 +830,9 @@ const emit = defineEmits<{
 const state = useFormState()
 const {
   formData, isFormReadonly, transportModeLocked,
+  formId, formStatus,
+  materialItems, materialLoading,
+  beforeMaterialUpload, handleDeleteAttachment, previewFile,
   entityList, productList, cartonList,
   cityOptions, countryOptions, currencyOptions,
   transportModeOptions, tradeTermOptions, paymentMethodOptions, productOptions,
@@ -754,6 +851,32 @@ const {
 
 // 本地 UI 状态：申报要素弹窗
 const elementsModalVisible = ref(false)
+
+// ========== 基础资料“资料”框（BASIC 环节，独立于资料提交环节） ==========
+// 草稿期可上传/删除；提交后只读展示已传文件
+const draftMaterialEditable = computed(() => {
+  const s = formStatus.value
+  return (s == null || s === 0) && !isFormReadonly.value
+})
+// 仅展示“基础资料”环节的资料项（来自资料模板 + 已上传实例合并视图，stage 支持多环节包含匹配）
+const draftMaterialItems = computed(() =>
+  ((materialItems.value || []) as any[]).filter(i => hasStage(i.stage, 'BASIC')))
+/** 进度统计（口径与 MaterialManager.getSectionStats 一致） */
+const draftMaterialStats = computed(() => {
+  const items = draftMaterialItems.value
+  const total = items.length
+  const required = items.filter(i => i.required === 1).length
+  const uploaded = items.filter(i => i.required === 1 && i.status === 1).length
+  const percent = required > 0 ? Math.round((uploaded / required) * 100) : (total > 0 ? 100 : 0)
+  return { total, required, uploaded, percent }
+})
+const showDraftMaterialBox = computed(() => {
+  // 草稿期：始终显示（含未保存时的提示态）
+  if (draftMaterialEditable.value) return true
+  // 提交后：有已上传的基础资料时只读展示，避免已传文件不可见
+  return draftMaterialItems.value.some(i => i.status === 1 || (i.attachments && i.attachments.length))
+})
+const draftMaterialColumns = [{ title: '资料项', key: 'name' }]
 
 // 贸易方式联动逻辑：根据运输方式过滤可选贸易方式
 const filteredTradeTermOptions = computed(() => {

@@ -49,8 +49,8 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'stage'">
-            <a-tag :color="stageColorMap[record.stage] || 'default'" class="ui-tag">
-              {{ stageLabelMap[record.stage] || record.stage || '未设置' }}
+            <a-tag v-for="s in splitStages(record.stage)" :key="s" :color="stageColorMap[s] || 'default'" class="ui-tag">
+              {{ stageLabelMap[s] || s }}
             </a-tag>
           </template>
           <template v-else-if="column.key === 'invoiceMode'">
@@ -153,7 +153,7 @@
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="所属环节" name="stage">
-              <a-select v-model:value="formData.stage" placeholder="选择所属环节">
+              <a-select v-model:value="formStages" mode="multiple" placeholder="选择所属环节（可多选）">
                 <a-select-option v-for="s in stageOptions" :key="s.value" :value="s.value">
                   {{ s.label }}
                 </a-select-option>
@@ -378,6 +378,7 @@ import {
   MATERIAL_STAGES,
   MATERIAL_STAGE_LABEL,
   MATERIAL_STAGE_COLOR,
+  splitStages,
   type MaterialTemplate,
   type MaterialSchemaField,
   type MaterialStage,
@@ -446,6 +447,12 @@ const loadStageOptions = async () => {
       }
     }
     if (options.length > 0) {
+      // 基础资料为内置环节（草稿阶段上传，不走 form_section 字典），字典模式下始终保留
+      if (!options.some(o => o.value === 'BASIC')) {
+        options.unshift({ value: 'BASIC', label: '基础资料', color: 'purple' })
+        labels['BASIC'] = '基础资料'
+        colors['BASIC'] = 'purple'
+      }
       stageOptions.value = options
       stageLabelMap.value = labels
       stageColorMap.value = colors
@@ -541,6 +548,8 @@ const defaultForm = (): MaterialTemplate => ({
 })
 
 const formData = reactive<MaterialTemplate>(defaultForm())
+// 所属环节多选（保存时 join 为逗号分隔存入 formData.stage）
+const formStages = ref<string[]>(['MATERIAL_SUBMIT'])
 
 // 可视化结构化字段表格数据
 const schemaFields = ref<SchemaFieldRow[]>([])
@@ -639,6 +648,7 @@ const openAddModal = () => {
   editingId.value = null
   Object.assign(formData, defaultForm())
   delete (formData as any).id  // 清除编辑残留的id，新增时不应带id
+  formStages.value = ['MATERIAL_SUBMIT']
   schemaFields.value = []
   bindingRules.value = []
   modalVisible.value = true
@@ -647,6 +657,7 @@ const openAddModal = () => {
 const openEditModal = (record: MaterialTemplate) => {
   editingId.value = record.id ?? null
   Object.assign(formData, defaultForm(), record)
+  formStages.value = splitStages(record.stage)
   schemaFields.value = schemaToRows(record.formSchema)
   bindingRules.value = (record.bindings || []).map(b => ({ ...b }))
   modalVisible.value = true
@@ -659,6 +670,13 @@ const closeModal = () => {
 const handleSave = async () => {
   try {
     await formRef.value?.validate()
+
+    // 所属环节多选 → 逗号分隔
+    if (!formStages.value.length) {
+      message.warning('请至少选择一个所属环节')
+      return
+    }
+    formData.stage = formStages.value.join(',')
 
     // 校验结构化字段
     const keys = new Set<string>()

@@ -184,7 +184,7 @@
           <!-- 普通模式下的按钮 -->
           <template v-else>
             <!-- 保存草稿按钮 -->
-            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" @click="handleSaveDraft" :loading="submitting" v-permission="['business:declaration:create']">
+            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" @click="() => handleSaveDraft()" :loading="submitting" v-permission="['business:declaration:create']">
               <template #icon><SaveOutlined /></template>
               保存草稿
             </a-button>
@@ -435,6 +435,7 @@ import {
 } from '@/api/business/declaration'
 import {
   getMaterialItems,
+  getMaterialTemplatePreview,
   updateMaterialItem,
   uploadMaterialFile,
   deleteMaterialAttachment,
@@ -460,6 +461,8 @@ import {
 import { getRemittancesByFormId } from '@/api/business/remittance'
 import {
   MATERIAL_STAGES,
+  splitStages,
+  hasStage,
   type MaterialStage
 } from '@/api/system/materialTemplate'
 import { getEnabledDictItems } from '@/api/system/dict'
@@ -1029,9 +1032,9 @@ const materialColumns = [
   { title: '资料项', key: 'name', dataIndex: 'name' }
 ]
 
-/** 核心资料项（排除非资料提交环节） */
+/** 核心资料项（排除非资料提交环节，多环节时任一环节参与资料提交即保留） */
 const coreMaterialItems = computed(() =>
-  materialItems.value.filter(i => !excludedStages.value.has(getItemStage(i)))
+  materialItems.value.filter(isSubmitStageItem)
 )
 const materialRequiredCount = computed(() => coreMaterialItems.value.filter((i) => i.required === 1).length)
 const materialUploadedCount = computed(() =>
@@ -1044,8 +1047,9 @@ const materialProgressPercent = computed(() => {
 
 // ---------- 按环节（stage）分组资料项 ----------
 const DEFAULT_STAGE: MaterialStage = 'MATERIAL_SUBMIT'
-const getItemStage = (item: MaterialItem): MaterialStage =>
-  (item.stage as MaterialStage) || DEFAULT_STAGE
+/** 项是否参与资料提交环节（stage 支持多环节逗号分隔，任一环节不在排除集合即参与） */
+const isSubmitStageItem = (item: MaterialItem) =>
+  splitStages(item.stage).some(s => !excludedStages.value.has(s))
 
 // 动态环节列表（从 form_section 字典加载，fallback 为硬编码 MATERIAL_STAGES）
 interface DynamicStage {
@@ -1057,17 +1061,17 @@ interface DynamicStage {
 const dynamicStages = ref<DynamicStage[]>(
   MATERIAL_STAGES.map(s => ({ value: s.value, label: s.label, templateStage: s.value, sortOrder: 0 }))
 )
-/** 非资料提交环节（补充资料、发票等独立管理的环节） */
+/** 非资料提交环节（基础资料、补充资料、发票等独立管理的环节） */
 const excludedStages = computed<Set<string>>(() => {
   // 有 submitKey + templateStage 的是资料提交环节，其余为非资料提交环节
   const submitStages = dynamicStages.value.filter(s => !!s.templateStage)
   // 如果只有默认三环节（fallback），用硬编码排除
   if (submitStages.length <= 3 && dynamicStages.value.length <= 3) {
-    return new Set(['SUPPLEMENT', 'INVOICE'])
+    return new Set(['BASIC', 'SUPPLEMENT', 'INVOICE'])
   }
   // 动态模式下，排除没有 submitKey 的环节（它们由独立组件管理）
-  // 这里暂保留硬编码排除，因为补充资料和发票有独立 UI
-  return new Set(['SUPPLEMENT', 'INVOICE'])
+  // 这里暂保留硬编码排除，因为基础资料、补充资料和发票有独立 UI
+  return new Set(['BASIC', 'SUPPLEMENT', 'INVOICE'])
 })
 
 const loadMaterialStages = async () => {
@@ -1099,7 +1103,7 @@ const loadMaterialStages = async () => {
 }
 
 const getStageItems = (stage: MaterialStage) =>
-  materialItems.value.filter((i) => getItemStage(i) === stage)
+  materialItems.value.filter((i) => hasStage(i.stage, stage))
 
 const activeStageTab = ref<string>(DEFAULT_STAGE)
 
@@ -1387,7 +1391,31 @@ const setMaterialFieldValue = (record: MaterialItem, key: string, val: any) => {
 }
 
 const loadMaterialItems = async () => {
-  if (!formId.value) return
+  // 未保存草稿：加载 BASIC 环节启用模板作为虚拟项预览（上传时会自动保存草稿后再落库）
+  if (!formId.value) {
+    try {
+      materialLoading.value = true
+      const res = await getMaterialTemplatePreview('BASIC')
+      if (res.data?.code === 200) {
+        materialItems.value = (res.data.data || []).map((t: any) => ({
+          formId: '',
+          templateId: t.id,
+          code: t.code,
+          name: t.name,
+          required: t.required,
+          sort: t.sort ?? 0,
+          remark: t.remark,
+          formSchema: t.formSchema,
+          stage: t.stage,
+          invoiceMode: t.invoiceMode,
+          status: 0
+        })).sort((a: MaterialItem, b: MaterialItem) => (a.sort ?? 0) - (b.sort ?? 0))
+      }
+    } catch { /* 静默：预览失败不阻断表单填写 */ } finally {
+      materialLoading.value = false
+    }
+    return
+  }
   try {
     materialLoading.value = true
     const res = await getMaterialItems(formId.value)
@@ -1538,14 +1566,23 @@ const saveMaterialRowFields = async (record: MaterialItem) => {
   }
 }
 
-const beforeMaterialUpload = async (file: File, record: MaterialItem) => {
+const beforeMaterialUpload = async (file: File, record: MaterialItem, stage?: string) => {
   try {
+    // 未保存草稿：先自动保存拿到 formId，再继续上传（方案3）
+    // 注意：此处延迟 URL 同步——router.replace 会因 fullPath 变化触发整页重新挂载，
+    // 若在上传前替换 URL，新组件挂载时附件尚未落库，造成“文件没加载出来”
+    if (!formId.value) {
+      await handleSaveDraft({ deferUrlSync: true })
+      if (!formId.value) return false
+    }
     const id = await resolveMaterialItemId(record)
     if (!id) return false
     // 同时传 formId + templateId：后端在 id 找不到实例时会自动按模板 ensure 一条再上传
     const res = await uploadMaterialFile(id, file, {
       formId: formId.value,
-      templateId: record.templateId ?? null
+      templateId: record.templateId ?? null,
+      // 记录上传时所处环节，用于跨环节删除保护
+      uploadStage: stage ?? null
     })
     if (res.data?.code === 200) {
       if (res.data.data?.id) record.id = res.data.data.id
@@ -1560,8 +1597,21 @@ const beforeMaterialUpload = async (file: File, record: MaterialItem) => {
     }
   } catch (e) {
     message.error('上传失败')
+  } finally {
+    // 自动保存场景：上传结束后再补 URL 同步（重新挂载时附件已落库，可正常展示）
+    syncDraftUrl()
   }
   return false
+}
+
+/** 将新建草稿的 id 同步到 URL（延迟同步场景专用，已同步过则跳过） */
+const syncDraftUrl = () => {
+  if (formId.value && String(route.query.id ?? '') !== String(formId.value)) {
+    router.replace({
+      path: route.path,
+      query: { ...route.query, id: formId.value, status: 0 }
+    })
+  }
 }
 
 /**
@@ -1593,10 +1643,10 @@ const resolveMaterialItemId = async (record: MaterialItem): Promise<number | str
   }
 }
 
-/** 删除单个附件 */
-const handleDeleteAttachment = async (record: MaterialItem, att: MaterialAttachment) => {
+/** 删除单个附件（stage：当前操作环节，后端据此拦截前序环节上传的附件） */
+const handleDeleteAttachment = async (record: MaterialItem, att: MaterialAttachment, stage?: string) => {
   try {
-    const res = await deleteMaterialAttachment(record.id!, att.id)
+    const res = await deleteMaterialAttachment(record.id!, att.id, stage)
     if (res.data?.code === 200) {
       message.success('已删除')
       await loadMaterialItems()
@@ -1630,9 +1680,8 @@ const saveAttachmentField = async (record: MaterialItem, att: MaterialAttachment
 
 const validateMaterialSchemaFields = (): string | null => {
   for (const item of materialItems.value) {
-    // 跳过非资料提交环节
-    const stage = getItemStage(item)
-    if (excludedStages.value.has(stage)) continue
+    // 跳过非资料提交环节（多环节时任一环节参与资料提交即校验）
+    if (!isSubmitStageItem(item)) continue
     const schema = parseMaterialSchema(item.formSchema)
     if (!schema.length) continue
     const isInvoice = isInvoiceMaterial(item)
@@ -1652,7 +1701,7 @@ const validateMaterialSchemaFields = (): string | null => {
 const handleSubmitMaterial = async () => {
   if (!formId.value) return
   // 只校验资料提交阶段的项，不包含非资料提交环节
-  const submitItems = materialItems.value.filter((i) => !excludedStages.value.has(getItemStage(i)))
+  const submitItems = materialItems.value.filter(isSubmitStageItem)
   const missing = submitItems.filter((i) => i.required === 1 && i.status !== 1)
 
   const schemaMissing = validateMaterialSchemaFields()
@@ -1908,13 +1957,13 @@ const loadInvoiceAmountDetail = async () => {
   if (!formId.value) return
   invoiceAmountLoading.value = true
   try {
-    // 并发加载计算详情和水单列表
+    // 并发加载开票金额（瘦身接口，仅 invoiceAmount，供下载开票文件 20% 上限校验）和水单列表
     const [calcRes, remRes] = await Promise.all([
       getInvoiceAmountDetail(formId.value!),
       getRemittancesByFormId(formId.value!)
     ])
     if (calcRes.data?.code === 200) {
-      invoiceAmountCalcDetail.value = calcRes.data.data
+      invoiceAmountCalcDetail.value = calcRes.data.data || null
     } else {
       invoiceAmountCalcDetail.value = null
     }
@@ -3130,7 +3179,8 @@ const goBack = () => {
 }
 
 // 保存草稿
-const handleSaveDraft = async () => {
+const handleSaveDraft = async (options?: { deferUrlSync?: boolean }) => {
+  const deferUrlSync = options?.deferUrlSync === true
   // 草稿保存：超配仅 warning 不阻断
   const cartonWarnings = validateCartonProducts()
   if (cartonWarnings.length > 0) {
@@ -3245,11 +3295,16 @@ const handleSaveDraft = async () => {
         console.log('当前草稿ID:', formId.value)
         formData.formNo = newDraftId.formNo
         formStatus.value = 0
-        router.replace({
-          path: route.path,
-          query: { ...route.query, id: newDraftId, status: 0 }
-        })
+        // 延迟同步场景（首次上传自动保存）：replace 会触发页面重挂载，由调用方在上传完成后补做
+        if (!deferUrlSync) {
+          router.replace({
+            path: route.path,
+            query: { ...route.query, id: newDraftId.formId, status: 0 }
+          })
+        }
       }
+      // 刷新基础资料区“资料”框（保存后按申报单加载真实资料项实例）
+      await loadMaterialItems()
     } else {
       message.error(response.data.message || '保存草稿失败')
     }
@@ -3713,6 +3768,9 @@ const loadData = async () => {
           } else {
             scrollToQuerySection()
           }
+        } else if (formId.value) {
+          // 草稿阶段：加载资料项供基础资料区“资料”框预先上传（资料项来自资料模板）
+          await loadMaterialItems()
         }
 
         // 补充资料审过后（status>5）：任意入口进入都加载开票金额详情（自用申报跳过）
@@ -3945,6 +4003,8 @@ onMounted(() => {
       transportModeLocked.value = true
     }
     // 不再根据用户组织类型自动判断，默认使用初始值 EXTERNAL
+    // 新建未保存：加载 BASIC 环节模板预览，支持上传时自动保存草稿
+    loadMaterialItems()
   }
   loadData()
   loadCountries()

@@ -1012,7 +1012,7 @@
                     </a-tag>
                     <!-- 上传按鈕内嵌在名称行 -->
                     <div class="name-upload-actions" v-if="isMaterialEditable">
-                      <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem)">
+                      <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem, activeStageTab)">
                         <a-button type="primary" size="small" class="material-upload-btn">
                           <template #icon><UploadOutlined v-if="record.status !== 1" /><PlusOutlined v-else /></template>
                           {{ record.status === 1 ? '追加' : '上传' }}
@@ -1023,7 +1023,7 @@
                         <template #overlay>
                           <a-menu>
                             <a-menu-item @click="openEditMaterialRow(record as MaterialItem)"><EditOutlined /> 编辑名称/说明</a-menu-item>
-                            <a-menu-item v-if="record.status === 1" @click="confirmClearMaterialFile(record as MaterialItem)"><DeleteOutlined /> <span class="text-red-500">清除附件</span></a-menu-item>
+                            <a-menu-item v-if="record.status === 1" @click="confirmClearMaterialFile(record as MaterialItem, activeStageTab)"><DeleteOutlined /> <span class="text-red-500">清除附件</span></a-menu-item>
                             <a-menu-item v-if="record.templateId == null" @click="confirmDeleteMaterialRow(record as MaterialItem)"><CloseOutlined /> <span class="text-red-500">删除资料项</span></a-menu-item>
                           </a-menu>
                         </template>
@@ -1063,7 +1063,7 @@
                             <span class="att-val-tag">{{ att.invoiceNo || '-' }}</span>
                             <span class="att-val-tag">{{ att.invoiceDate || '-' }}</span>
                           </template>
-                          <a-popconfirm v-if="isMaterialEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                          <a-popconfirm v-if="isMaterialEditable && canDeleteAttachment(att, activeStageTab)" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att, activeStageTab)">
                             <DeleteOutlined class="file-delete-btn" />
                           </a-popconfirm>
                         </div>
@@ -1085,7 +1085,7 @@
                             <FileTextOutlined class="file-icon-sm" />
                             <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ displayAttFileName(att) }}</a>
                           </div>
-                          <a-popconfirm v-if="isMaterialEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                          <a-popconfirm v-if="isMaterialEditable && canDeleteAttachment(att, activeStageTab)" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att, activeStageTab)">
                             <DeleteOutlined class="file-delete-btn" />
                           </a-popconfirm>
                         </div>
@@ -1229,7 +1229,7 @@
                     <a-tag v-if="(record as MaterialItem).required === 1" color="red" class="ui-tag">必填</a-tag>
                     <a-tag v-else class="ui-tag">选填</a-tag>
                     <div class="name-upload-actions" v-if="isSupplementEditable">
-                      <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem)">
+                      <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem, 'SUPPLEMENT')">
                         <a-button type="primary" size="small" class="material-upload-btn">
                           <template #icon><UploadOutlined v-if="(record as MaterialItem).status !== 1" /><PlusOutlined v-else /></template>
                           {{ (record as MaterialItem).status === 1 ? '追加' : '上传' }}
@@ -1268,7 +1268,7 @@
                             <span class="att-val-tag">{{ att.invoiceNo || '-' }}</span>
                             <span class="att-val-tag">{{ att.invoiceDate || '-' }}</span>
                           </template>
-                          <a-popconfirm v-if="isSupplementEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                          <a-popconfirm v-if="isSupplementEditable && canDeleteAttachment(att, 'SUPPLEMENT')" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att, 'SUPPLEMENT')">
                             <DeleteOutlined class="file-delete-btn" />
                           </a-popconfirm>
                         </div>
@@ -1289,7 +1289,7 @@
                             <FileTextOutlined class="file-icon-sm" />
                             <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ displayAttFileName(att) }}</a>
                           </div>
-                          <a-popconfirm v-if="isSupplementEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                          <a-popconfirm v-if="isSupplementEditable && canDeleteAttachment(att, 'SUPPLEMENT')" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att, 'SUPPLEMENT')">
                             <DeleteOutlined class="file-delete-btn" />
                           </a-popconfirm>
                         </div>
@@ -1371,7 +1371,7 @@
                 <template #icon><ReloadOutlined /></template>
                 {{ isInvoiceAmountEditable ? '刷新计算' : '加载详情' }}
               </a-button>
-              <a-button v-if="invoiceAmountCalcDetail" type="link" @click="handleDownloadInvoicePackage">
+              <a-button type="link" @click="handleDownloadInvoicePackage">
                 <template #icon><DownloadOutlined /></template>
                 下载开票文件
               </a-button>
@@ -1405,115 +1405,6 @@
             />
             <a-empty v-else description="暂无关联水单，请先在水单管理中关联并审核通过" :image-style="{ height: '30px' }" />
           </div>
-
-          <!-- 开票金额计算详情 -->
-          <div v-if="invoiceAmountCalcDetail" class="calc-detail-wrap">
-            <!-- 收入部分 -->
-            <div class="calc-section calc-income">
-              <div class="calc-section-title">
-                <RiseOutlined style="margin-right: 6px;" /> 收入部分
-              </div>
-              <div v-for="(rd, idx) in (invoiceAmountCalcDetail.remittanceDetails || [])" :key="'rd-' + idx" style="margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
-                <div class="calc-row">
-                  <span class="calc-label" style="font-weight: 600;">{{ rd.remittanceName || '水单' }}</span>
-                  <span class="calc-value">{{ fmtAmt(rd.amount) }} {{ rd.currency || 'USD' }} × {{ Number(rd.taxRate || 0).toFixed(4) }} = <b>{{ fmtAmt(rd.cnyAmount) }} CNY</b></span>
-                </div>
-                <div v-if="rd.proportion && rd.proportion < 100" style="font-size: 12px; color: #666; margin-left: 12px; margin-top: 4px;">
-                  分配占比: {{ rd.proportion }}% ({{ fmtAmt(rd.relationAmount) }} / {{ fmtAmt(rd.fullAmount) }})
-                </div>
-                <div v-if="rd.bankFeeCny > 0 || rd.internalBankFee > 0" style="font-size: 12px; margin-left: 12px; margin-top: 4px; padding: 6px; background: #fff3e0; border-radius: 3px;">
-                  <div v-if="rd.bankFeeCny > 0" style="color: #e65100;">
-                    银行手续费: {{ fmtAmt(rd.bankFeeOriginal) }} {{ rd.currency || 'USD' }} × {{ Number(rd.taxRate || 0).toFixed(4) }}
-                    <span v-if="rd.proportion && rd.proportion < 100"> × {{ rd.proportion }}%</span>
-                    = {{ fmtAmt(rd.bankFeeCny) }} CNY
-                  </div>
-                  <div v-if="rd.internalBankFee > 0" style="color: #d84315; margin-top: 2px;">
-                    内部操作费: {{ fmtAmt(rd.internalBankFeeOriginal) }} CNY
-                    <span v-if="rd.proportion && rd.proportion < 100"> × {{ rd.proportion }}% = </span>
-                    <span v-if="rd.proportion && rd.proportion < 100">{{ fmtAmt(rd.internalBankFee) }} CNY</span>
-                  </div>
-                </div>
-              </div>
-              <div class="calc-row calc-subtotal">
-                <span class="calc-label">收汇合计</span>
-                <span class="calc-value text-green-600"><b>{{ fmtAmt(invoiceAmountCalcDetail.totalCny) }} CNY</b></span>
-              </div>
-              <div class="calc-row" v-if="invoiceAmountCalcDetail.productTaxDetails && invoiceAmountCalcDetail.productTaxDetails.length > 0">
-                <span class="calc-label">退税加成明细</span>
-                <span class="calc-value">
-                  <span v-for="(pd, pdx) in invoiceAmountCalcDetail.productTaxDetails" :key="'pd-'+pdx" style="display: block; font-size: 12px; margin-bottom: 6px;">
-                    <div style="color: #666;">{{ pd.productName || pd.hsCode || '商品' + (Number(pdx) + 1) }}</div>
-                    <div style="margin-left: 12px;">
-                      原币: {{ fmtAmt(pd.amount) }} × 汇率: {{ invoiceAmountCalcDetail.weightedExchangeRate }} = {{ fmtAmt(pd.cnyAmount) }} CNY
-                    </div>
-                    <div style="margin-left: 12px;">
-                      {{ fmtAmt(pd.cnyAmount) }} × (1+{{ pd.taxRefundRate }}%) = <b style="color: #16a34a;">{{ fmtAmt(pd.amountWithTaxRefund) }} CNY</b>
-                    </div>
-                  </span>
-                  <span style="display: block; margin-top: 4px; font-weight: bold; color: #16a34a; border-top: 1px dashed #ddd; padding-top: 4px;">合计: {{ fmtAmt(invoiceAmountCalcDetail.amountWithTaxRefund) }} CNY</span>
-                </span>
-              </div>
-              <div class="calc-row calc-highlight" v-else>
-                <span class="calc-label">退税加成</span>
-                <span class="calc-value text-gray-400">商品未配置退税率，按 0% 计算</span>
-              </div>
-            </div>
-          
-            <!-- 支出部分 -->
-            <div class="calc-section calc-expense">
-              <div class="calc-section-title">
-                <FallOutlined style="margin-right: 6px;" /> 支出部分（扣减项）
-              </div>
-              <div class="calc-row" v-for="(ded, didx) in (invoiceAmountCalcDetail.invoiceDeductionItems || [])" :key="'ded-'+didx">
-                <span class="calc-label">{{ ded.name }}</span>
-                <span class="calc-value text-red-500">-{{ fmtAmt(ded.amount) }} CNY</span>
-              </div>
-              <div class="calc-row" v-if="!invoiceAmountCalcDetail.invoiceDeductionItems || invoiceAmountCalcDetail.invoiceDeductionItems.length === 0">
-                <span class="calc-label">发票扣减项</span>
-                <span class="calc-value text-gray-400">无</span>
-              </div>
-              <div class="calc-row" v-if="invoiceAmountCalcDetail.bankFeeAmount > 0">
-                <span class="calc-label">银行手续费</span>
-                <span class="calc-value text-red-500">-{{ fmtAmt(invoiceAmountCalcDetail.bankFeeAmount) }} CNY</span>
-              </div>
-              <div class="calc-row" v-if="invoiceAmountCalcDetail.internalBankFee > 0">
-                <span class="calc-label">内部操作费</span>
-                <span class="calc-value text-red-500">-{{ fmtAmt(invoiceAmountCalcDetail.internalBankFee) }} CNY</span>
-              </div>
-              <div class="calc-row" v-if="!invoiceAmountCalcDetail.bankFeeAmount && !invoiceAmountCalcDetail.internalBankFee">
-                <span class="calc-label">手续费</span>
-                <span class="calc-value text-gray-400">无</span>
-              </div>
-              <div class="calc-row calc-subtotal">
-                <span class="calc-label">支出合计</span>
-                <span class="calc-value text-red-600"><b>-{{ fmtAmt(calcExpenseTotal) }} CNY</b></span>
-              </div>
-            </div>
-          
-            <!-- 开票金额 -->
-            <div class="calc-section calc-result">
-              <div class="calc-row">
-                <span class="calc-label">开票金额</span>
-                <span class="calc-value">
-                  {{ fmtAmt(invoiceAmountCalcDetail.amountWithTaxRefund) }} - {{ fmtAmt(calcExpenseTotal) }} =
-                  <b class="text-blue-600" style="font-size: 18px;">{{ fmtAmt(invoiceAmountCalcDetail.invoiceAmount) }} CNY</b>
-                </span>
-              </div>
-            </div>
-          
-            <!-- 计算过程 -->
-            <a-collapse :bordered="false" size="small" v-if="invoiceAmountCalcDetail.calculationSteps && invoiceAmountCalcDetail.calculationSteps.length > 0">
-              <a-collapse-panel key="steps" header="计算过程明细">
-                <div class="calc-steps">
-                  <div v-for="(step, idx) in invoiceAmountCalcDetail.calculationSteps" :key="idx" class="calc-step-item">
-                    <span class="calc-step-no">{{ Number(idx) + 1 }}</span>
-                    <span class="calc-step-text">{{ step }}</span>
-                  </div>
-                </div>
-              </a-collapse-panel>
-            </a-collapse>
-          </div>
-          <a-empty v-else :description="isInvoiceAmountEditable ? '点击刷新计算加载开票金额详情' : '暂无开票金额计算数据'" />
         </a-spin>
       </a-card>
 
@@ -1590,7 +1481,7 @@
                     <a-tag v-if="(record as MaterialItem).required === 1" color="red" class="ui-tag">必填</a-tag>
                     <a-tag v-else class="ui-tag">选填</a-tag>
                     <div class="name-upload-actions" v-if="isInvoiceEditable">
-                      <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem)">
+                      <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record as MaterialItem, 'INVOICE')">
                         <a-button type="primary" size="small" class="material-upload-btn">
                           <template #icon><UploadOutlined v-if="(record as MaterialItem).status !== 1" /><PlusOutlined v-else /></template>
                           {{ (record as MaterialItem).status === 1 ? '追加' : '上传' }}
@@ -1627,7 +1518,7 @@
                           <span class="att-val-tag">{{ att.invoiceNo || '-' }}</span>
                           <span class="att-val-tag">{{ att.invoiceDate || '-' }}</span>
                         </template>
-                        <a-popconfirm v-if="isInvoiceEditable" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att)">
+                        <a-popconfirm v-if="isInvoiceEditable && canDeleteAttachment(att, 'INVOICE')" title="确定删除？" @confirm="handleDeleteAttachment(record as MaterialItem, att, 'INVOICE')">
                           <DeleteOutlined class="file-delete-btn" />
                         </a-popconfirm>
                       </div>
@@ -1742,9 +1633,7 @@ import {
   CalculatorOutlined,
   ReloadOutlined,
   LinkOutlined,
-  DownloadOutlined,
-  RiseOutlined,
-  FallOutlined
+  DownloadOutlined
 } from '@ant-design/icons-vue'
 import dayjs, { Dayjs } from 'dayjs'
 
@@ -1785,12 +1674,15 @@ import {
   submitInvoiceAmount,
   auditInvoiceAmount,
   getInvoiceAmountDetail,
+  canDeleteAttachment,
   type MaterialItem,
   type MaterialAttachment
 } from '@/api/business/materialItem'
 import { getRemittancesByFormId } from '@/api/business/remittance'
 import {
   MATERIAL_STAGES,
+  splitStages,
+  hasStage,
   type MaterialStage
 } from '@/api/system/materialTemplate'
 import { getProductTypes } from '@/api/system/product'
@@ -2196,12 +2088,9 @@ const materialColumns = [
   { title: '资料项', key: 'name', dataIndex: 'name' }
 ]
 
-/** 核心资料项（排除补充资料和发票环节） */
+/** 核心资料项（排除基础资料、补充资料和发票环节，多环节时任一环节参与资料提交即保留） */
 const coreMaterialItems = computed(() =>
-  materialItems.value.filter(i => {
-    const stage = getItemStage(i)
-    return stage !== 'SUPPLEMENT' && stage !== 'INVOICE'
-  })
+  materialItems.value.filter(isSubmitStageItem)
 )
 const materialRequiredCount = computed(() => coreMaterialItems.value.filter((i) => i.required === 1).length)
 const materialUploadedCount = computed(() =>
@@ -2214,11 +2103,12 @@ const materialProgressPercent = computed(() => {
 
 // ---------- 按环节（stage）分组资料项 ----------
 const DEFAULT_STAGE: MaterialStage = 'MATERIAL_SUBMIT'
-const getItemStage = (item: MaterialItem): MaterialStage =>
-  (item.stage as MaterialStage) || DEFAULT_STAGE
+/** 项是否参与资料提交环节（stage 支持多环节逗号分隔，任一环节不属于 BASIC/SUPPLEMENT/INVOICE 即参与） */
+const isSubmitStageItem = (item: MaterialItem) =>
+  splitStages(item.stage).some(s => s !== 'BASIC' && s !== 'SUPPLEMENT' && s !== 'INVOICE')
 
 const getStageItems = (stage: MaterialStage) =>
-  materialItems.value.filter((i) => getItemStage(i) === stage)
+  materialItems.value.filter((i) => hasStage(i.stage, stage))
 
 const activeStageTab = ref<string>(DEFAULT_STAGE)
 
@@ -2229,7 +2119,7 @@ const activeStageItems = computed(() =>
 
 /** 有资料项的环节列表（控制 tab 显示） */
 const availableStages = computed(() =>
-  MATERIAL_STAGES.filter((s) => s.value !== 'SUPPLEMENT' && s.value !== 'INVOICE' && getStageItems(s.value as MaterialStage).length > 0)
+  MATERIAL_STAGES.filter((s) => s.value !== 'BASIC' && s.value !== 'SUPPLEMENT' && s.value !== 'INVOICE' && getStageItems(s.value as MaterialStage).length > 0)
 )
 
 /** 每个环节的进度统计 */
@@ -2376,17 +2266,6 @@ const isInvoiceAmountEditable = computed(() => canSubmitInvoiceAmount.value)
 const invoiceAmountCalcDetail = ref<Record<string, any> | null>(null)
 const invoiceAmountLoading = ref(false)
 
-/** 金额格式化 */
-const fmtAmt = (v: any) => {
-  if (v == null || v === '') return '-'
-  return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-/** 支出合计 */
-const calcExpenseTotal = computed(() => {
-  const d = invoiceAmountCalcDetail.value
-  if (!d) return 0
-  return Number(d.totalInvoiceDeduction || 0) + Number(d.bankFeeAmount || 0) + Number(d.internalBankFee || 0)
-})
 /** 关联水单列表 */
 const invoiceAmountRemittances = ref<any[]>([])
 const remittanceColumns = [
@@ -2515,14 +2394,15 @@ const saveMaterialRowFields = async (record: MaterialItem) => {
   }
 }
 
-const beforeMaterialUpload = async (file: File, record: MaterialItem) => {
+const beforeMaterialUpload = async (file: File, record: MaterialItem, stage?: string) => {
   try {
     const id = await resolveMaterialItemId(record)
     if (!id) return false
     // 同时传 formId + templateId：后端在 id 找不到实例时会自动按模板 ensure 一条再上传
     const res = await uploadMaterialFile(id, file, {
       formId: formId.value,
-      templateId: record.templateId ?? null
+      templateId: record.templateId ?? null,
+      uploadStage: stage || null
     })
     if (res.data?.code === 200) {
       if (res.data.data?.id) record.id = res.data.data.id
@@ -2570,9 +2450,9 @@ const resolveMaterialItemId = async (record: MaterialItem): Promise<number | str
   }
 }
 
-const handleClearMaterialFile = async (record: MaterialItem) => {
+const handleClearMaterialFile = async (record: MaterialItem, stage?: string) => {
   try {
-    const res = await clearMaterialFile(record.id!)
+    const res = await clearMaterialFile(record.id!, stage || null)
     if (res.data?.code === 200) {
       message.success('已清除')
       await loadMaterialItems()
@@ -2583,9 +2463,9 @@ const handleClearMaterialFile = async (record: MaterialItem) => {
 }
 
 /** 删除单个附件 */
-const handleDeleteAttachment = async (record: MaterialItem, att: MaterialAttachment) => {
+const handleDeleteAttachment = async (record: MaterialItem, att: MaterialAttachment, stage?: string) => {
   try {
-    const res = await deleteMaterialAttachment(record.id!, att.id)
+    const res = await deleteMaterialAttachment(record.id!, att.id, stage || null)
     if (res.data?.code === 200) {
       message.success('已删除')
       await loadMaterialItems()
@@ -2613,13 +2493,13 @@ const saveAttachmentField = async (record: MaterialItem, att: MaterialAttachment
   }
 }
 
-const confirmClearMaterialFile = (record: MaterialItem) => {
+const confirmClearMaterialFile = (record: MaterialItem, stage?: string) => {
   Modal.confirm({
     title: '确定清除此附件吗？',
     content: '清除后需重新上传。',
     okText: '确定清除',
     okButtonProps: { danger: true },
-    onOk: () => handleClearMaterialFile(record)
+    onOk: () => handleClearMaterialFile(record, stage)
   })
 }
 
@@ -2705,9 +2585,8 @@ const handleSaveMaterialRow = async () => {
 
 const validateMaterialSchemaFields = (): string | null => {
   for (const item of materialItems.value) {
-    // 跳过补充资料和发票阶段
-    const stage = getItemStage(item)
-    if (stage === 'SUPPLEMENT' || stage === 'INVOICE') continue
+    // 跳过基础资料、补充资料和发票阶段（多环节时任一环节参与资料提交即校验）
+    if (!isSubmitStageItem(item)) continue
     const schema = parseMaterialSchema(item.formSchema)
     if (!schema.length) continue
     const isInvoice = isInvoiceMaterial(item)
@@ -2726,11 +2605,8 @@ const validateMaterialSchemaFields = (): string | null => {
 
 const handleSubmitMaterial = async () => {
   if (!formId.value) return
-  // 只校验资料提交阶段的项，不包含补充资料和发票阶段
-  const submitItems = materialItems.value.filter((i) => {
-    const stage = getItemStage(i)
-    return stage !== 'SUPPLEMENT' && stage !== 'INVOICE'
-  })
+  // 只校验资料提交阶段的项，不包含基础资料、补充资料和发票阶段
+  const submitItems = materialItems.value.filter(isSubmitStageItem)
   const missing = submitItems.filter((i) => i.required === 1 && i.status !== 1)
 
   const schemaMissing = validateMaterialSchemaFields()
@@ -2985,13 +2861,13 @@ const loadInvoiceAmountDetail = async () => {
   if (!formId.value) return
   invoiceAmountLoading.value = true
   try {
-    // 并发加载计算详情和水单列表
+    // 并发加载开票金额（瘦身接口，仅 invoiceAmount，供下载开票文件 20% 上限校验）和水单列表
     const [calcRes, remRes] = await Promise.all([
       getInvoiceAmountDetail(formId.value!),
       getRemittancesByFormId(formId.value!)
     ])
     if (calcRes.data?.code === 200) {
-      invoiceAmountCalcDetail.value = calcRes.data.data
+      invoiceAmountCalcDetail.value = calcRes.data.data || null
     } else {
       invoiceAmountCalcDetail.value = null
     }

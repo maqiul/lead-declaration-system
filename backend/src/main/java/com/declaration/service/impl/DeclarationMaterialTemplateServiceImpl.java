@@ -23,9 +23,9 @@ public class DeclarationMaterialTemplateServiceImpl
 
     private final MaterialTemplateBindingDao bindingDao;
 
-    /** 合法的环节枚举值 */
+    /** 合法的环节枚举值（BASIC-基础资料：草稿/新建阶段上传，独立于资料提交环节） */
     public static final List<String> VALID_STAGES = Arrays.asList(
-            "MATERIAL_SUBMIT", "SUPPLEMENT", "INVOICE"
+            "BASIC", "MATERIAL_SUBMIT", "SUPPLEMENT", "INVOICE"
     );
 
     @Override
@@ -42,7 +42,8 @@ public class DeclarationMaterialTemplateServiceImpl
         LambdaQueryWrapper<DeclarationMaterialTemplate> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(DeclarationMaterialTemplate::getEnabled, 1);
         if (StringUtils.hasText(stage)) {
-            wrapper.eq(DeclarationMaterialTemplate::getStage, stage);
+            // stage 支持多环节逗号分隔，FIND_IN_SET 包含匹配
+            wrapper.apply("FIND_IN_SET({0}, stage)", stage);
         }
         wrapper.orderByAsc(DeclarationMaterialTemplate::getSort)
                .orderByAsc(DeclarationMaterialTemplate::getId);
