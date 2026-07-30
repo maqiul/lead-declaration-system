@@ -333,6 +333,9 @@ public class DeclarationMaterialItemServiceImpl
                 // 检查是否已有实例（有实例则始终显示，不受绑定规则过滤）
                 DeclarationMaterialItem existed = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
                 if (existed != null) {
+                    // stage 是模板属性，实例上仅为建单时克隆的缓存；同步模板最新 stage，
+                    // 使老单据实例也能跟随模板的多环节配置正确归入各环节（如后加的 BASIC）
+                    existed.setStage(tpl.getStage());
                     result.add(existed);
                     continue;
                 }

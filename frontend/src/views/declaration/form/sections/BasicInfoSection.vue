@@ -873,8 +873,8 @@ const draftMaterialStats = computed(() => {
 const showDraftMaterialBox = computed(() => {
   // 草稿期：始终显示（含未保存时的提示态）
   if (draftMaterialEditable.value) return true
-  // 提交后：有已上传的基础资料时只读展示，避免已传文件不可见
-  return draftMaterialItems.value.some(i => i.status === 1 || (i.attachments && i.attachments.length))
+  // 提交后：只要配置了基础资料项就展示（未上传的项走“尚未上传”空态），不再仅限已上传
+  return draftMaterialItems.value.length > 0
 })
 const draftMaterialColumns = [{ title: '资料项', key: 'name' }]
 
