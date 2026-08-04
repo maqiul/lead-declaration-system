@@ -27,8 +27,11 @@ public class DeclarationMaterialTemplate implements Serializable {
     /** 资料显示名 */
     private String name;
 
-    /** 是否必填 0-否 1-是 */
+    /** 是否必填 0-否 1-是（兼容字段：required_stages 非空时视为必填） */
     private Integer required;
+
+    /** 必填环节（逗号分隔，如 BASIC,MATERIAL_SUBMIT；空=按 required 字段兼容） */
+    private String requiredStages;
 
     /** 排序 */
     private Integer sort;

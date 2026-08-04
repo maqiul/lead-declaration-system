@@ -19,6 +19,8 @@ export interface MaterialAttachment {
   invoiceDate?: string | null
   /** 上传时所处环节（多环节共享时，后续环节不可删除前序环节上传的附件） */
   stage?: string | null
+  /** 所属补交单ID（非空=补交增量，待审核） */
+  supplementId?: number | string | null
   /** 扩展字段 JSON */
   extraData?: string | null
   uploadBy?: number | string | null
@@ -42,6 +44,8 @@ export interface MaterialItem {
   code?: string
   name: string
   required: number
+  /** 必填环节配置（后端视图层从模板透传，逗号分隔）；非空时按当前环节命中与否判定必填，否则回退 required */
+  requiredStages?: string | null
   sort: number
   remark?: string
   formSchema?: string | null
@@ -59,6 +63,8 @@ export interface MaterialItem {
   invoiceDate?: string | null
   extraData?: string | null
   status: number // 0-未上传 1-已上传
+  /** 所属补交单ID（非空=补交增量，待审核） */
+  supplementId?: number | string | null
   createBy?: number | string
   updateBy?: number | string
   createByName?: string
@@ -150,7 +156,7 @@ export function canDeleteAttachment(att: { stage?: string | null }, stage?: stri
 export function uploadMaterialFile(
   id: number | string,
   file: File,
-  extras?: { formId?: number | string | null; templateId?: number | string | null; uploadStage?: string | null }
+  extras?: { formId?: number | string | null; templateId?: number | string | null; uploadStage?: string | null; supplementId?: number | string | null }
 ) {
   const formData = new FormData()
   formData.append('file', file)
@@ -158,6 +164,7 @@ export function uploadMaterialFile(
   if (extras?.formId) params.formId = extras.formId
   if (extras?.templateId) params.templateId = extras.templateId
   if (extras?.uploadStage) params.uploadStage = extras.uploadStage
+  if (extras?.supplementId) params.supplementId = extras.supplementId
   return request({
     url: `/v1/material/items/${id ?? 0}/upload`,
     method: 'post',
@@ -418,5 +425,112 @@ export function getBatchPendingExemptions(formIds: string) {
     url: '/v1/material/exemption/batch-pending',
     method: 'get',
     params: { formIds }
+  })
+}
+
+// ==================== 资料补交流程 API ====================
+
+/** 资料补交记录（独立于主流程的轻量状态机） */
+export interface MaterialSupplement {
+  id: number | string
+  formId: number | string
+  reason?: string
+  /** -1-草稿（已发起未提交审核，审核人不可见） 0-补交中（待审核） 1-通过 2-驳回 */
+  status: number
+  initiatorId?: number | string | null
+  auditorId?: number | string | null
+  auditRemark?: string | null
+  createTime?: string | null
+  auditTime?: string | null
+  initiatorName?: string | null
+  auditorName?: string | null
+  formNo?: string | null
+}
+
+/** 发起资料补交（创建草稿补交单，审核人不可见；上传完增量后需再调提交接口；免弹窗发起，reason 可为空后补） */
+export function startMaterialSupplement(data: { formId: number | string; reason: string }) {
+  return request({
+    url: '/v1/material-supplement',
+    method: 'post',
+    data
+  })
+}
+
+/** 更新补交原因（仅草稿态：发起免弹窗，原因可在上传资料过程中内联补填） */
+export function updateMaterialSupplementReason(id: number | string, reason: string) {
+  return request({
+    url: `/v1/material-supplement/${id}/reason`,
+    method: 'post',
+    data: { reason }
+  })
+}
+
+/** 提交补交审核：草稿转补交中，审核人才可见 */
+export function submitMaterialSupplement(id: number | string) {
+  return request({
+    url: `/v1/material-supplement/${id}/submit`,
+    method: 'post'
+  })
+}
+
+/** 查询某申报单当前补交单（优先在途，其次草稿；无则 data 为 null） */
+export function getCurrentSupplement(formId: number | string) {
+  return request({
+    url: '/v1/material-supplement/current',
+    method: 'get',
+    params: { formId }
+  })
+}
+
+/** 查询某申报单在途的补交单（无则 data 为 null） */
+export function getActiveSupplement(formId: number | string) {
+  return request({
+    url: '/v1/material-supplement/active',
+    method: 'get',
+    params: { formId }
+  })
+}
+
+/** 批量查询在途补交单（列表页用，返回 formId -> supplementId 映射） */
+export function getBatchActiveSupplements(ids: string) {
+  return request({
+    url: '/v1/material-supplement/batch-active',
+    method: 'get',
+    params: { ids }
+  })
+}
+
+/** 审核人待审补交列表（declarationType 可选：SELF-内部/EXTERNAL-外部，不传查全部） */
+export function getPendingSupplements(params?: { declarationType?: string }) {
+  return request({
+    url: '/v1/material-supplement/pending-list',
+    method: 'get',
+    params
+  })
+}
+
+/** 补交增量明细（supplement_id 命中的资料项 + 附件） */
+export function getSupplementIncrements(id: number | string) {
+  return request({
+    url: `/v1/material-supplement/${id}/increments`,
+    method: 'get'
+  })
+}
+
+/** 补交历史：某申报单每一次补交的记录与文件快照（哪一次补交了哪些文件） */
+export function getSupplementHistory(formId: number | string) {
+  return request({
+    url: '/v1/material-supplement/history',
+    method: 'get',
+    params: { formId }
+  })
+}
+
+/** 审核补交：approved=true 增量转正；false 删除增量 */
+export function auditMaterialSupplement(id: number | string, approved: boolean, remark?: string) {
+  return request({
+    url: `/v1/material-supplement/${id}/audit`,
+    method: 'post',
+    params: remark ? { approved, remark } : { approved }
   })
 }

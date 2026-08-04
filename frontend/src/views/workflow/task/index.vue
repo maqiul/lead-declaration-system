@@ -70,9 +70,9 @@
             <a-tag v-else-if="currentTask.priority >= 50" color="orange">中</a-tag>
             <a-tag v-else color="green">低</a-tag>
           </a-descriptions-item>
-          <a-descriptions-item label="创建时间">{{ currentTask.createTime }}</a-descriptions-item>
+          <a-descriptions-item label="创建时间">{{ formatDate(currentTask.createTime) || '-' }}</a-descriptions-item>
           <a-descriptions-item label="到期时间" v-if="currentTask.dueTime">
-            {{ currentTask.dueTime }}
+            {{ formatDate(currentTask.dueTime) }}
           </a-descriptions-item>
         </a-descriptions>
         
@@ -140,6 +140,7 @@ import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import TaskList from './components/TaskList.vue'
 import { getMyAssignedTasks, getMyCandidateTasks, getMyCompletedTasks, claimTask, completeTask, getTasksByProcessInstance } from '@/api/workflow'
+import { formatDate } from '@/utils/common'
 
 const router = useRouter()
 
@@ -203,8 +204,8 @@ const instanceTaskColumns = [
   { title: '任务名称', dataIndex: 'taskName', key: 'taskName' },
   { title: '办理人', dataIndex: 'assigneeName', key: 'assigneeName' },
   { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
-  { title: '完成时间', dataIndex: 'endTime', key: 'endTime', width: 180 }
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
+  { title: '完成时间', dataIndex: 'endTime', key: 'endTime', width: 180 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' }
 ]
 
 // 任务表单数据
@@ -347,6 +348,14 @@ const handleView = (task: Task) => {
     })
     return
   }
+  // 资料补交审核任务：跳转到补交审核模式（businessKey=补交单ID）
+  if (task.activityId === 'materialSupplementAudit') {
+    router.push({
+      path: '/declaration/form-v2',
+      query: { supplementId: task.businessKey, mode: 'materialSupplementAudit' }
+    })
+    return
+  }
   // 跳转到申报单管理页面并打开审核/查看模式，或者直接显示任务详情
   // 统一逻辑：跳转到业务单据页
   if (task.businessKey) {
@@ -418,6 +427,18 @@ const handleComplete = (task: Task) => {
         exemptionId: task.businessKey,
         taskId: task.taskId,
         mode: 'exemptionAudit'
+      }
+    })
+    return
+  }
+  // 资料补交审核任务：跳转到申报单详情页，补交审核模式（businessKey=补交单ID）
+  if (task.activityId === 'materialSupplementAudit') {
+    router.push({
+      path: '/declaration/form-v2',
+      query: {
+        supplementId: task.businessKey,
+        taskId: task.taskId,
+        mode: 'materialSupplementAudit'
       }
     })
     return

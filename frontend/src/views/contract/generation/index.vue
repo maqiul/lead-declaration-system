@@ -94,6 +94,7 @@ import type { TablePaginationConfig } from 'ant-design-vue'
 import { getGenerations, downloadContract, deleteContract, getContractDownloadUrl } from '@/api/business/contract'
 import { useRouter } from 'vue-router'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
+import { formatDate } from '@/utils/common'
 
 const router = useRouter()
 
@@ -124,7 +125,7 @@ const columns = [
   { title: '合同模板', dataIndex: 'templateName', key: 'templateName' },
   { title: '文件名', dataIndex: 'generatedFileName', key: 'generatedFileName' },
   { title: '大小', key: 'fileSize', width: 100 },
-  { title: '生成时间', dataIndex: 'generatedTime', key: 'generatedTime', width: 180 },
+  { title: '生成时间', dataIndex: 'generatedTime', key: 'generatedTime', width: 180 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '操作', key: 'action', width: 200, fixed: 'right' as const }
 ]
 

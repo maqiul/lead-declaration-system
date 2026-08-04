@@ -39,8 +39,22 @@ public class PermissionInterceptor implements HandlerInterceptor {
         HandlerMethod handlerMethod = (HandlerMethod) handler;
         Method method = handlerMethod.getMethod();
 
+        // 先探测权限注解，确保带权限要求的接口在未登录时不会被静默放行
+        // （防止 @SaIgnore 等绕过登录拦截器后，此处又因未登录直接 return true）
+        boolean hasPermissionAnnotation =
+                method.getAnnotation(RequiresPermissions.class) != null
+                        || handlerMethod.getBeanType().getAnnotation(RequiresPermissions.class) != null
+                        || method.getAnnotation(RequiresRoles.class) != null
+                        || handlerMethod.getBeanType().getAnnotation(RequiresRoles.class) != null;
+
         // 获取当前登录用户ID
         if (!StpUtil.isLogin()) {
+            if (hasPermissionAnnotation) {
+                log.warn("未登录用户访问受保护接口: {}", request.getRequestURI());
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.getWriter().write("{\"code\":401,\"message\":\"未登录或登录已过期\"}");
+                return false;
+            }
             return true; // 未登录的情况由Sa-Token拦截器处理
         }
 

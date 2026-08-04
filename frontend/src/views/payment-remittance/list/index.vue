@@ -81,7 +81,7 @@
 
           <template v-if="column.key === 'action'">
             <a-space :size="2">
-              <a-button type="link" size="small" style="padding: 0 4px" @click="handleView(record as PaymentRemittance)">
+              <a-button type="link" size="small" style="padding: 0 4px" @click="handleView(record as PaymentRemittance)" v-permission="['business:payment-remittance:view']">
                 <template #icon><EyeOutlined /></template>
                 查看
               </a-button>
@@ -134,7 +134,7 @@
                 size="small"
                 @click="handleRevokeAudit(record as PaymentRemittance)"
                 v-if="record.status === 2"
-                v-permission="['business:payment-remittance:audit']"
+                v-permission="['business:payment-remittance:revoke-audit']"
                 style="color: #fa541c; padding: 0 4px"
               >
                 <template #icon><RollbackOutlined /></template>
@@ -209,6 +209,7 @@ import PaymentRemittanceModal from './components/PaymentRemittanceModal.vue'
 import PaymentRemittanceDetail from './components/PaymentRemittanceDetail.vue'
 import AuditModal from './components/AuditModal.vue'
 import FormRelationModal from './components/FormRelationModal.vue'
+import { formatDate } from '@/utils/common'
 
 const route = useRoute()
 
@@ -260,7 +261,7 @@ const currentRemittanceAmount = ref<number>(0)
 const columns = [
   { title: '出款编号', dataIndex: 'paymentNo', key: 'paymentNo', width: 180 },
   { title: '收款人', dataIndex: 'payeeName', key: 'payeeName', width: 150 },
-  { title: '出款日期', dataIndex: 'paymentDate', key: 'paymentDate', width: 120 },
+  { title: '出款日期', dataIndex: 'paymentDate', key: 'paymentDate', width: 120 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd') : '-' },
   { title: '出款金额', dataIndex: 'paymentAmount', key: 'paymentAmount', width: 120 },
   { title: '币种', dataIndex: 'currency', key: 'currency', width: 80 },
   { title: '银行名称', dataIndex: 'bankAccountName', key: 'bankAccountName', width: 150 },

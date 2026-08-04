@@ -108,6 +108,12 @@
             <a-tag v-if="record.pendingRollback" color="orange" style="margin-top: 2px;">
               退回待审
             </a-tag>
+            <a-tag v-if="record.pendingSupplementId && record.pendingSupplementStatus === -1" color="blue" style="margin-top: 2px;">
+              补交草稿
+            </a-tag>
+            <a-tag v-else-if="record.pendingSupplementId" color="orange" style="margin-top: 2px;">
+              资料补交中
+            </a-tag>
             <a-tag v-if="record.exemptionStatus === 0" color="blue" style="margin-top: 2px;">
               豁免审核中
             </a-tag>
@@ -206,6 +212,30 @@
                 <a-button type="link" size="small" style="color: #52c41a;" @click="handleInvoiceAudit(record as any)">
                   <template #icon><CheckCircleOutlined /></template>
                   发票审核
+                </a-button>
+              </template>
+
+              <!-- 资料补交：已过资料审核（status>3）且无在途补交时，申报人可发起 -->
+              <template v-if="record.status >= 4 && record.status !== 11 && !record.pendingSupplementId">
+                <a-button type="link" size="small" style="color: #722ed1;" v-permission="['business:declaration:supplement:initiate']" @click="openSupplementStart(record as any)">
+                  <template #icon><PlusOutlined /></template>
+                  发起补交
+                </a-button>
+              </template>
+
+              <!-- 资料补交草稿：申报人可继续上传补交资料 -->
+              <template v-if="record.pendingSupplementStatus === -1">
+                <a-button type="link" size="small" style="color: #1677ff;" v-permission="['business:declaration:supplement:initiate']" @click="handleContinueSupplement(record as any)">
+                  <template #icon><EditOutlined /></template>
+                  继续补交
+                </a-button>
+              </template>
+
+              <!-- 资料补交审核：存在在途补交单时，有审核权限的用户可见 -->
+              <template v-if="record.pendingSupplementId && record.pendingSupplementStatus !== -1">
+                <a-button type="link" size="small" style="color: #52c41a;" v-permission="['business:declaration:audit:material']" @click="handleSupplementAudit(record as any)">
+                  <template #icon><CheckCircleOutlined /></template>
+                  补交审核
                 </a-button>
               </template>
 
@@ -311,7 +341,7 @@
                 <div class="attachment-info">
                   <a-tag :color="getFileTypeColor(item.fileType)">{{ getFileTypeText(item.fileType) }}</a-tag>
                   <span class="file-size">{{ formatFileSize(item.fileSize) }}</span>
-                  <span class="create-time">{{ formatDate(item.createTime) }}</span>
+                  <span class="create-time">{{ fmtDateTime(item.createTime, 'yyyy-MM-dd') }}</span>
                 </div>
               </template>
             </a-list-item-meta>
@@ -353,7 +383,7 @@
                   <div class="attachment-info">
                     <a-tag color="#D46B08">合同</a-tag>
                     <span class="file-size">{{ formatFileSize(item.fileSize) }}</span>
-                    <span class="create-time">{{ formatDate(item.generatedTime) }}</span>
+                    <span class="create-time">{{ fmtDateTime(item.generatedTime, 'yyyy-MM-dd') }}</span>
                     <span v-if="item.templateName" style="margin-left: 8px; color: #999;">模板: {{ item.templateName }}</span>
                   </div>
                 </template>
@@ -495,24 +525,24 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch, h } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRouter, useRoute } from 'vue-router'
-import { DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, SearchOutlined, CloseOutlined, AuditOutlined, UndoOutlined, EyeOutlined, SettingOutlined } from '@ant-design/icons-vue'
+import { DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, SearchOutlined, CloseOutlined, AuditOutlined, UndoOutlined, EyeOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { checkPermission } from '@/directives/permission'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
 import { getAvailableFlowTemplates } from '@/api/business/declaration'
-import { validateDeclarationCompleteness } from '@/utils/declaration-validation'
 import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList, deleteDeclaration as deleteDeclarationApi, getDeclarationDetail,
-  submitDeclaration, getDeclarationAttachments, regenerateDocuments, regenerateAllDocuments,
+  getDeclarationAttachments, regenerateDocuments, regenerateAllDocuments,
   regenerateRemittanceReport, getBatchActiveTasks, getActiveTasks, resumeDeclarationFlow, rollbackDeclaration, rollbackAuditDeclaration, getBatchRollbackPending,
   applyReturnToDraft, auditReturnToDraft, getReturnAuditHistory
 } from '@/api/business/declaration'
 import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile, getContractDownloadUrl } from '@/api/business/contract'
-import { getBatchPendingExemptions } from '@/api/business/materialItem'
+import { getBatchPendingExemptions, getBatchActiveSupplements } from '@/api/business/materialItem'
 import MaterialAuditModal from '../material/components/MaterialAuditModal.vue'
 import InvoiceAuditModal from '../material/components/InvoiceAuditModal.vue'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
 import BpmnPreviewModal from '@/components/BpmnPreviewModal.vue'
+import { formatDate as fmtDateTime } from '@/utils/common'
 
 // Props
 const props = withDefaults(defineProps<{
@@ -560,6 +590,10 @@ interface DeclarationRecord {
   createTime?: string; financeUploadPending?: boolean; attachments?: any[]
   hasContract?: boolean; regenerateButtons?: any[]; activeTasks?: string[]; myTasks?: string[]
   needsFlowMigration?: boolean; pendingRollback?: boolean; pendingExemptionId?: number; exemptionStatus?: number; canAuditExemption?: boolean
+  /** 在途/草稿补交单ID（非空=补交中或补交草稿，列表页展示补交入口） */
+  pendingSupplementId?: number | null
+  /** 补交单状态：-1=草稿（申报人继续补交）0=在途（待审核） */
+  pendingSupplementStatus?: number | null
 }
 
 const dataSource = ref<DeclarationRecord[]>([])
@@ -632,7 +666,7 @@ const allColumns = [
   { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', width: 100 },
   { title: '总箱数', dataIndex: 'totalCartons', key: 'totalCartons', width: 80 },
   { title: '状态', key: 'status', width: 100, customRender: ({ record }: { record: any }) => h('a-tag', { color: getStatusColor(record.status) }, getStatusText(record.status)) },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
 ]
 const DEFAULT_VISIBLE_KEYS = allColumns.map(c => c.key)
 const STORAGE_KEY = 'declaration-column-keys'
@@ -802,6 +836,8 @@ const loadData = async () => {
           }
         } catch (e: any) { console.error('查询豁免状态失败:', e) }
       }
+      // 查询已过资料提交环节的申报单的在途补交单（补交中标签 + 发起/审核入口）
+      await refreshSupplementFlags()
     } else { dataSource.value = []; pagination.total = 0 }
   } catch (error: any) {
     console.error('加载数据失败:', error)
@@ -831,34 +867,36 @@ const startAutoRefresh = () => {
         }
       }).catch(() => {})
     }
+    // 同步刷新在途补交单标记
+    refreshSupplementFlags()
   }, 30000)
+}
+
+/** 批量刷新在途补交单标记（pendingSupplementId），供首次加载与定时刷新复用 */
+const refreshSupplementFlags = async () => {
+  const supplementCheckIds = dataSource.value.filter((r: any) => r.status >= 3 && r.status !== 11).map((r: any) => r.id)
+  if (supplementCheckIds.length === 0) return
+  try {
+    const supRes = await getBatchActiveSupplements(supplementCheckIds.join(','))
+    if (supRes.data?.code === 200 && supRes.data.data) {
+      const supMap = supRes.data.data as Record<string, number>
+      dataSource.value.forEach((r: any) => {
+        // 后端约定：正值=在途补交单ID，负值=-id 表示草稿补交单
+        const v = supMap[String(r.id)] ?? null
+        r.pendingSupplementId = v != null ? Math.abs(v) : null
+        r.pendingSupplementStatus = v == null ? null : (v < 0 ? -1 : 0)
+      })
+    }
+  } catch (e: any) { console.error('查询在途补交单失败:', e) }
 }
 const stopAutoRefresh = () => { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null } }
 
 const resetSearch = () => { searchForm.formNo = ''; searchForm.status = ''; searchForm.consignee = ''; searchForm.shipper = ''; searchForm.invoiceNo = ''; searchForm.dateRange = undefined; pagination.current = 1; loadData() }
 const handleTableChange = (pag: any) => { pagination.current = pag.current; pagination.pageSize = pag.pageSize; loadData() }
 const handleView = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&readonly=true&status=${record.status}`) }
-const handleStatusSubmit = async (record: DeclarationRecord) => {
-  try {
-    loading.value = true
-    // 提交前预校验：拉取完整详情在本地校验完整性（与后端规则一致）
-    const detailRes = await getDeclarationDetail(record.id, record.status)
-    const detail = detailRes.data?.data
-    const check = validateDeclarationCompleteness(detail)
-    if (!check.valid) {
-      loading.value = false
-      Modal.confirm({
-        title: '申报单信息不完整',
-        content: `${check.message}。是否前往编辑页补全？`,
-        okText: '去补全',
-        cancelText: '取消',
-        onOk: () => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}`) }
-      })
-      return
-    }
-    const res = await submitDeclaration(record.id)
-    if (res.data?.code === 200) { message.success('流程启动完成'); loadData() } else message.error('提交失败: ' + (res.data?.message || '未知错误'))
-  } catch (e: any) { message.error('提交操作失败: ' + (e.message || '网络错误')) } finally { loading.value = false }
+const handleStatusSubmit = (record: DeclarationRecord) => {
+  // 跳转到编辑页并自动触发提交：完整复用编辑页 handleSubmit 的校验与提交逻辑，避免两处维护
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&autoSubmit=1`)
 }
 const handleEdit = (record: DeclarationRecord) => { if (record.status !== 0) { message.warning('只有草稿状态可编辑'); return }; router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}`) }
 const handleAudit = (record: DeclarationRecord, taskKey?: string) => { const q: any = { id: record.id, mode: 'audit' }; if (taskKey) q.taskKey = taskKey; router.push({ path: `${declarationPrefix.value}/form-v2`, query: q }) }
@@ -880,6 +918,21 @@ const handleGoMode = (record: DeclarationRecord, mode: string) => {
 }
 const handleGoSubmitInvoice = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceUpload&scrollTo=invoice`) }
 const handleInvoiceAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceAudit&scrollTo=invoice`) }
+
+// ==================== 资料补交（列表页发起/审核） ====================
+
+/** 发起资料补交：免弹窗直接跳转详情页进入补交上传模式（自动创建草稿补交单，原因可在页面内联补填） */
+const openSupplementStart = (record: DeclarationRecord) => {
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&scrollTo=material&supplementDraft=1`)
+}
+/** 继续补交：草稿补交单重新进入补交上传模式 */
+const handleContinueSupplement = (record: DeclarationRecord) => {
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&scrollTo=material&supplementDraft=1`)
+}
+/** 补交审核：进入详情页补交审核模式，自动打开补交审核弹窗 */
+const handleSupplementAudit = (record: DeclarationRecord) => {
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&supplementId=${record.pendingSupplementId}&mode=materialSupplementAudit&scrollTo=material`)
+}
 /** 更多菜单：无活跃任务时恢复流程（非迁移场景） */
 const canShowResumeFlow = (record: DeclarationRecord) => {
   if (record.needsFlowMigration) return false
@@ -1012,7 +1065,6 @@ const hasMyTaskForStatus = (record: any, status: number, taskKey: string): boole
   // myTasks 未加载时不显示按钮，避免普通用户误看到审批入口
   return false
 }
-const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('zh-CN') : ''
 const isDocumentFile = (f: string) => ['.pdf','.doc','.docx','.xls','.xlsx','.ppt','.pptx','.txt'].some(e => f.toLowerCase().endsWith(e))
 const isImageFile = (f: string) => ['.jpg','.jpeg','.png','.gif','.bmp','.webp','.svg'].some(e => f.toLowerCase().endsWith(e))
 const getFileTypeColor = (t: string) => ({ Invoice: 'blue', PackingList: 'green', FullDocuments: 'purple', PickupList: 'orange', Remittance: 'cyan', Contract: 'magenta', AllDocuments: 'cyan', AllDocumentsPdf: 'red', FullDocumentsPdf: 'red' }[t] || 'default')
@@ -1075,10 +1127,10 @@ const returnHistoryColumns = [
   { title: '状态', key: 'auditStatus', width: 70 }, { title: '业务类型', key: 'businessType', width: 120 },
   { title: '申请人', dataIndex: 'applicantName', key: 'applicantName', width: 90 },
   { title: '原因', dataIndex: 'applyReason', key: 'applyReason', ellipsis: true, minWidth: 150 },
-  { title: '申请时间', dataIndex: 'applyTime', key: 'applyTime', width: 160 },
+  { title: '申请时间', dataIndex: 'applyTime', key: 'applyTime', width: 160 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '审核人', dataIndex: 'auditorName', key: 'auditorName', width: 90 },
   { title: '备注', dataIndex: 'auditRemark', key: 'auditRemark', ellipsis: true, minWidth: 150 },
-  { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 },
+  { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '原状态', key: 'preStatus', width: 70 }
 ]
 const getBusinessTypeText = (t: string) => ({ DECLARATION_RETURN: '退回草稿', DECLARATION_ROLLBACK: '退回上一步', DECLARATION_AUDIT: '申报审核', DECLARATION_SUBMIT: '申报提交', DECLARATION_MATERIAL_AUDIT: '资料审核', DECLARATION_SUPPLEMENT_AUDIT: '补充资料审核', DECLARATION_INVOICE_AMOUNT_AUDIT: '开票金额审核', DECLARATION_INVOICE_AUDIT: '业务发票审核', REMITTANCE_AUDIT: '水单审核', DELIVERY_ORDER_AUDIT: '提货单审核' }[t] || t)

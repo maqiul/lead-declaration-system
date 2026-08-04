@@ -122,9 +122,9 @@
               <a-tag v-else-if="currentInstance?.status === 2" color="red">已终止</a-tag>
               <a-tag v-else color="orange">已挂起</a-tag>
             </a-descriptions-item>
-            <a-descriptions-item label="开始时间">{{ currentInstance?.startTime }}</a-descriptions-item>
+            <a-descriptions-item label="开始时间">{{ formatDate(currentInstance?.startTime) || '-' }}</a-descriptions-item>
             <a-descriptions-item label="结束时间" v-if="currentInstance?.endTime">
-              {{ currentInstance?.endTime }}
+              {{ formatDate(currentInstance?.endTime) }}
             </a-descriptions-item>
           </a-descriptions>
         </a-tab-pane>
@@ -164,6 +164,7 @@ import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, PauseCircleOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons-vue'
 import { getRunningProcessInstances, suspendProcessInstance, activateProcessInstance, terminateProcessInstance, getTasksByProcessInstance } from '@/api/workflow'
+import { formatDate } from '@/utils/common'
 
 const router = useRouter()
 
@@ -260,7 +261,8 @@ const columns = [
     title: '开始时间',
     dataIndex: 'startTime',
     key: 'startTime',
-    width: 180
+    width: 180,
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-'
   },
   {
     title: '操作',
@@ -298,7 +300,8 @@ const taskColumns = [
     title: '创建时间',
     dataIndex: 'createTime',
     key: 'createTime',
-    width: 180
+    width: 180,
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-'
   }
 ]
 

@@ -32,18 +32,29 @@
       </a-row>
 
       <a-row :gutter="16">
-        <a-col :span="12">
+        <a-col :span="8">
           <a-form-item label="收汇日期" name="remittanceDate" :rules="[{ required: true, message: '请选择收汇日期' }]">
             <a-date-picker v-model:value="formData.remittanceDate" style="width: 100%" />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+        <a-col :span="8">
           <a-form-item label="收汇金额" name="remittanceAmount" :rules="[{ required: true, message: '请输入收汇金额' }]">
             <a-input-number
               v-model:value="formData.remittanceAmount"
               :min="0"
               :precision="2"
               placeholder="请输入收汇金额"
+              style="width: 100%"
+            />
+          </a-form-item>
+        </a-col>
+        <a-col :span="8">
+          <a-form-item label="手续费" name="bankFee">
+            <a-input-number
+              v-model:value="formData.bankFee"
+              :min="0"
+              :precision="2"
+              placeholder="银行手续费"
               style="width: 100%"
             />
           </a-form-item>
@@ -259,6 +270,7 @@ const formData = reactive({
   remittanceName: '',
   remittanceDate: undefined as Dayjs | string | undefined,
   remittanceAmount: undefined as number | undefined,
+  bankFee: undefined as number | undefined,
   currency: 'USD',
   remarks: '',
   photoUrl: ''
@@ -273,6 +285,7 @@ const initForm = async () => {
       remittanceName: props.remittanceData.remittanceName || '',
       remittanceDate: props.remittanceData.remittanceDate ? dayjs(props.remittanceData.remittanceDate) : undefined,
       remittanceAmount: props.remittanceData.remittanceAmount,
+      bankFee: props.remittanceData.bankFee,
       currency: props.remittanceData.currency || 'USD',
       remarks: props.remittanceData.remarks || '',
       photoUrl: props.remittanceData.photoUrl || ''
@@ -290,6 +303,7 @@ const initForm = async () => {
       remittanceName: '',
       remittanceDate: undefined,
       remittanceAmount: undefined,
+      bankFee: undefined,
       currency: 'USD',
       remarks: '',
       photoUrl: ''

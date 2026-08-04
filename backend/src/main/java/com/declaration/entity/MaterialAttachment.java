@@ -64,6 +64,9 @@ public class MaterialAttachment implements Serializable {
     /** 所属环节 */
     private String stage;
 
+    /** 所属补交单ID（非空=补交增量，审核通过前待审核） */
+    private Long supplementId;
+
     /** 创建时间 */
     private LocalDateTime createTime;
 

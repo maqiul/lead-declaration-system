@@ -145,6 +145,7 @@ import {
 } from '@ant-design/icons-vue'
 import { getDashboardStats, getDashboardCharts } from '@/api/dashboard'
 import { getMyProcessInstances, getMyAssignedTasks, type ProcessInstance, type TaskInstance } from '@/api/workflow'
+import { formatDate } from '@/utils/common'
 
 const router = useRouter()
 
@@ -216,7 +217,7 @@ const processColumns = [
   { title: '流程名称', dataIndex: 'name', key: 'name' },
   { title: '发起人', dataIndex: 'starter', key: 'starter' },
   { title: '状态', dataIndex: 'status', key: 'status' },
-  { title: '时间', dataIndex: 'startTime', key: 'startTime' },
+  { title: '时间', dataIndex: 'startTime', key: 'startTime' , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
 ]
 
 // 数据与加载状态

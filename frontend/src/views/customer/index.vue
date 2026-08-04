@@ -151,6 +151,7 @@ import {
   type CustomerConfig
 } from '@/api/system/customerConfig'
 import { getEnabledCountries } from '@/api/system'
+import { formatDate } from '@/utils/common'
 
 // 搜索表单
 const searchForm = reactive({
@@ -223,7 +224,8 @@ const columns = [
     title: '创建时间',
     dataIndex: 'createTime',
     key: 'createTime',
-    width: 180
+    width: 180,
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-'
   },
   {
     title: '操作',

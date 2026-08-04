@@ -193,7 +193,7 @@
             </a-tag>
           </a-descriptions-item>
           <a-descriptions-item label="发起人">{{ selectedInstance.starterName }}</a-descriptions-item>
-          <a-descriptions-item label="开始时间">{{ selectedInstance.startTime }}</a-descriptions-item>
+          <a-descriptions-item label="开始时间">{{ formatDate(selectedInstance.startTime) || '-' }}</a-descriptions-item>
         </a-descriptions>
       </div>
     </a-modal>
@@ -211,9 +211,9 @@
           <a-descriptions-item label="任务名称">{{ selectedTask.taskName }}</a-descriptions-item>
           <a-descriptions-item label="所属流程">{{ selectedTask.processDefinitionName }}</a-descriptions-item>
           <a-descriptions-item label="办理人">{{ selectedTask.assigneeName || '未分配' }}</a-descriptions-item>
-          <a-descriptions-item label="创建时间">{{ selectedTask.createTime }}</a-descriptions-item>
-          <a-descriptions-item label="签收时间">{{ selectedTask.claimTime || '-' }}</a-descriptions-item>
-          <a-descriptions-item label="截止时间">{{ selectedTask.dueTime || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="创建时间">{{ formatDate(selectedTask.createTime) || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="签收时间">{{ selectedTask.claimTime ? formatDate(selectedTask.claimTime) : '-' }}</a-descriptions-item>
+          <a-descriptions-item label="截止时间">{{ selectedTask.dueTime ? formatDate(selectedTask.dueTime) : '-' }}</a-descriptions-item>
           <a-descriptions-item label="优先级">
             <a-tag :color="getPriorityColor(selectedTask.priority || 0)">
               {{ getPriorityText(selectedTask.priority || 0) }}
@@ -248,6 +248,7 @@ import {
   getMonitorCharts,
   terminateProcessInstance
 } from '@/api/workflow'
+import { formatDate } from '@/utils/common'
 
 // 响应式数据
 const stats = ref({
@@ -278,7 +279,7 @@ const instanceColumns = [
   { title: '发起人', dataIndex: 'starterName', key: 'starterName', width: 100 },
   { title: '当前节点', dataIndex: 'currentActivityName', key: 'currentActivityName', width: 120 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 80 },
-  { title: '开始时间', dataIndex: 'startTime', key: 'startTime', width: 150 },
+  { title: '开始时间', dataIndex: 'startTime', key: 'startTime', width: 150 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '操作', key: 'action', width: 100 }
 ]
 
@@ -286,7 +287,7 @@ const taskColumns = [
   { title: '任务名称', dataIndex: 'taskName', key: 'taskName', ellipsis: true },
   { title: '办理人', dataIndex: 'assigneeName', key: 'assigneeName', width: 100 },
   { title: '流程', dataIndex: 'processDefinitionName', key: 'processDefinitionName', width: 120 },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 150 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 150 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '操作', key: 'action', width: 80 }
 ]
 

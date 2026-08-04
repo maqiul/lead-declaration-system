@@ -705,7 +705,7 @@
                     <div class="name-cell">
                       <div class="name-main">
                         <span class="name-text">{{ record.name }}</span>
-                        <a-tag v-if="record.required === 1" color="red">必填</a-tag>
+                        <a-tag v-if="isItemRequiredInStage(record, 'BASIC')" color="red">必填</a-tag>
                         <a-tag v-else>选填</a-tag>
                         <div class="name-upload-actions" v-if="draftMaterialEditable">
                           <a-upload :show-upload-list="false" :before-upload="(f: File) => beforeMaterialUpload(f, record, 'BASIC')">
@@ -813,7 +813,7 @@ import {
   FileDoneOutlined, UserOutlined, EditOutlined, ClockCircleOutlined, CloudUploadOutlined,
 } from '@ant-design/icons-vue'
 import { findUnitByCode } from '@/utils/measurement-unit'
-import { hasStage } from '@/api/system/materialTemplate'
+import { hasStage, isItemRequiredInStage } from '@/api/system/materialTemplate'
 import { canDeleteAttachment } from '@/api/business/materialItem'
 
 // emit：结构性操作（父组件处理数据增删 + API）
@@ -861,12 +861,12 @@ const draftMaterialEditable = computed(() => {
 // 仅展示“基础资料”环节的资料项（来自资料模板 + 已上传实例合并视图，stage 支持多环节包含匹配）
 const draftMaterialItems = computed(() =>
   ((materialItems.value || []) as any[]).filter(i => hasStage(i.stage, 'BASIC')))
-/** 进度统计（口径与 MaterialManager.getSectionStats 一致） */
+/** 进度统计（口径与 MaterialManager.getSectionStats 一致，必填按基础资料环节判定） */
 const draftMaterialStats = computed(() => {
   const items = draftMaterialItems.value
   const total = items.length
-  const required = items.filter(i => i.required === 1).length
-  const uploaded = items.filter(i => i.required === 1 && i.status === 1).length
+  const required = items.filter(i => isItemRequiredInStage(i, 'BASIC')).length
+  const uploaded = items.filter(i => isItemRequiredInStage(i, 'BASIC') && i.status === 1).length
   const percent = required > 0 ? Math.round((uploaded / required) * 100) : (total > 0 ? 100 : 0)
   return { total, required, uploaded, percent }
 })

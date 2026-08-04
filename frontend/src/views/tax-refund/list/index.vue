@@ -78,7 +78,7 @@
             <span class="amount-text">¥{{ record.amount?.toFixed(2) }}</span>
           </template>
           <template v-else-if="column.key === 'createTime'">
-            <span class="date-text">{{ formatDate(record.createTime) }}</span>
+            <span class="date-text">{{ fmtDateTime(record.createTime) }}</span>
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
@@ -160,7 +160,7 @@ const columns = [
   { title: '申请类型', dataIndex: 'applicationType', key: 'applicationType', width: 120 },
   { title: '申请金额', dataIndex: 'amount', key: 'amount', width: 120 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 120 },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '操作', key: 'action', width: 200, fixed: 'right' as const }
 ]
 
@@ -207,12 +207,6 @@ const getStatusColor = (status: number) => {
     8: 'error'
   }
   return colorMap[status] || 'default'
-}
-
-// 格式化日期
-const formatDate = (date: string) => {
-  if (!date) return ''
-  return new Date(date).toLocaleString('zh-CN')
 }
 
 // 数据加载
@@ -341,6 +335,7 @@ onMounted(() => {
 
 // 监听路由变化，确保每次进入都刷新数据
 import { onActivated } from 'vue'
+import { formatDate as fmtDateTime } from '@/utils/common'
 onActivated(() => {
   loadData()
 })

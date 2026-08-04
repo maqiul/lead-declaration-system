@@ -34,6 +34,11 @@ public class MaterialAttachmentServiceImpl extends ServiceImpl<MaterialAttachmen
 
     @Override
     public MaterialAttachment uploadForItem(Long itemId, MultipartFile file, String stage) throws IOException {
+        return uploadForItem(itemId, file, stage, null);
+    }
+
+    @Override
+    public MaterialAttachment uploadForItem(Long itemId, MultipartFile file, String stage, Long supplementId) throws IOException {
         // 复用已有的文件存储服务
         DeclarationAttachment att = attachmentService.uploadFile(file, "MaterialItem");
 
@@ -45,6 +50,8 @@ public class MaterialAttachmentServiceImpl extends ServiceImpl<MaterialAttachmen
         ma.setUploadTime(LocalDateTime.now());
         // 记录上传时所处环节（多环节共享时，后续环节不可删除前序环节上传的附件）
         ma.setStage(stage);
+        // 补交增量标记（审核通过后清除转正）
+        ma.setSupplementId(supplementId);
         if (StpUtil.isLogin()) {
             Long uid = StpUtil.getLoginIdAsLong();
             ma.setUploadBy(uid);

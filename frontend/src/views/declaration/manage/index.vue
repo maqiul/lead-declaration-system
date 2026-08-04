@@ -338,7 +338,7 @@
                     {{ getFileTypeText(item.fileType) }}
                   </a-tag>
                   <span class="file-size">{{ formatFileSize(item.fileSize) }}</span>
-                  <span class="create-time">{{ formatDate(item.createTime) }}</span>
+                  <span class="create-time">{{ fmtDateTime(item.createTime, 'yyyy-MM-dd') }}</span>
                 </div>
               </template>
             </a-list-item-meta>
@@ -399,7 +399,7 @@
                   <div class="attachment-info">
                     <a-tag color="#D46B08">合同</a-tag>
                     <span class="file-size">{{ formatFileSize(item.fileSize) }}</span>
-                    <span class="create-time">{{ formatDate(item.generatedTime) }}</span>
+                    <span class="create-time">{{ fmtDateTime(item.generatedTime, 'yyyy-MM-dd') }}</span>
                     <span v-if="item.templateName" style="margin-left: 8px; color: #999;">模板: {{ item.templateName }}</span>
                   </div>
                 </template>
@@ -744,6 +744,7 @@ import MaterialAuditModal from '../material/components/MaterialAuditModal.vue'
 import InvoiceAuditModal from '../material/components/InvoiceAuditModal.vue'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
 import BpmnPreviewModal from '@/components/BpmnPreviewModal.vue'
+import { formatDate as fmtDateTime } from '@/utils/common'
 
 const router = useRouter()
 const route = useRoute()
@@ -822,7 +823,7 @@ const columns = [
       return h('a-tag', { color: statusColor }, statusText)
     }
   },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   {
     title: '操作',
     key: 'action',
@@ -1669,11 +1670,6 @@ const getStatusColor = (status: number) => {
 }
 
 // 附件相关函数
-const formatDate = (dateString: string) => {
-  if (!dateString) return ''
-  return new Date(dateString).toLocaleDateString('zh-CN')
-}
-
 // 判断是否为文档文件
 const isDocumentFile = (fileName: string) => {
   const docExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt']
@@ -2066,10 +2062,10 @@ const returnHistoryColumns = [
   { title: '业务类型', key: 'businessType', width: 120 },
   { title: '申请人', dataIndex: 'applicantName', key: 'applicantName', width: 90 },
   { title: '原因', dataIndex: 'applyReason', key: 'applyReason', ellipsis: true, minWidth: 150 },
-  { title: '申请时间', dataIndex: 'applyTime', key: 'applyTime', width: 160 },
+  { title: '申请时间', dataIndex: 'applyTime', key: 'applyTime', width: 160 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '审核人', dataIndex: 'auditorName', key: 'auditorName', width: 90 },
   { title: '备注', dataIndex: 'auditRemark', key: 'auditRemark', ellipsis: true, minWidth: 150 },
-  { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 },
+  { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '原状态', key: 'preStatus', width: 70 }
 ]
 

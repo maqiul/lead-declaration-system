@@ -294,6 +294,7 @@ import type { TablePaginationConfig } from 'ant-design-vue'
 import request from '@/utils/request'
 import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityConfig'
 import { getEnabledCurrencies } from '@/api/system/currency'
+import { formatDate } from '@/utils/common'
 
 const currencyOptions = ref<any[]>([])
 const loadCurrencies = async () => {
@@ -512,7 +513,8 @@ const columns = [
     title: '创建时间',
     dataIndex: 'createTime',
     key: 'createTime',
-    width: 180
+    width: 180,
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-'
   },
   {
     title: '操作',

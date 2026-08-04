@@ -102,7 +102,7 @@
           <a-descriptions-item label="发货人">{{ currentDetail.shipperCompany }}</a-descriptions-item>
           <a-descriptions-item label="收货人">{{ currentDetail.consigneeCompany }}</a-descriptions-item>
           <a-descriptions-item label="发票号">{{ currentDetail.invoiceNo }}</a-descriptions-item>
-          <a-descriptions-item label="申报日期">{{ formatDate(currentDetail.declarationDate) }}</a-descriptions-item>
+          <a-descriptions-item label="申报日期">{{ fmtDateTime(currentDetail.declarationDate, 'yyyy-MM-dd') }}</a-descriptions-item>
           <a-descriptions-item label="总金额">{{ currentDetail.totalAmount }} {{ currentDetail.currency }}</a-descriptions-item>
           <a-descriptions-item label="总箱数">{{ currentDetail.totalCartons }}</a-descriptions-item>
         </a-descriptions>
@@ -142,6 +142,7 @@ import {
 } from '@/api/business/declaration'
 
 import type { Dayjs } from 'dayjs'
+import { formatDate as fmtDateTime } from '@/utils/common'
 
 const router = useRouter()
 
@@ -172,11 +173,11 @@ const columns = [
   { title: '发货人', dataIndex: 'shipperCompany', key: 'shipperCompany', width: 200 },
   { title: '收货人', dataIndex: 'consigneeCompany', key: 'consigneeCompany', width: 200 },
   { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo', width: 150 },
-  { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate', width: 120 },
+  { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate', width: 120 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd') : '-' },
   { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', width: 100 },
   { title: '总箱数', dataIndex: 'totalCartons', key: 'totalCartons', width: 80 },
   { title: '状态', key: 'status', width: 100 },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '操作', key: 'action', width: 150 }
 ]
 
@@ -316,12 +317,6 @@ const getStatusColor = (status: number) => {
     3: 'success'
   }
   return colorMap[status] || 'default'
-}
-
-// 格式化日期
-const formatDate = (date: string | Date | null | undefined) => {
-  if (!date) return ''
-  return new Date(date).toLocaleDateString('zh-CN')
 }
 
 // 页面加载

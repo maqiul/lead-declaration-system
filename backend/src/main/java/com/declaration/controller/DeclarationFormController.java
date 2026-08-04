@@ -1,6 +1,5 @@
 package com.declaration.controller;
 
-import cn.dev33.satoken.annotation.SaIgnore;
 import cn.dev33.satoken.stp.StpUtil;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
@@ -17,6 +16,7 @@ import com.declaration.dto.DeclarationStatisticsDTO;
 import com.declaration.entity.*;
 import com.declaration.dao.BusinessAuditRecordDao;
 import com.declaration.service.*;
+import com.declaration.utils.DeclarationDataScopeUtil;
 import com.declaration.utils.OrganizationUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -73,6 +73,7 @@ public class DeclarationFormController {
     private final DeclarationFlowMigrationService declarationFlowMigrationService;
     private final OrganizationService organizationService;
     private final FlowTemplateService flowTemplateService;
+    private final DeclarationMaterialItemService materialItemService;
 
     /**
      * 获取申报单统计数据
@@ -1202,23 +1203,8 @@ public class DeclarationFormController {
                 queryWrapper.eq(DeclarationForm::getDeclarationType, declarationType);
             }
 
-            // 组织级数据权限隔离：有审核权限可查看所有数据
-            boolean hasApprovePermission = StpUtil.hasPermission("business:declaration:audit");
-            System.out.println(hasApprovePermission);
-            System.out.println(userId);
-            // 管理员(userId=1)或有审批权限的用户可以查看所有数据
-            if (userId != 1L && !hasApprovePermission) {
-                // 普通用户只能查看自己创建的或本组织的数据
-                User currentUser = userService.getById(userId);
-                if (currentUser != null && currentUser.getOrgId() != null) {
-                    // 查看自己创建的 或 本组织的数据
-                    queryWrapper.and(w -> w.eq(DeclarationForm::getCreateBy, userId)
-                            .or().eq(DeclarationForm::getOrgId, currentUser.getOrgId()));
-                } else {
-                    // 用户没有组织，只能看自己创建的
-                    queryWrapper.eq(DeclarationForm::getCreateBy, userId);
-                }
-            }
+            // 数据权限隔离：admin/审核权限看全部；主管权限看自己+本组织及子组织；其他仅看自己
+            DeclarationDataScopeUtil.apply(queryWrapper);
 
             queryWrapper.orderByDesc(DeclarationForm::getCreateTime);
 
@@ -1352,6 +1338,11 @@ public class DeclarationFormController {
 
         DeclarationForm form = declarationFormService.getFullDeclarationForm(id);
 
+        // 数据权限校验：越权访问详情直接拦截
+        if (form != null && !DeclarationDataScopeUtil.canView(form)) {
+            return Result.fail("无权查看该申报单");
+        }
+
         // 查询单一记录时，也填充财务状态
         if (form != null && form.getId() != null) {
             long count = flowableTaskService.createTaskQuery()
@@ -1368,7 +1359,6 @@ public class DeclarationFormController {
      * 创建申报单
      */
     @PostMapping
-    @SaIgnore
     @Operation(summary = "新增申报单")
     @RequiresPermissions("business:declaration:create")
     @Idempotent(prefix = "sys:idempotent:create:", expireTime = 5, message = "申报单正在创建中，请勿重复提交！")
@@ -1487,6 +1477,14 @@ public class DeclarationFormController {
             if (incompleteMsg != null) {
                 log.warn("申报单 {} 提交完整性校验未通过：{}", id, incompleteMsg);
                 return Result.fail(incompleteMsg);
+            }
+
+            // 基础资料环节必填校验（与表单页提交一致，不走豁免流程）
+            try {
+                materialItemService.validateBasicRequired(id);
+            } catch (RuntimeException e) {
+                log.warn("申报单 {} 基础资料必填校验未通过：{}", id, e.getMessage());
+                return Result.fail(e.getMessage());
             }
 
             form.setStatus(1); // 已提交状态 - 待初审

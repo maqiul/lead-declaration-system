@@ -42,6 +42,17 @@ export function hasStage(stage: string | null | undefined, target: string): bool
 }
 
 /**
+ * 资料项在指定环节是否必填：模板配置了必填环节（requiredStages，后端视图层透传）时
+ * 以环节命中与否为准；否则回退 required 字段（含绑定规则覆盖后的结果）
+ */
+export function isItemRequiredInStage(item: { requiredStages?: string | null; required?: number }, stage: string): boolean {
+  if (item.requiredStages) {
+    return hasStage(item.requiredStages, stage)
+  }
+  return item.required === 1
+}
+
+/**
  * 绑定规则（流程 + 运输方式）
  */
 export interface MaterialTemplateBinding {
@@ -67,6 +78,8 @@ export interface MaterialTemplate {
   enabled: number
   /** 所属环节，多环节时为逗号分隔字符串，如 'BASIC,MATERIAL_SUBMIT' */
   stage?: MaterialStage
+  /** 必填环节（逗号分隔，命中当前环节才必填；为空回退 required 字段） */
+  requiredStages?: string | null
   /** 发票模式: 0-普通附件 1-附件级金额/发票号/日期 */
   invoiceMode?: number
   /** 发票分类: DEDUCTION-扣款 INPUT-进项 */

@@ -1,6 +1,6 @@
 <template>
   <div class="declaration-form-page">
-    <a-card :title="(isMaterialMode ? (isReadonly ? '申报资料查看' : '提交申报资料') : isExemptionAuditMode ? '申报单详情 - 豁免审核' : isMaterialAuditMode ? '申报单详情 - 资料审核' : isSupplementMode ? '申报单详情 - 补充资料提交' : isSupplementAuditMode ? '申报单详情 - 补充资料审核' : canSubmitInvoiceAmount ? '申报单详情 - 申请开票金额' : (canAuditInvoiceAmount || isInvoiceAmountAuditMode) ? '申报单详情 - 开票金额审核' : isInvoiceAmountMode ? '申报单详情 - 申请开票金额' : isInvoiceAuditMode ? '申报单详情 - 发票审核' : isInvoiceUploadMode ? '申报单详情 - 上传发票' : '出口申报表单')" >
+    <a-card :title="(isMaterialMode ? (isReadonly ? '申报资料查看' : '提交申报资料') : isExemptionAuditMode ? '申报单详情 - 豁免审核' : isMaterialSupplementAuditMode ? '申报单详情 - 资料补交审核' : isMaterialAuditMode ? '申报单详情 - 资料审核' : isSupplementMode ? '申报单详情 - 补充资料提交' : isSupplementAuditMode ? '申报单详情 - 补充资料审核' : canSubmitInvoiceAmount ? '申报单详情 - 申请开票金额' : (canAuditInvoiceAmount || isInvoiceAmountAuditMode) ? '申报单详情 - 开票金额审核' : isInvoiceAmountMode ? '申报单详情 - 申请开票金额' : isInvoiceAuditMode ? '申报单详情 - 发票审核' : isInvoiceUploadMode ? '申报单详情 - 上传发票' : '出口申报表单')" >
       <template #extra>
         <a-space>
           <a-button @click="goBack">
@@ -256,11 +256,14 @@
         :section-order-map="sectionOrderMap"
         :section-range="hasSection('invoiceAmount') ? 'pre' : 'all'"
         :stop-before="'invoiceAmount'"
+        :force-supplement-mode="isSupplementDraftEntry"
+        :supplement-draft-reason="supplementDraftReason"
         :can-operate="canOperateMaterialStage"
         :exemption-count="exemptionHistory.length"
         :has-pending-exemption="!!pendingExemption"
         :exemption-step="exemptionTaskInfo?.step || 1"
         :show-exemption-audit="isExemptionAuditMode"
+        :auto-supplement-id="autoSupplementId"
         @submitted="() => goBack()"
         @audited="() => goBack()"
         @preview-file="previewFile"
@@ -279,11 +282,11 @@
         @download-invoice-package="handleDownloadInvoicePackage"
       />
 
-      <!-- 资料管理：开票金额及之后的环节（发票资料） -->
+      <!-- 资料管理：开票金额及之后的环节（发票资料；补交草稿入口强制只读） -->
       <MaterialManager
         v-if="showMaterialManager && hasSection('invoiceAmount')"
         :form-id="formId!"
-        :mode="materialManagerMode"
+        :mode="postMaterialManagerMode"
         :form-status="formStatus"
         :step-status-map="stepStatusMap"
         :section-order-map="sectionOrderMap"
@@ -383,7 +386,7 @@
             <a-tag color="default" style="margin: 0">
               {{ ex.exemptionType === 'INVOICE' ? '发票类' : ex.exemptionType === 'MIXED' ? '混合类' : '普通' }}
             </a-tag>
-            <span style="color: #999; font-size: 12px">{{ ex.auditTime || ex.createTime }}</span>
+            <span style="color: #999; font-size: 12px">{{ formatDate(ex.auditTime || ex.createTime) || '-' }}</span>
           </div>
           <div v-if="ex.missingItems" style="margin-top: 4px; font-size: 12px; color: #666">
             缺失项：{{ parseExemptionMissingItems(ex).map((i: any) => i.name).join('、') }}
@@ -455,6 +458,7 @@ import {
   getExemptionDetail,
   auditExemption,
   getExemptionCurrentTask,
+  getSupplementIncrements,
   type MaterialItem,
   type MaterialAttachment
 } from '@/api/business/materialItem'
@@ -463,6 +467,7 @@ import {
   MATERIAL_STAGES,
   splitStages,
   hasStage,
+  isItemRequiredInStage,
   type MaterialStage
 } from '@/api/system/materialTemplate'
 import { getEnabledDictItems } from '@/api/system/dict'
@@ -486,6 +491,7 @@ import InvoiceSection from './sections/InvoiceSection.vue'
 import RemittanceDisplaySection from './sections/RemittanceDisplaySection.vue'
 import MaterialManager from './MaterialManager.vue'
 import { provideFormState } from './composables/useDeclarationForm'
+import { formatDate } from '@/utils/common'
 
 // 文件预览
 const previewVisible = ref(false)
@@ -505,6 +511,15 @@ const isPaymentMode = ref(route.query.mode === 'payment') // 水单提交模式
 const isMaterialMode = ref(route.query.mode === 'material' || route.query.mode === 'exemptionAudit') // 资料提交/查看/豁免审核模式
 const isMaterialAuditMode = ref(route.query.mode === 'materialAudit') // 资料审核模式
 const isExemptionAuditMode = ref(route.query.mode === 'exemptionAudit') // 豁免审核模式
+const isMaterialSupplementAuditMode = ref(route.query.mode === 'materialSupplementAudit') // 资料补交审核模式（独立 Flowable 流程）
+// 任务中心进入补交审核时携带的补交单ID，用于 MaterialManager 自动定位补交审核弹窗
+const autoSupplementId = ref(route.query.supplementId ? Number(route.query.supplementId) : null)
+// 列表页发起补交后跳转进入（supplementDraft=1）：强制资料区为补交提交模式，允许上传补交资料
+const isSupplementDraftEntry = ref(route.query.supplementDraft === '1')
+// 列表页提交按钮跳转进入（autoSubmit=1）：数据加载完成后自动触发提交，一次性标志避免重复触发
+const autoSubmitConsumed = ref(false)
+// 发起补交弹窗填写的原因：延迟到首次上传补交资料时才创建补交单
+const supplementDraftReason = ref(route.query.supplementReason ? String(route.query.supplementReason) : '')
 const isInvoiceAuditMode = ref(route.query.mode === 'invoiceAudit') // 发票审核模式
 const isInvoiceUploadMode = ref(route.query.mode === 'invoiceUpload') // 发票上传模式
 const isSupplementMode = ref(route.query.mode === 'supplement') // 补充资料提交模式
@@ -758,10 +773,10 @@ const auditHistoryColumns = [
   { title: '业务类型', key: 'businessType', width: 120 },
   { title: '申请人', dataIndex: 'applicantName', key: 'applicantName', width: 90 },
   { title: '原因', dataIndex: 'applyReason', key: 'applyReason', ellipsis: true, minWidth: 150 },
-  { title: '申请时间', dataIndex: 'applyTime', key: 'applyTime', width: 160 },
+  { title: '申请时间', dataIndex: 'applyTime', key: 'applyTime', width: 160 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '审核人', dataIndex: 'auditorName', key: 'auditorName', width: 90 },
   { title: '备注', dataIndex: 'auditRemark', key: 'auditRemark', ellipsis: true, minWidth: 150 },
-  { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 },
+  { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '原状态', key: 'preStatus', width: 70 }
 ]
 
@@ -771,8 +786,9 @@ const activeTasks = ref<any[]>([])
 // 计量单位列表
 const measurementUnits = ref<MeasurementUnit[]>([])
 
-// 基本信息是否只读（审核模式、查看模式、水单提交模式、资料模式、资料审核模式、发票上传模式都只读）
-const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value || isMaterialMode.value || isMaterialAuditMode.value || isExemptionAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value || isSupplementMode.value || isSupplementAuditMode.value || isInvoiceAmountMode.value || isInvoiceAmountAuditMode.value)
+// 基本信息是否只读（审核模式、查看模式、水单提交模式、资料模式、资料审核模式、发票上传模式都只读；
+// 补交草稿入口：仅资料区可上传补交增量，其它模块全部只读）
+const isFormReadonly = computed(() => isReadonly.value || isAudit.value || isPaymentMode.value || isMaterialMode.value || isMaterialAuditMode.value || isExemptionAuditMode.value || isMaterialSupplementAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value || isSupplementMode.value || isSupplementAuditMode.value || isInvoiceAmountMode.value || isInvoiceAmountAuditMode.value || isSupplementDraftEntry.value)
 
 // 运输方式是否锁定（新建弹窗预选后不可修改）
 const transportModeLocked = ref(false)
@@ -1209,8 +1225,9 @@ const showMaterialManager = computed(() => {
   return hasSection('material') || hasSection('supplement') || hasSection('invoice')
 })
 
-/** MaterialManager 模式：从流程配置动态判断 submit/audit */
+/** MaterialManager 模式：从流程配置动态判断 submit/audit；补交草稿入口强制 submit（允许上传补交资料） */
 const materialManagerMode = computed<'submit' | 'audit'>(() => {
+  if (isSupplementDraftEntry.value) return 'submit'
   const s = formStatus.value
   if (s == null) return 'submit'
   const map = stepStatusMap.value
@@ -1223,9 +1240,17 @@ const materialManagerMode = computed<'submit' | 'audit'>(() => {
   return 'submit'
 })
 
+/** 第二个 MaterialManager（开票金额及之后环节）的模式：补交草稿入口强制只读（audit 模式下无编辑区，
+ *  且当前非审核态不会出审核按钮），其它情况沿用正常规则 */
+const postMaterialManagerMode = computed<'submit' | 'audit'>(() =>
+  isSupplementDraftEntry.value ? 'audit' : materialManagerMode.value
+)
+
 /** MaterialManager 可操作性判断：从流程配置动态匹配 nodeKey → targetStatus */
 const canOperateMaterialStage = (section: { submitKey?: string; auditTaskKey?: string }): boolean => {
   if (route.query.readonly === 'true' || isAudit.value) return false
+  // 补交审核模式：仅补交审核操作可用，其它环节的提交/审核按钮一律隐藏
+  if (isMaterialSupplementAuditMode.value) return false
   // 豁免审批中：资料区域只读
   if (pendingExemption.value) return false
   const s = formStatus.value
@@ -1257,7 +1282,7 @@ const invoiceStats = computed(() => {
 const canSubmitSupplement = computed(() => {
   if (formStatus.value !== 4) return false
   if (route.query.readonly === 'true') return false
-  if (isSupplementAuditMode.value || isMaterialAuditMode.value || isAudit.value) return false
+  if (isSupplementAuditMode.value || isMaterialAuditMode.value || isMaterialSupplementAuditMode.value || isAudit.value) return false
   return true
 })
 
@@ -1265,7 +1290,7 @@ const canSubmitSupplement = computed(() => {
 const canAuditSupplement = computed(() => {
   if (formStatus.value !== 5) return false
   if (route.query.readonly === 'true') return false
-  if (isMaterialMode.value) return false
+  if (isMaterialMode.value || isMaterialSupplementAuditMode.value) return false
   return true
 })
 
@@ -1279,7 +1304,7 @@ const canSubmitInvoiceAmount = computed(() => {
   if (formStatus.value !== 6) return false
   if (route.query.readonly === 'true') return false
   if (isInvoiceAmountAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value) return false
-  if (isMaterialAuditMode.value || isSupplementAuditMode.value || isAudit.value) return false
+  if (isMaterialAuditMode.value || isSupplementAuditMode.value || isMaterialSupplementAuditMode.value || isAudit.value) return false
   // 仅资料/补充/开票金额等业务入口，不因 URL 上残留的 mode 拦截
   return true
 })
@@ -1290,7 +1315,7 @@ const canAuditInvoiceAmount = computed(() => {
   if (formData.declarationType === 'SELF') return false
   if (formStatus.value !== 7) return false
   if (route.query.readonly === 'true') return false
-  if (isMaterialMode.value || isSupplementMode.value) return false
+  if (isMaterialMode.value || isSupplementMode.value || isMaterialSupplementAuditMode.value) return false
   return true
 })
 
@@ -1335,7 +1360,7 @@ const canSubmitInvoice = computed(() => {
   if (!hasSection('invoice')) return false
   if (formStatus.value !== 8) return false
   if (route.query.readonly === 'true') return false
-  if (isInvoiceAuditMode.value || isMaterialAuditMode.value || isSupplementAuditMode.value || isAudit.value) return false
+  if (isInvoiceAuditMode.value || isMaterialAuditMode.value || isSupplementAuditMode.value || isMaterialSupplementAuditMode.value || isAudit.value) return false
   return true
 })
 
@@ -1344,7 +1369,7 @@ const canAuditInvoice = computed(() => {
   if (!hasSection('invoice')) return false
   if (formStatus.value !== 9) return false
   if (route.query.readonly === 'true') return false
-  if (isMaterialMode.value || isSupplementMode.value) return false
+  if (isMaterialMode.value || isSupplementMode.value || isMaterialSupplementAuditMode.value) return false
   return true
 })
 
@@ -1403,6 +1428,7 @@ const loadMaterialItems = async () => {
           code: t.code,
           name: t.name,
           required: t.required,
+          requiredStages: t.requiredStages,
           sort: t.sort ?? 0,
           remark: t.remark,
           formSchema: t.formSchema,
@@ -1700,9 +1726,9 @@ const validateMaterialSchemaFields = (): string | null => {
 
 const handleSubmitMaterial = async () => {
   if (!formId.value) return
-  // 只校验资料提交阶段的项，不包含非资料提交环节
+  // 只校验资料提交阶段的项，不包含非资料提交环节（必填按资料提交环节判定）
   const submitItems = materialItems.value.filter(isSubmitStageItem)
-  const missing = submitItems.filter((i) => i.required === 1 && i.status !== 1)
+  const missing = submitItems.filter((i) => isItemRequiredInStage(i, 'MATERIAL_SUBMIT') && i.status !== 1)
 
   const schemaMissing = validateMaterialSchemaFields()
   if (schemaMissing) {
@@ -1848,7 +1874,7 @@ const handleMaterialAuditReject = () => {
 
 const handleSubmitSupplement = async () => {
   if (!formId.value) return
-  const missing = supplementItems.value.filter((i) => i.required === 1 && i.status !== 1)
+  const missing = supplementItems.value.filter((i) => isItemRequiredInStage(i, 'SUPPLEMENT') && i.status !== 1)
   if (missing.length > 0) {
     message.warning(`还有 ${missing.length} 项必填补充资料未上传：${missing.map((m) => m.name).join('、')}`)
     return
@@ -2737,22 +2763,25 @@ function validateCartonProducts(): string[] {
         allocationMap.set(detail.productId, { quantity: 0, grossWeight: 0, netWeight: 0 })
       }
       const alloc = allocationMap.get(detail.productId)!
-      alloc.quantity += (detail.quantity || 0)
-      alloc.grossWeight += (detail.grossWeight || 0)
-      alloc.netWeight += (detail.netWeight || 0)
+      // 明细值可能为字符串（后端 JSON/输入框），必须转数值后累加，否则字符串拼接导致 toFixed 报错
+      alloc.quantity += (Number(detail.quantity) || 0)
+      alloc.grossWeight += (Number(detail.grossWeight) || 0)
+      alloc.netWeight += (Number(detail.netWeight) || 0)
     })
   })
   
   // 对比每个产品的总量（超配 + 不足）
+  // 重量保留 3 位小数：多箱累加存在浮点尾差（如 85.38000000000001），直接比较会误报超配/不足
+  const round3 = (v: number) => Math.round(v * 1000) / 1000
   productList.value.forEach((product) => {
     const alloc = allocationMap.get(product.id!)
     const name = product.productName || `产品${product.id}`
-    const totalQty = Number(product.quantity) || 0
-    const totalGross = Number(product.grossWeight) || 0
-    const totalNet = Number(product.netWeight) || 0
-    const allocQty = alloc?.quantity || 0
-    const allocGross = alloc?.grossWeight || 0
-    const allocNet = alloc?.netWeight || 0
+    const totalQty = round3(Number(product.quantity) || 0)
+    const totalGross = round3(Number(product.grossWeight) || 0)
+    const totalNet = round3(Number(product.netWeight) || 0)
+    const allocQty = round3(alloc?.quantity || 0)
+    const allocGross = round3(alloc?.grossWeight || 0)
+    const allocNet = round3(alloc?.netWeight || 0)
     // 校验数量
     if (allocQty > totalQty) {
       errors.push(`${name}: 数量超配 (已分配${allocQty}/总量${totalQty})`)
@@ -2762,17 +2791,17 @@ function validateCartonProducts(): string[] {
     // 校验毛重
     if (totalGross > 0) {
       if (allocGross > totalGross) {
-        errors.push(`${name}: 毛重超配 (已分配${allocGross.toFixed(3)}/总量${totalGross})`)
+        errors.push(`${name}: 毛重超配 (已分配${allocGross.toFixed(3)}/总量${totalGross.toFixed(3)})`)
       } else if (allocGross < totalGross) {
-        errors.push(`${name}: 毛重不足 (已分配${allocGross.toFixed(3)}/总量${totalGross})`)
+        errors.push(`${name}: 毛重不足 (已分配${allocGross.toFixed(3)}/总量${totalGross.toFixed(3)})`)
       }
     }
     // 校验净重
     if (totalNet > 0) {
       if (allocNet > totalNet) {
-        errors.push(`${name}: 净重超配 (已分配${allocNet.toFixed(3)}/总量${totalNet})`)
+        errors.push(`${name}: 净重超配 (已分配${allocNet.toFixed(3)}/总量${totalNet.toFixed(3)})`)
       } else if (allocNet < totalNet) {
-        errors.push(`${name}: 净重不足 (已分配${allocNet.toFixed(3)}/总量${totalNet})`)
+        errors.push(`${name}: 净重不足 (已分配${allocNet.toFixed(3)}/总量${totalNet.toFixed(3)})`)
       }
     }
   })
@@ -3366,6 +3395,15 @@ const handleSubmit = async () => {
       return
     }
 
+    // 基础资料环节（新建申报）必填校验：必填不全直接拦截，不走豁免流程
+    const missingBasic = (materialItems.value || []).filter(
+      (i: MaterialItem) => hasStage(i.stage, 'BASIC') && isItemRequiredInStage(i, 'BASIC') && i.status !== 1
+    )
+    if (missingBasic.length > 0) {
+      message.error(`还有 ${missingBasic.length} 项必填基础资料未上传：${missingBasic.map((m: MaterialItem) => m.name).join('、')}`)
+      return
+    }
+
     if (productList.value.length === 0) {
       message.error('请至少添加一个产品')
       return
@@ -3550,6 +3588,18 @@ const loadData = async () => {
     }
   }
 
+  // 资料补交审核模式：通过 supplementId 反查 formId（补交不阻塞主流程，状态以申报单实际状态为准）
+  if (!formId.value && route.query.supplementId) {
+    try {
+      const supRes = await getSupplementIncrements(route.query.supplementId as string)
+      if (supRes.data?.code === 200 && supRes.data.data?.supplement) {
+        formId.value = Number(supRes.data.data.supplement.formId)
+      }
+    } catch (e) {
+      console.error('加载资料补交记录失败', e)
+    }
+  }
+
   // 并行加载配置数据
   await Promise.all([
     loadProductTypes(),
@@ -3598,7 +3648,7 @@ const loadData = async () => {
         // 2. 如果是审核模式 (isAudit)，保持只读
         // 3. 如果是水单提交模式、资料模式或发票上传模式，由各自区域内部判断
         // 4. 否则根据状态判断：状态 0/2 可编辑，其他只读
-        if (route.query.readonly === 'true' || isAudit.value) {
+        if (route.query.readonly === 'true' || isAudit.value || isMaterialSupplementAuditMode.value) {
           isReadonly.value = true
           console.log('查看模式或审核模式, 设置为只读')
         } else if (!isPaymentMode.value && !isMaterialMode.value && !isInvoiceUploadMode.value) {
@@ -3757,8 +3807,8 @@ const loadData = async () => {
           } else {
             activeStageTab.value = DEFAULT_STAGE
           }
-          // 豁免审核模式：自动滚动到资料区域
-          if (isExemptionAuditMode.value) {
+          // 豁免审核 / 资料补交审核模式：自动滚动到资料区域
+          if (isExemptionAuditMode.value || isMaterialSupplementAuditMode.value) {
             nextTick(() => {
               setTimeout(() => {
                 const el = document.querySelector('.material-manager')
@@ -3803,6 +3853,13 @@ const loadData = async () => {
         // 不能用目的国重新加载覆盖（否则出发口岸下拉会变空/失配）
 
         message.success('数据加载成功')
+
+        // 列表页提交按钮跳转进入（autoSubmit=1）：数据就绪后自动触发提交，
+        // 完整复用编辑页 handleSubmit 的校验与提交逻辑
+        if (route.query.autoSubmit === '1' && !autoSubmitConsumed.value) {
+          autoSubmitConsumed.value = true
+          nextTick(() => { handleSubmit() })
+        }
       } else {
         console.error('API返回异常:', response.data)
         message.error('获取申报单详情失败')
@@ -3922,7 +3979,7 @@ provideFormState({
   // 核心数据
   formData, formId, formStatus, submitting,
   // 模式标志
-  isMaterialMode, isMaterialAuditMode, isExemptionAuditMode, isSupplementMode, isSupplementAuditMode,
+  isMaterialMode, isMaterialAuditMode, isExemptionAuditMode, isMaterialSupplementAuditMode, isSupplementMode, isSupplementAuditMode,
   isInvoiceAmountMode, isInvoiceAmountAuditMode, isInvoiceUploadMode, isInvoiceAuditMode,
   isReadonly, isAudit,
   // 表单只读

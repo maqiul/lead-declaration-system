@@ -7,11 +7,13 @@ import com.declaration.entity.DeclarationAttachment;
 import com.declaration.entity.DeclarationMaterialItem;
 import com.declaration.entity.DeclarationMaterialTemplate;
 import com.declaration.entity.MaterialAttachment;
+import com.declaration.entity.MaterialSupplement;
 import com.declaration.service.DeclarationAttachmentService;
 import com.declaration.service.DeclarationMaterialItemService;
 import com.declaration.service.DeclarationMaterialTemplateService;
 import com.declaration.service.FinancialSupplementService;
 import com.declaration.service.MaterialAttachmentService;
+import com.declaration.service.MaterialSupplementService;
 import com.declaration.service.PdfInvoiceAmountParser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,6 +42,13 @@ public class DeclarationMaterialItemController {
     private final FinancialSupplementService financialSupplementService;
     private final PdfInvoiceAmountParser pdfInvoiceAmountParser;
     private final DeclarationMaterialTemplateService templateService;
+    private final MaterialSupplementService materialSupplementService;
+
+    /** 查询表单当前补交单（在途 status=0 或草稿 status=-1，无则 null），用于存量资料只增不改锁定 */
+    private MaterialSupplement activeSupplement(Long formId) {
+        if (formId == null) return null;
+        return materialSupplementService.getCurrentByFormId(formId);
+    }
 
     /** 按环节获取启用的资料模板（未保存草稿时前端预览资料项用，不需要模板管理权限） */
     @GetMapping("/template-preview")
@@ -78,6 +87,15 @@ public class DeclarationMaterialItemController {
         if (entity.getName() == null || entity.getName().trim().isEmpty()) {
             return Result.fail("资料名称不能为空");
         }
+        // 补交模式：在途补交时新增项必须携带有效的 supplementId（补交增量），否则拒绝
+        MaterialSupplement active = activeSupplement(entity.getFormId());
+        if (active != null) {
+            if (entity.getSupplementId() == null || !active.getId().equals(entity.getSupplementId())) {
+                return Result.fail("当前存在在途资料补交，新增资料项请通过补交模式提交");
+            }
+        } else {
+            entity.setSupplementId(null);
+        }
         if (entity.getRequired() == null) entity.setRequired(1);
         if (entity.getSort() == null) entity.setSort(0);
         entity.setStatus(0);
@@ -99,6 +117,10 @@ public class DeclarationMaterialItemController {
         // 不允许通过本接口修改附件状态字段，防止误覆盖
         DeclarationMaterialItem old = itemService.getById(entity.getId());
         if (old == null) return Result.fail("资料项不存在");
+        // 补交锁定：在途补交时，存量资料项（非增量）不可修改
+        if (old.getSupplementId() == null && activeSupplement(old.getFormId()) != null) {
+            return Result.fail("当前存在在途资料补交，存量资料只增不改，不可修改");
+        }
         old.setName(entity.getName());
         old.setRequired(entity.getRequired() == null ? old.getRequired() : entity.getRequired());
         old.setSort(entity.getSort() == null ? old.getSort() : entity.getSort());
@@ -131,11 +153,16 @@ public class DeclarationMaterialItemController {
         if (item.getTemplateId() != null) {
             return Result.fail("该资料项由模板生成，不允许删除（可取消必填）");
         }
+        // 补交锁定：在途补交时，存量资料项（非增量）不可删除
+        if (item.getSupplementId() == null && activeSupplement(item.getFormId()) != null) {
+            return Result.fail("当前存在在途资料补交，存量资料只增不改，不可删除");
+        }
         return Result.success(itemService.removeById(id));
     }
 
     /** 上传附件到指定资料项
      *  兼容懒创建：如果 id 查不到但带了 formId+templateId，则先按模板 ensure 一条实例再上传
+     *  补交模式：携带 supplementId 时新附件打补交增量标记
      */
     @PostMapping("/{id}/upload")
     @Operation(summary = "上传资料项附件（追加模式，支持多文件）")
@@ -143,7 +170,21 @@ public class DeclarationMaterialItemController {
                                                   @RequestParam("file") MultipartFile file,
                                                   @RequestParam(value = "formId", required = false) Long formId,
                                                   @RequestParam(value = "templateId", required = false) Long templateId,
-                                                  @RequestParam(value = "uploadStage", required = false) String uploadStage) {
+                                                  @RequestParam(value = "uploadStage", required = false) String uploadStage,
+                                                  @RequestParam(value = "supplementId", required = false) Long supplementId) {
+        // 补交上传校验：supplementId 必须是草稿/在途补交且与目标资料项同单
+        if (supplementId != null) {
+            MaterialSupplement supplement = materialSupplementService.getById(supplementId);
+            if (supplement == null || supplement.getStatus() == null
+                    || (supplement.getStatus() != -1 && supplement.getStatus() != 0)) {
+                return Result.fail("补交单不存在或已审核，无法上传补交文件");
+            }
+            DeclarationMaterialItem target = id == null || id <= 0 ? null : itemService.getById(id);
+            Long targetFormId = target != null ? target.getFormId() : formId;
+            if (targetFormId != null && !targetFormId.equals(supplement.getFormId())) {
+                return Result.fail("补交单与资料项不属于同一申报单");
+            }
+        }
         DeclarationMaterialItem item = id == null || id <= 0 ? null : itemService.getById(id);
         if (item == null) {
             log.warn("上传时未找到资料项实例 id={} formId={} templateId={}", id, formId, templateId);
@@ -158,9 +199,14 @@ public class DeclarationMaterialItemController {
             }
         }
         if (item == null) return Result.fail("资料项不存在");
+        // 补交锁定：补交状态下允许向同一资料项追加增量文件（附件打补交增量标记，原文件不可删除/修改）；
+        // 但上传必须携带补交单增量标记，防止绕过审核
+        if (supplementId == null && activeSupplement(item.getFormId()) != null) {
+            return Result.fail("当前存在资料补交，请通过补交模式上传增量资料");
+        }
         try {
-            // 上传文件并保存到附件子表（记录上传时所处环节）
-            MaterialAttachment att = materialAttachmentService.uploadForItem(item.getId(), file, uploadStage);
+            // 上传文件并保存到附件子表（记录上传时所处环节；补交模式打增量标记）
+            MaterialAttachment att = materialAttachmentService.uploadForItem(item.getId(), file, uploadStage, supplementId);
             // 同步主表冗余字段（指向最新文件）
             item.setFileName(att.getFileName());
             item.setFileUrl(att.getFileUrl());
@@ -187,6 +233,10 @@ public class DeclarationMaterialItemController {
                                      @RequestParam(value = "stage", required = false) String stage) {
         DeclarationMaterialItem item = itemService.getById(id);
         if (item == null) return Result.fail("资料项不存在");
+        // 补交锁定：在途补交时，存量资料项（非增量）的附件不可清除
+        if (item.getSupplementId() == null && activeSupplement(item.getFormId()) != null) {
+            return Result.fail("当前存在在途资料补交，存量资料只增不改，不可清除附件");
+        }
         if (stage == null || stage.isEmpty()) {
             // 删除子表所有附件
             materialAttachmentService.removeAllByItemId(id);
@@ -213,6 +263,10 @@ public class DeclarationMaterialItemController {
         // 环节保护：前序环节上传的附件，后续环节不可删除（无环节标记的历史附件放行）
         MaterialAttachment target = materialAttachmentService.getById(attachmentId);
         if (target == null) return Result.fail("附件不存在");
+        // 补交锁定：在途补交时，存量附件（非增量）不可删除
+        if (target.getSupplementId() == null && activeSupplement(item.getFormId()) != null) {
+            return Result.fail("当前存在在途资料补交，存量资料只增不改，不可删除附件");
+        }
         if (stage != null && !stage.isEmpty()
                 && target.getStage() != null && !target.getStage().isEmpty()
                 && !stage.equals(target.getStage())) {
@@ -271,6 +325,11 @@ public class DeclarationMaterialItemController {
         MaterialAttachment att = materialAttachmentService.getById(attachmentId);
         if (att == null || !att.getItemId().equals(id)) {
             return Result.fail("附件不存在");
+        }
+        // 补交锁定：补交状态下，存量附件（非增量）的结构化字段不可修改
+        DeclarationMaterialItem attItem = itemService.getById(id);
+        if (att.getSupplementId() == null && attItem != null && activeSupplement(attItem.getFormId()) != null) {
+            return Result.fail("当前存在资料补交，存量资料只增不改，不可修改附件信息");
         }
         // 允许更新结构化字段（包括设置为 null 以清空字段）
         att.setAmount(body.getAmount());

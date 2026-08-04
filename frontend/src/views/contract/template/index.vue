@@ -167,6 +167,7 @@ import type { TablePaginationConfig } from 'ant-design-vue'
 import { getTemplates, uploadTemplate } from '@/api/business/contract'
 import request from '@/utils/request'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
+import { formatDate } from '@/utils/common'
 
 // 文件预览
 const previewVisible = ref(false)
@@ -197,7 +198,7 @@ const columns = [
   { title: '大小', key: 'fileSize', width: 100 },
   { title: '状态', key: 'status', width: 100 },
   { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '操作', key: 'action', width: 400, fixed: 'right' as const }
 ]
 
@@ -394,4 +395,3 @@ onMounted(() => {
   /* padding 由外层 .content 统一提供，此处不重复 */
 }
 </style>
-

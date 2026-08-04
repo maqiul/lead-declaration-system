@@ -191,6 +191,7 @@ import {
   type TradeTerm
 } from '@/api/system/tradeTerm'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
+import { formatDate } from '@/utils/common'
 
 const searchForm = reactive({
   keyword: '',
@@ -231,7 +232,7 @@ const columns = [
     }
   },
   { title: '状态', dataIndex: 'status', key: 'status', width: 80 },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 170 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 170 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '操作', key: 'action', fixed: 'right' as const, width: 200 }
 ]
 

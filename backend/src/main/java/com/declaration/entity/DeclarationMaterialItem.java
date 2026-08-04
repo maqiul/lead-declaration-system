@@ -87,6 +87,9 @@ public class DeclarationMaterialItem implements Serializable {
     /** 状态 0-未上传 1-已上传 */
     private Integer status;
 
+    /** 所属补交单ID（非空=补交增量，审核通过前待审核） */
+    private Long supplementId;
+
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
@@ -109,4 +112,8 @@ public class DeclarationMaterialItem implements Serializable {
     /** 附件列表（非持久化，Service 层批量加载） */
     @TableField(exist = false)
     private List<MaterialAttachment> attachments;
+
+    /** 必填环节配置（非持久化，视图层从模板透传，供前端按环节判定必填；null=回退 required 字段） */
+    @TableField(exist = false)
+    private String requiredStages;
 }

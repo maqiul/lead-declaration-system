@@ -43,7 +43,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="false"
-        :scroll="{ x: 1320 }"
+        :scroll="{ x: 1400 }"
         rowKey="id"
         class="ui-table"
       >
@@ -75,7 +75,12 @@
             <span v-else class="text-gray-400 text-xs">全部</span>
           </template>
           <template v-else-if="column.key === 'required'">
-            <a-tag :color="record.required === 1 ? 'red' : 'default'" class="ui-tag">
+            <template v-if="record.requiredStages">
+              <a-tag v-for="s in splitStages(record.requiredStages)" :key="s" :color="stageColorMap[s] || 'red'" class="ui-tag">
+                {{ stageLabelMap[s] || s }}
+              </a-tag>
+            </template>
+            <a-tag v-else :color="record.required === 1 ? 'red' : 'default'" class="ui-tag">
               {{ record.required === 1 ? '必填' : '选填' }}
             </a-tag>
           </template>
@@ -172,11 +177,13 @@
 
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="是否必填" name="required">
-              <a-radio-group v-model:value="formData.required" button-style="solid">
-                <a-radio :value="1">必填</a-radio>
-                <a-radio :value="0">选填</a-radio>
-              </a-radio-group>
+            <a-form-item label="必填环节" name="requiredStages">
+              <a-checkbox-group v-model:value="formRequiredStages">
+                <a-checkbox v-for="s in requiredStageOptions" :key="s.value" :value="s.value">
+                  {{ s.label }}
+                </a-checkbox>
+              </a-checkbox-group>
+              <div class="text-xs text-gray-400 mt-1">勾选的环节提交时该资料项必填；不勾选则为选填</div>
             </a-form-item>
           </a-col>
           <a-col :span="12" v-if="formData.invoiceMode === 1">
@@ -365,7 +372,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, ReloadOutlined, QuestionCircleOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { RuleObject } from 'ant-design-vue/es/form/interface'
@@ -522,7 +529,7 @@ const columns = [
   { title: '发票模式', dataIndex: 'invoiceMode', key: 'invoiceMode', width: 100 },
   { title: '发票分类', dataIndex: 'invoiceCategory', key: 'invoiceCategory', width: 100 },
   { title: '绑定规则', dataIndex: 'bindings', key: 'bindings', width: 200 },
-  { title: '必填', dataIndex: 'required', key: 'required', width: 100 },
+  { title: '必填环节', dataIndex: 'requiredStages', key: 'required', width: 180 },
   { title: '启用', dataIndex: 'enabled', key: 'enabled', width: 100 },
   { title: '说明', dataIndex: 'remark', key: 'remark', ellipsis: true },
   { title: '操作', key: 'action', fixed: 'right' as const, width: 300 }
@@ -542,6 +549,7 @@ const defaultForm = (): MaterialTemplate => ({
   formSchema: '',
   enabled: 1,
   stage: 'MATERIAL_SUBMIT' as MaterialStage,
+  requiredStages: null,
   invoiceMode: 0,
   invoiceCategory: 'DEDUCTION',
   bindings: []
@@ -550,6 +558,14 @@ const defaultForm = (): MaterialTemplate => ({
 const formData = reactive<MaterialTemplate>(defaultForm())
 // 所属环节多选（保存时 join 为逗号分隔存入 formData.stage）
 const formStages = ref<string[]>(['MATERIAL_SUBMIT'])
+// 必填环节多选（保存时 join 为逗号分隔存入 formData.requiredStages）
+const formRequiredStages = ref<string[]>(['MATERIAL_SUBMIT'])
+// 必填环节可选项：仅限已勾选的所属环节，避免展示未选环节
+const requiredStageOptions = computed(() => stageOptions.value.filter(s => formStages.value.includes(s.value)))
+// 所属环节取消勾选时，同步移除对应的必填勾选
+watch(formStages, (stages) => {
+  formRequiredStages.value = formRequiredStages.value.filter(s => stages.includes(s))
+})
 
 // 可视化结构化字段表格数据
 const schemaFields = ref<SchemaFieldRow[]>([])
@@ -649,6 +665,7 @@ const openAddModal = () => {
   Object.assign(formData, defaultForm())
   delete (formData as any).id  // 清除编辑残留的id，新增时不应带id
   formStages.value = ['MATERIAL_SUBMIT']
+  formRequiredStages.value = ['MATERIAL_SUBMIT']
   schemaFields.value = []
   bindingRules.value = []
   modalVisible.value = true
@@ -658,6 +675,10 @@ const openEditModal = (record: MaterialTemplate) => {
   editingId.value = record.id ?? null
   Object.assign(formData, defaultForm(), record)
   formStages.value = splitStages(record.stage)
+  // 必填环节：优先取 requiredStages；历史数据（未回填时）按 required=1 则所属环节即必填兼容展示
+  formRequiredStages.value = record.requiredStages
+    ? splitStages(record.requiredStages)
+    : record.required === 1 ? splitStages(record.stage) : []
   schemaFields.value = schemaToRows(record.formSchema)
   bindingRules.value = (record.bindings || []).map(b => ({ ...b }))
   modalVisible.value = true
@@ -677,6 +698,10 @@ const handleSave = async () => {
       return
     }
     formData.stage = formStages.value.join(',')
+
+    // 必填环节多选 → 逗号分隔（空=选填，回退 required 字段语义）
+    formData.requiredStages = formRequiredStages.value.length ? formRequiredStages.value.join(',') : null
+    formData.required = formRequiredStages.value.length ? 1 : 0
 
     // 校验结构化字段
     const keys = new Set<string>()

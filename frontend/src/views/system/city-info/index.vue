@@ -232,6 +232,7 @@ import {
   deleteCity
 //   getCityProvinces
 } from '@/api/system/city-info'
+import { formatDate } from '@/utils/common'
 
 // 表格列配置
 const columns: any[] = [
@@ -287,7 +288,8 @@ const columns: any[] = [
     title: '创建时间',
     dataIndex: 'createTime',
     width: 150,
-    align: 'center' as const
+    align: 'center' as const,
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-'
   },
   {
     title: '操作',

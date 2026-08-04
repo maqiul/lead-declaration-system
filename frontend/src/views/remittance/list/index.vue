@@ -91,7 +91,7 @@
 
           <template v-if="column.key === 'action'">
             <a-space :size="2">
-              <a-button type="link" size="small" style="padding: 0 4px" @click="handleView(record as Remittance)">
+              <a-button type="link" size="small" style="padding: 0 4px" @click="handleView(record as Remittance)" v-permission="['business:remittance:view']">
                 <template #icon><EyeOutlined /></template>
                 查看
               </a-button>
@@ -144,7 +144,7 @@
                 size="small"
                 @click="handleRevokeAudit(record as Remittance)"
                 v-if="record.status === 2"
-                v-permission="['business:remittance:audit']"
+                v-permission="['business:remittance:revoke-audit']"
                 style="color: #fa541c; padding: 0 4px"
               >
                 <template #icon><RollbackOutlined /></template>

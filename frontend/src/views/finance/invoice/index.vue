@@ -179,6 +179,7 @@ import { PlusOutlined, UploadOutlined, DownloadOutlined, SearchOutlined, ReloadO
 import dayjs from 'dayjs'
 import { getFinanceInvoiceList, saveFinanceInvoice, deleteFinanceInvoice, uploadInvoiceFile, downloadInvoiceFile } from '@/api/finance/invoice'
 import { getDeclarationList } from '@/api/business/declaration'
+import { formatDate } from '@/utils/common'
 
 const loading = ref(false)
 const dataList = ref<any[]>([])
@@ -199,7 +200,7 @@ const columns = [
   { title: '发票名称', dataIndex: 'invoiceName', key: 'invoiceName', width: 150 },
   { title: '发票号码', dataIndex: 'invoiceNo', key: 'invoiceNo', width: 150 },
   { title: '类型', dataIndex: 'invoiceType', key: 'invoiceType', width: 100 },
-  { title: '开票日期', dataIndex: 'invoiceDate', key: 'invoiceDate', width: 120 },
+  { title: '开票日期', dataIndex: 'invoiceDate', key: 'invoiceDate', width: 120 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd') : '-' },
   { title: '金额', dataIndex: 'amount', key: 'amount', width: 120 },
   { title: '税额', dataIndex: 'taxAmount', key: 'taxAmount', width: 120 },
   { title: '备注', dataIndex: 'remarks', key: 'remarks' },

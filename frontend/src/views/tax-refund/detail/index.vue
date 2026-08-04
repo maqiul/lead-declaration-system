@@ -184,6 +184,7 @@ import {
   FileOutlined 
 } from '@ant-design/icons-vue'
 import { getTaxRefundDetail, auditTaxRefund, getTaxRefundAttachments, submitInvoice } from '@/api/tax-refund'
+import { formatDate as fmtDateTime } from '@/utils/common'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
 
 const router = useRouter()
@@ -296,7 +297,7 @@ const getApplicationTypeText = (type: string) => {
 // 格式化日期
 const formatDate = (date: string) => {
   if (!date) return '无'
-  return new Date(date).toLocaleString('zh-CN')
+  return fmtDateTime(date)
 }
 
 // 计算预计退税金额

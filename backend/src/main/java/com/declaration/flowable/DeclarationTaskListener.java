@@ -5,7 +5,9 @@ import com.declaration.entity.DeclarationAttachment;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.DeclarationAttachmentService;
 import com.declaration.service.DeclarationMaterialItemService;
+import com.declaration.service.DeclarationMaterialExemptionService;
 import com.declaration.service.FlowNodeService;
+import com.declaration.service.MaterialSupplementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RuntimeService;
@@ -49,6 +51,8 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
     private final DeclarationFormService declarationFormService;
     private final DeclarationAttachmentService attachmentService;
     private final DeclarationMaterialItemService materialItemService;
+    private final DeclarationMaterialExemptionService exemptionService;
+    private final MaterialSupplementService materialSupplementService;
     private final FlowNodeService flowNodeService;
     private final RuntimeService runtimeService;
     private final RepositoryService repositoryService;
@@ -175,6 +179,17 @@ public class DeclarationTaskListener implements TaskListener, ExecutionListener 
                 // 如果是驳回回到草稿状态,删除预录入单
                 if (newStatus == 0 && form.getStatus() != 0) {
                     deletePreEntryDocuments(form.getId());
+                    // 回草稿同时清理资料补交与豁免流程（按驳回处理：删除增量资料与记录，终止在途流程实例）
+                    try {
+                        materialSupplementService.cleanupByFormId(form.getId());
+                    } catch (Exception e) {
+                        log.warn("回草稿清理资料补交流程失败 formId={}: {}", form.getId(), e.getMessage());
+                    }
+                    try {
+                        exemptionService.cleanupByFormId(form.getId());
+                    } catch (Exception e) {
+                        log.warn("回草稿清理豁免流程失败 formId={}: {}", form.getId(), e.getMessage());
+                    }
                 }
 
                 form.setStatus(newStatus);

@@ -1697,6 +1697,7 @@ import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityC
 import { getAllEnabledCustomers, type CustomerConfig } from '@/api/system/customerConfig'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
 import InvoiceSplitModal from './InvoiceSplitModal.vue'
+import { formatDate } from '@/utils/common'
 
 // 文件预览
 const previewVisible = ref(false)
@@ -1798,10 +1799,10 @@ const auditHistoryColumns = [
   { title: '业务类型', key: 'businessType', width: 120 },
   { title: '申请人', dataIndex: 'applicantName', key: 'applicantName', width: 90 },
   { title: '原因', dataIndex: 'applyReason', key: 'applyReason', ellipsis: true, minWidth: 150 },
-  { title: '申请时间', dataIndex: 'applyTime', key: 'applyTime', width: 160 },
+  { title: '申请时间', dataIndex: 'applyTime', key: 'applyTime', width: 160 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '审核人', dataIndex: 'auditorName', key: 'auditorName', width: 90 },
   { title: '备注', dataIndex: 'auditRemark', key: 'auditRemark', ellipsis: true, minWidth: 150 },
-  { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 },
+  { title: '审核时间', dataIndex: 'auditTime', key: 'auditTime', width: 160 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '原状态', key: 'preStatus', width: 70 }
 ]
 

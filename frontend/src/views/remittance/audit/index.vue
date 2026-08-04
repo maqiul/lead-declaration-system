@@ -53,15 +53,15 @@
 
           <template v-if="column.key === 'action'">
             <a-space :size="2">
-              <a-button type="link" size="small" style="padding: 0 4px" @click="handleView(record as Remittance)">
+              <a-button type="link" size="small" style="padding: 0 4px" @click="handleView(record as Remittance)" v-permission="['business:remittance:view']">
                 <template #icon><EyeOutlined /></template>
                 查看
               </a-button>
-              <a-button type="primary" size="small" style="padding: 0 4px" @click="handleAudit(record as Remittance)" v-if="record.status === 1">
+              <a-button type="primary" size="small" style="padding: 0 4px" @click="handleAudit(record as Remittance)" v-if="record.status === 1" v-permission="['business:remittance:audit']">
                 <template #icon><AuditOutlined /></template>
                 审核
               </a-button>
-              <a-button type="link" size="small" style="padding: 0 4px" @click="handleRevokeAudit(record as Remittance)" v-if="record.status === 2" color="#fa541c">
+              <a-button type="link" size="small" style="padding: 0 4px" @click="handleRevokeAudit(record as Remittance)" v-if="record.status === 2" color="#fa541c" v-permission="['business:remittance:revoke-audit']">
                 <template #icon><RollbackOutlined /></template>
                 反审核
               </a-button>
@@ -98,7 +98,7 @@
           <a-row :gutter="16">
             <a-col :span="8">
               <a-form-item label="收汇日期">
-                <span>{{ currentRemittance.remittanceDate }}</span>
+                <span>{{ formatDate(currentRemittance.remittanceDate, 'yyyy-MM-dd') || '-' }}</span>
               </a-form-item>
             </a-col>
             <a-col :span="8">
@@ -222,7 +222,7 @@
       <a-descriptions v-if="currentRemittance" bordered :column="3">
         <a-descriptions-item label="水单编号">{{ currentRemittance.remittanceNo }}</a-descriptions-item>
         <a-descriptions-item label="收汇名称">{{ currentRemittance.remittanceName }}</a-descriptions-item>
-        <a-descriptions-item label="收汇日期">{{ currentRemittance.remittanceDate }}</a-descriptions-item>
+        <a-descriptions-item label="收汇日期">{{ formatDate(currentRemittance.remittanceDate, 'yyyy-MM-dd') || '-' }}</a-descriptions-item>
         <a-descriptions-item label="收汇金额">{{ currentRemittance.remittanceAmount }} {{ currentRemittance.currency }}</a-descriptions-item>
         <a-descriptions-item label="状态">{{ getStatusText(currentRemittance.status) }}</a-descriptions-item>
         <a-descriptions-item label="汇率" :span="3">{{ currentRemittance.taxRate || '-' }}</a-descriptions-item>
@@ -255,6 +255,7 @@ import { getRemittanceList, auditRemittance, getRelatedForms, revokeRemittanceAu
 import { getEnabledBankAccounts } from '@/api/business/declaration'
 import type { Remittance, RemittanceQueryParams } from '@/api/business/remittance'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
+import { formatDate } from '@/utils/common'
 
 // 文件预览
 const previewVisible = ref(false)
@@ -315,7 +316,8 @@ const columns = [
     title: '收汇日期',
     dataIndex: 'remittanceDate',
     key: 'remittanceDate',
-    width: 120
+    width: 120,
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd') : '-'
   },
   {
     title: '收汇金额',
@@ -327,7 +329,8 @@ const columns = [
     title: '提交时间',
     dataIndex: 'submitTime',
     key: 'submitTime',
-    width: 180
+    width: 180,
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-'
   },
   {
     title: '状态',

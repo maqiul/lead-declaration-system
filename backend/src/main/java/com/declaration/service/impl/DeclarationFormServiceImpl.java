@@ -17,6 +17,8 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.bpmn.model.BpmnModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import cn.dev33.satoken.stp.StpUtil;
@@ -61,6 +63,13 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
     private final UserService userService;
     private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
     private final DeclarationMaterialExemptionService exemptionService;
+
+    /**
+     * 资料补交流程服务：双向依赖（补交服务依赖本类查申报单），用 @Lazy 避免构造器循环
+     */
+    @Autowired
+    @Lazy
+    private MaterialSupplementService materialSupplementService;
 
     /**
      * 流程阶段定义：submitStatus → (提交活动ID, 审核活动ID, 退回后目标状态)
@@ -837,6 +846,14 @@ public class DeclarationFormServiceImpl extends ServiceImpl<DeclarationFormDao, 
             } catch (Exception e) {
                 log.error("清理豁免流程失败", e);
                 // 豁免清理失败不影响主流程
+            }
+
+            // 清理资料补交流程：终止在途补交流程实例、删除补交增量与记录
+            try {
+                materialSupplementService.cleanupByFormId(id);
+            } catch (Exception e) {
+                log.error("清理资料补交流程失败", e);
+                // 补交清理失败不影响主流程
             }
         } else {
             // 驳回：恢复到之前的状态

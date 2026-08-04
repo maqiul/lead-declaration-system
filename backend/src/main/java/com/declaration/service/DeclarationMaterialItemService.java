@@ -83,6 +83,12 @@ public interface DeclarationMaterialItemService extends IService<DeclarationMate
     void submitStage(Long formId, String stage, Long currentUserId, boolean skipRequiredCheck);
 
     /**
+     * 基础资料环节（BASIC）必填校验：必填项未上传附件时抛出异常。
+     * 不走豁免流程，供申报单提交入口（表单页/列表页）拦截使用
+     */
+    void validateBasicRequired(Long formId);
+
+    /**
      * 通用阶段审核：根据 stage（Flowable auditTaskKey）完成对应审核任务
      * 支持 materialAudit / supplementAudit / invoiceAudit 等
      * 与 form_section 字典的 auditTaskKey 配合使用

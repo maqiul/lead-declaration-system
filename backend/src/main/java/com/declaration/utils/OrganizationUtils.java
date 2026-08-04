@@ -9,6 +9,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+
 /**
  * 组织ID获取工具类
  * 提供安全的组织ID获取方法，处理各种异常情况
@@ -114,6 +119,40 @@ public class OrganizationUtils {
 
         // 管理员可能有跨组织权限
         return StpUtil.hasPermission("system:org:manage");
+    }
+
+    /**
+     * 递归收集指定组织及其所有子组织的 ID（基于 sys_org.parent_id）
+     * @param orgId 根组织ID
+     * @return 组织ID集合（含自身），异常或为空时返回仅含自身的列表
+     */
+    public static List<Long> getDescendantOrgIds(Long orgId) {
+        List<Long> result = new ArrayList<>();
+        if (orgId == null) {
+            return result;
+        }
+        result.add(orgId);
+        try {
+            if (organizationService == null) {
+                return result;
+            }
+            // 一次性加载全量组织树，在内存中做 BFS，避免逐层查库
+            List<Organization> allOrgs = organizationService.list();
+            Deque<Long> queue = new ArrayDeque<>();
+            queue.add(orgId);
+            while (!queue.isEmpty()) {
+                Long current = queue.poll();
+                for (Organization org : allOrgs) {
+                    if (current.equals(org.getParentId()) && org.getId() != null && !result.contains(org.getId())) {
+                        result.add(org.getId());
+                        queue.add(org.getId());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("获取子组织树时发生异常, orgId={}", orgId, e);
+        }
+        return result;
     }
 
     /**

@@ -95,7 +95,7 @@ public class RemittanceController {
 
     @PostMapping("/{id}/revoke-audit")
     @Operation(summary = "反审核水单（将已审核水单退回草稿）")
-    @RequiresPermissions("business:remittance:audit")
+    @RequiresPermissions("business:remittance:revoke-audit")
     public Result<Void> revokeAudit(@Parameter(description = "水单ID") @PathVariable Long id) {
         remittanceService.revokeAudit(id);
         return Result.success();

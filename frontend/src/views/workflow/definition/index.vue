@@ -190,7 +190,7 @@
             {{ currentProcess?.status === 1 ? '启用' : '停用' }}
           </a-tag>
         </a-descriptions-item>
-        <a-descriptions-item label="创建时间">{{ currentProcess?.createTime }}</a-descriptions-item>
+        <a-descriptions-item label="创建时间">{{ formatDate(currentProcess?.createTime) || '-' }}</a-descriptions-item>
         <a-descriptions-item label="描述" :span="2">{{ currentProcess?.description }}</a-descriptions-item>
       </a-descriptions>
       
@@ -222,6 +222,7 @@ import BpmnViewer from 'bpmn-js/lib/NavigatedViewer'
 import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-js.css'
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css'
+import { formatDate } from '@/utils/common'
 
 // 类型定义
 interface ProcessDefinition {
@@ -298,7 +299,8 @@ const columns = [
   {
     title: '创建时间',
     dataIndex: 'createTime',
-    key: 'createTime'
+    key: 'createTime',
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-'
   },
   {
     title: '操作',

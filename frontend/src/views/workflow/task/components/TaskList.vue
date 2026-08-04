@@ -178,6 +178,7 @@ const pagination = reactive({
 
 // 监听 props 变化更新分页
 import { watch } from 'vue'
+import { formatDate } from '@/utils/common'
 watch(() => props.total, (val) => {
   pagination.total = val
 })
@@ -243,13 +244,15 @@ const columns = [
     title: '创建时间',
     dataIndex: 'createTime',
     key: 'createTime',
-    width: 180
+    width: 180,
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-'
   },
   {
     title: '到期时间',
     dataIndex: 'dueTime',
     key: 'dueTime',
-    width: 180
+    width: 180,
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-'
   },
   {
     title: '操作',
@@ -267,7 +270,8 @@ if (props.type === 'completed') {
     title: '完成时间',
     dataIndex: 'endTime',
     key: 'endTime',
-    width: 180
+    width: 180,
+    customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-'
   })
 }
 

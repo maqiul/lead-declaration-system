@@ -69,7 +69,7 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
 
         ProcessDefinition pd = new ProcessDefinition();
         pd.setProcessKey(processKey);
-        pd.setProcessName(("exemption".equals(processType) ? "豁免流程-" : "申报流程-") + template.getName());
+        pd.setProcessName(getProcessNamePrefix(processType) + template.getName());
         pd.setCategory(processType);
         pd.setDescription("由模板[" + template.getCode() + "]自动生成");
 
@@ -99,7 +99,7 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
         xml.append("  targetNamespace=\"http://www.flowable.org/processdef\">\n\n");
 
         String processKey = template.getCode();
-        xml.append("  <process id=\"").append(processKey).append("\" name=\"申报流程-")
+        xml.append("  <process id=\"").append(processKey).append("\" name=\"").append(getProcessNamePrefix(template.getProcessType()))
            .append(escapeXml(template.getName()))
            .append("\" isExecutable=\"true\">\n\n");
 
@@ -508,11 +508,27 @@ public class BpmnGeneratorServiceImpl implements BpmnGeneratorService {
     }
 
     /**
+     * 根据流程类型返回对应的流程名称前缀
+     */
+    private String getProcessNamePrefix(String processType) {
+        if ("exemption".equals(processType)) {
+            return "豁免流程-";
+        }
+        if ("supplement".equals(processType)) {
+            return "补交流程-";
+        }
+        return "申报流程-";
+    }
+
+    /**
      * 根据流程类型返回对应的监听器表达式
      */
     private String getListenerExpression(String processType) {
         if ("exemption".equals(processType)) {
             return "${exemptionTaskListener}";
+        }
+        if ("supplement".equals(processType)) {
+            return "${supplementTaskListener}";
         }
         // 默认使用申报流程监听器
         return "${declarationTaskListener}";

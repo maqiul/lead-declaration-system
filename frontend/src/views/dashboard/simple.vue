@@ -116,7 +116,7 @@
               {{ record.currencySymbol || '' }}{{ record.totalAmount?.toFixed(2) || '0.00' }}
             </template>
             <template v-if="column.key === 'createTime'">
-              {{ formatDate(record.createTime) }}
+              {{ fmtDateTime(record.createTime) || '-' }}
             </template>
             <template v-if="column.key === 'daysOverdue'">
               <span style="color: #ff4d4f; font-weight: 600">{{ record.daysOverdue }} 天</span>
@@ -149,6 +149,7 @@ import {
 } from '@ant-design/icons-vue'
 import type { Component } from 'vue'
 import { getDeclarationStats } from '@/api/dashboard'
+import { formatDate as fmtDateTime } from '@/utils/common'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -263,7 +264,7 @@ const warningColumns = [
   { title: '目的国', key: 'destinationCountry', dataIndex: 'destinationCountry' },
   { title: '总金额', key: 'totalAmount', dataIndex: 'totalAmount' },
   { title: '状态', key: 'status', dataIndex: 'status' },
-  { title: '创建时间', key: 'createTime', dataIndex: 'createTime' },
+  { title: '创建时间', key: 'createTime', dataIndex: 'createTime' , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '超期天数', key: 'daysOverdue', dataIndex: 'daysOverdue' },
 ]
 
@@ -288,11 +289,6 @@ function getStatusColor(status: number): string {
 
 function getStatusLabel(status: number): string {
   return statusMap[status]?.label || '未知'
-}
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleDateString('zh-CN')
 }
 
 // 申报流程分组

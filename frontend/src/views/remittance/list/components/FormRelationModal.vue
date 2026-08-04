@@ -13,7 +13,7 @@
             已关联: <b style="color: #fa8c16;">{{ totalRelatedAmount.toFixed(2) }}</b> |
             剩余: <b :style="{ color: remainingAmount > 0 ? '#52c41a' : '#ff4d4f' }">{{ remainingAmount.toFixed(2) }}</b>
           </span>
-          <a-button type="primary" size="small" @click="showAddForm">
+          <a-button type="primary" size="small" @click="showAddForm" v-permission="['business:remittance:update']">
             <template #icon><PlusOutlined /></template>
             添加关联
           </a-button>
@@ -109,6 +109,7 @@ import { message, Modal } from 'ant-design-vue'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import { getRelatedForms, relateToForm, unrelateFromForm } from '@/api/business/remittance'
 import { getDeclarationList } from '@/api/business/declaration'
+import { formatDate } from '@/utils/common'
 
 interface Props {
   visible: boolean
@@ -146,11 +147,11 @@ const addForm = reactive({
 
 const formColumns = [
   { title: '申报单号', dataIndex: 'formNo', key: 'formNo', width: 140 },
-  { title: '申报日期', dataIndex: 'formDate', key: 'formDate', width: 120 },
+  { title: '申报日期', dataIndex: 'formDate', key: 'formDate', width: 120 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd') : '-' },
   { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', width: 120 },
   { title: '关联类型', dataIndex: 'relationType', key: 'relationType', width: 100 },
   { title: '关联金额', dataIndex: 'relationAmount', key: 'relationAmount', width: 120 },
-  { title: '关联时间', dataIndex: 'createTime', key: 'createTime', width: 160 },
+  { title: '关联时间', dataIndex: 'createTime', key: 'createTime', width: 160 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
   { title: '操作', key: 'action', width: 100 }
 ]
 

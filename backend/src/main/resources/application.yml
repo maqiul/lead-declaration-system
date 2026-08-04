@@ -60,7 +60,7 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
     cache-enabled: false
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+#    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
 # 文件上传配置
 file:
@@ -116,9 +116,9 @@ flowable:
 # 日志配置
 logging:
   level:
-    com.declaration: debug
-    org.springframework: warn
-    com.baomidou.mybatisplus: debug
+    com.declaration: info
+    org.springframework: info
+    com.baomidou.mybatisplus: info
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
 

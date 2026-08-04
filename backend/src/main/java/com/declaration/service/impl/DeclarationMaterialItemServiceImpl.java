@@ -11,6 +11,7 @@ import com.declaration.entity.DeclarationMaterialItem;
 import com.declaration.entity.DeclarationMaterialTemplate;
 import com.declaration.entity.FinancialSupplement;
 import com.declaration.entity.MaterialAttachment;
+import com.declaration.entity.MaterialSupplement;
 import com.declaration.entity.MaterialTemplateBinding;
 import com.declaration.entity.SysDictItem;
 import com.declaration.entity.User;
@@ -22,6 +23,7 @@ import com.declaration.service.DeclarationRemittanceService;
 import com.declaration.service.FinancialSupplementService;
 import com.declaration.service.InvoiceService;
 import com.declaration.service.MaterialAttachmentService;
+import com.declaration.service.MaterialSupplementService;
 import com.declaration.service.SysDictService;
 import com.declaration.service.UserService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -69,6 +71,9 @@ public class DeclarationMaterialItemServiceImpl
     @Lazy
     @Autowired
     private FinancialSupplementService financialSupplementService;
+    @Lazy
+    @Autowired
+    private MaterialSupplementService materialSupplementService;
     private final DeclarationRemittanceService remittanceService;
     private final SysDictService sysDictService;
     private final DeclarationMaterialExemptionService exemptionService;
@@ -92,14 +97,36 @@ public class DeclarationMaterialItemServiceImpl
     }
 
     /**
-     * 获取资料项的 required 值：优先使用匹配绑定规则的 required，否则回退到模板默认值
+     * 获取资料项的 required 值：优先使用匹配绑定规则的 required；
+     * 其次按环节必填配置 required_stages（命中当前环节则必填）；否则回退到模板默认值
+     * @param stage 当前环节（视图类调用无环节上下文时传 null，回退模板默认 required）
      */
-    private int resolveRequired(List<MaterialTemplateBinding> bindings, String formFlowCode, String formTransportMode, DeclarationMaterialTemplate tpl) {
+    private int resolveRequired(List<MaterialTemplateBinding> bindings, String formFlowCode, String formTransportMode, DeclarationMaterialTemplate tpl, String stage) {
         MaterialTemplateBinding matched = findMatchingBinding(bindings, formFlowCode, formTransportMode);
         if (matched != null && matched.getRequired() != null) {
             return matched.getRequired();
         }
+        // 必填按环节配置：required_stages 非空时以环节命中与否判定
+        if (tpl.getRequiredStages() != null && !tpl.getRequiredStages().isEmpty()) {
+            if (stage == null || stage.isEmpty()) {
+                // 无环节上下文（视图展示）：非空即视为必填，与 required 兼容语义一致
+                return 1;
+            }
+            return hasStage(tpl.getRequiredStages(), stage) ? 1 : 0;
+        }
         return tpl.getRequired() == null ? 1 : tpl.getRequired();
+    }
+
+    /**
+     * 解析视图层透传的必填环节配置：绑定规则显式覆盖 required 时返回 null（回退 item.required），
+     * 否则返回模板的 required_stages，由前端按当前环节命中与否判定必填
+     */
+    private String resolveRequiredStages(List<MaterialTemplateBinding> bindings, String formFlowCode, String formTransportMode, DeclarationMaterialTemplate tpl) {
+        MaterialTemplateBinding matched = findMatchingBinding(bindings, formFlowCode, formTransportMode);
+        if (matched != null && matched.getRequired() != null) {
+            return null;
+        }
+        return tpl.getRequiredStages();
     }
 
     /** 审核记录 business_type 常量（提交与审核共用一个类型，同一条记录的两个阶段）*/
@@ -330,17 +357,21 @@ public class DeclarationMaterialItemServiceImpl
 
         if (templates != null) {
             for (DeclarationMaterialTemplate tpl : templates) {
+                List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
                 // 检查是否已有实例（有实例则始终显示，不受绑定规则过滤）
                 DeclarationMaterialItem existed = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
                 if (existed != null) {
                     // stage 是模板属性，实例上仅为建单时克隆的缓存；同步模板最新 stage，
                     // 使老单据实例也能跟随模板的多环节配置正确归入各环节（如后加的 BASIC）
                     existed.setStage(tpl.getStage());
+                    // 必填判定跟随模板最新配置重算（建单克隆的快照在模板变更后已失真），
+                    // 并透传必填环节配置供前端按环节展示
+                    existed.setRequired(resolveRequired(bindings, formFlowCode, formTransportMode, tpl, null));
+                    existed.setRequiredStages(resolveRequiredStages(bindings, formFlowCode, formTransportMode, tpl));
                     result.add(existed);
                     continue;
                 }
                 // 无实例时，创建虚拟项前检查绑定规则：无绑定=全适用；有绑定=任一行匹配即可
-                List<MaterialTemplateBinding> bindings = tplBindingMap.getOrDefault(tpl.getId(), Collections.emptyList());
                 if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
                     continue;
                 }
@@ -353,7 +384,9 @@ public class DeclarationMaterialItemServiceImpl
                 virtual.setInvoiceCategory(tpl.getInvoiceCategory());
                 virtual.setCode(tpl.getCode());
                 virtual.setName(tpl.getName());
-                virtual.setRequired(resolveRequired(bindings, formFlowCode, formTransportMode, tpl));
+                // 视图无环节上下文，传 null 回退模板默认 required（前端优先按 requiredStages 分环节展示）
+                virtual.setRequired(resolveRequired(bindings, formFlowCode, formTransportMode, tpl, null));
+                virtual.setRequiredStages(resolveRequiredStages(bindings, formFlowCode, formTransportMode, tpl));
                 virtual.setSort(tpl.getSort() == null ? 0 : tpl.getSort());
                 virtual.setRemark(tpl.getRemark());
                 virtual.setFormSchema(tpl.getFormSchema());
@@ -384,7 +417,31 @@ public class DeclarationMaterialItemServiceImpl
             }
         }
 
+        // 净化补交标记：只有指向当前补交单的标记才视为增量，
+        // 指向已终结（通过/驳回）、已删除或废弃补交单的历史脏标记不展示
+        sanitizeSupplementMarks(formId, result);
+
         return result;
+    }
+
+    /**
+     * 净化补交标记：资料项/附件的 supplement_id 若未指向当前补交单（在途优先，无则最新草稿）则置空。
+     * 一张申报单同一时刻只有一张有效补交单，指向其他补交单的标记均为历史脏数据
+     */
+    private void sanitizeSupplementMarks(Long formId, List<DeclarationMaterialItem> items) {
+        MaterialSupplement current = materialSupplementService.getCurrentByFormId(formId);
+        Long currentId = current != null ? current.getId() : null;
+        for (DeclarationMaterialItem item : items) {
+            if (item.getSupplementId() != null && !item.getSupplementId().equals(currentId)) {
+                item.setSupplementId(null);
+            }
+            if (item.getAttachments() == null) continue;
+            for (MaterialAttachment att : item.getAttachments()) {
+                if (att.getSupplementId() != null && !att.getSupplementId().equals(currentId)) {
+                    att.setSupplementId(null);
+                }
+            }
+        }
     }
 
     /**
@@ -478,7 +535,8 @@ public class DeclarationMaterialItemServiceImpl
             item.setInvoiceCategory(tpl.getInvoiceCategory());
             item.setCode(tpl.getCode());
             item.setName(tpl.getName());
-            item.setRequired(resolveRequired(bindings, formFlowCode, formTransportMode, tpl));
+            // 建单克隆无环节上下文，传 null 回退模板默认 required
+            item.setRequired(resolveRequired(bindings, formFlowCode, formTransportMode, tpl, null));
             item.setSort(tpl.getSort() == null ? 0 : tpl.getSort());
             item.setRemark(tpl.getRemark());
             item.setFormSchema(tpl.getFormSchema());
@@ -537,7 +595,7 @@ public class DeclarationMaterialItemServiceImpl
                 if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
                     continue;
                 }
-                boolean required = resolveRequired(bindings, formFlowCode, formTransportMode, tpl) == 1;
+                boolean required = resolveRequired(bindings, formFlowCode, formTransportMode, tpl, "MATERIAL_SUBMIT") == 1;
                 DeclarationMaterialItem it = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
                 boolean uploaded = it != null && it.getStatus() != null && it.getStatus() == 1
                         && it.getFileUrl() != null && !it.getFileUrl().isEmpty();
@@ -698,7 +756,7 @@ public class DeclarationMaterialItemServiceImpl
                 if (!bindings.isEmpty() && findMatchingBinding(bindings, formFlowCode, formTransportMode) == null) {
                     continue;
                 }
-                boolean required = resolveRequired(bindings, formFlowCode, formTransportMode, tpl) == 1;
+                boolean required = resolveRequired(bindings, formFlowCode, formTransportMode, tpl, "SUPPLEMENT") == 1;
                 DeclarationMaterialItem it = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
                 boolean uploaded = it != null && it.getStatus() != null && it.getStatus() == 1
                         && materialAttachmentService.countByItemId(it.getId()) > 0;
@@ -957,9 +1015,9 @@ public class DeclarationMaterialItemServiceImpl
                     && it.getFileUrl() != null && !it.getFileUrl().isEmpty();
         }
 
-        // 通用模板绑定校验
+        // 通用模板绑定校验（必填按本环节 templateStage 判定）
         List<Map<String, Object>> missingItems = new ArrayList<>();
-        validateStageTemplates(formId, stageFilter, stageItems, labelPrefix, attachmentChecker, skipRequiredCheck, missingItems);
+        validateStageTemplates(formId, stageFilter, stageItems, labelPrefix, attachmentChecker, skipRequiredCheck, missingItems, templateStage);
 
         // 如果有缺失必填项且 skipRequiredCheck=true，走豁免流程
         if (!missingItems.isEmpty()) {
@@ -1028,6 +1086,24 @@ public class DeclarationMaterialItemServiceImpl
         String desc = labelPrefix + "提交待审核";
         insertPendingAuditRecord(formId, auditBt, currentUserId, desc);
         log.info("申报单 {} 通用阶段提交 stage={} 操作人={}", formId, stage, currentUserId);
+    }
+
+    @Override
+    public void validateBasicRequired(Long formId) {
+        if (formId == null) {
+            throw new RuntimeException("申报单ID不能为空");
+        }
+        List<DeclarationMaterialItem> allItems = listByFormId(formId);
+        List<DeclarationMaterialItem> basicItems = new ArrayList<>();
+        for (DeclarationMaterialItem it : allItems) {
+            if (hasStage(it.getStage() != null ? it.getStage() : "", "BASIC")) {
+                basicItems.add(it);
+            }
+        }
+        // 基础资料为多附件模式：按附件计数判定是否已上传；必填不全直接报错（不走豁免）
+        Function<DeclarationMaterialItem, Boolean> checker =
+                it -> it.getId() != null && materialAttachmentService.countByItemId(it.getId()) > 0;
+        validateStageTemplates(formId, s -> hasStage(s, "BASIC"), basicItems, "基础资料", checker, false, null, "BASIC");
     }
 
     @Override
@@ -1118,13 +1194,24 @@ public class DeclarationMaterialItemServiceImpl
     private Set<String> validateStageTemplates(Long formId, Predicate<String> stageMatch,
                                                 List<DeclarationMaterialItem> items, String labelPrefix,
                                                 Function<DeclarationMaterialItem, Boolean> attachmentChecker) {
-        return validateStageTemplates(formId, stageMatch, items, labelPrefix, attachmentChecker, false, null);
+        return validateStageTemplates(formId, stageMatch, items, labelPrefix, attachmentChecker, false, null, null);
     }
 
     private Set<String> validateStageTemplates(Long formId, Predicate<String> stageMatch,
                                                 List<DeclarationMaterialItem> items, String labelPrefix,
                                                 Function<DeclarationMaterialItem, Boolean> attachmentChecker,
                                                 boolean skipRequiredCheck, List<Map<String, Object>> missingCollector) {
+        return validateStageTemplates(formId, stageMatch, items, labelPrefix, attachmentChecker, skipRequiredCheck, missingCollector, null);
+    }
+
+    /**
+     * @param requiredStage 必填判定环节（字典 templateStage），null 时回退模板默认 required
+     */
+    private Set<String> validateStageTemplates(Long formId, Predicate<String> stageMatch,
+                                                List<DeclarationMaterialItem> items, String labelPrefix,
+                                                Function<DeclarationMaterialItem, Boolean> attachmentChecker,
+                                                boolean skipRequiredCheck, List<Map<String, Object>> missingCollector,
+                                                String requiredStage) {
         DeclarationForm form = declarationFormService.getById(formId);
         String formFlowCode = form != null ? form.getTemplateCode() : null;
         String formTransportMode = form != null ? form.getTransportMode() : null;
@@ -1156,8 +1243,8 @@ public class DeclarationMaterialItemServiceImpl
                     continue;
                 }
                 applicableCodes.add(tpl.getCode());
-                // 必填校验
-                if (resolveRequired(bindings, formFlowCode, formTransportMode, tpl) != 1) continue;
+                // 必填校验（按当前提交环节判定）
+                if (resolveRequired(bindings, formFlowCode, formTransportMode, tpl, requiredStage) != 1) continue;
                 DeclarationMaterialItem it = tpl.getCode() == null ? null : itemByCode.get(tpl.getCode());
                 if (it == null || !attachmentChecker.apply(it)) {
                     if (skipRequiredCheck && missingCollector != null) {

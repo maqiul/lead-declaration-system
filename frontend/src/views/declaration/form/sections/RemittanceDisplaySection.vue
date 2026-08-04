@@ -96,7 +96,7 @@
             <a-descriptions-item label="收汇金额">{{ formatCurrency(currentRecord.remittanceAmount, currentRecord.currency) }}</a-descriptions-item>
             <a-descriptions-item label="关联金额">{{ formatCurrency(currentRecord.relationAmount, currentRecord.currency) }}</a-descriptions-item>
             <a-descriptions-item label="币种">{{ currentRecord.currency || '-' }}</a-descriptions-item>
-            <a-descriptions-item label="收汇日期">{{ currentRecord.remittanceDate || '-' }}</a-descriptions-item>
+            <a-descriptions-item label="收汇日期">{{ formatDate(currentRecord.remittanceDate, 'yyyy-MM-dd') || '-' }}</a-descriptions-item>
             <a-descriptions-item label="汇率">{{ currentRecord.taxRate ?? '-' }}</a-descriptions-item>
             <a-descriptions-item label="银行手续费">{{ currentRecord.bankFee != null ? formatCurrency(currentRecord.bankFee, currentRecord.currency) : '-' }}</a-descriptions-item>
             <a-descriptions-item label="入账银行">{{ currentRecord.bankAccountName || '-' }}</a-descriptions-item>
@@ -112,7 +112,7 @@
             <a-descriptions-item label="出款金额">{{ formatCurrency(currentRecord.paymentAmount, currentRecord.currency) }}</a-descriptions-item>
             <a-descriptions-item label="关联金额">{{ formatCurrency(currentRecord.relationAmount, currentRecord.currency) }}</a-descriptions-item>
             <a-descriptions-item label="币种">{{ currentRecord.currency || '-' }}</a-descriptions-item>
-            <a-descriptions-item label="出款日期">{{ currentRecord.paymentDate || '-' }}</a-descriptions-item>
+            <a-descriptions-item label="出款日期">{{ formatDate(currentRecord.paymentDate, 'yyyy-MM-dd') || '-' }}</a-descriptions-item>
             <a-descriptions-item label="入账银行">{{ currentRecord.bankAccountName || '-' }}</a-descriptions-item>
             <a-descriptions-item label="状态">
               <a-tag :color="currentRecord.status === 2 ? 'success' : currentRecord.status === 1 ? 'processing' : 'default'">
@@ -141,6 +141,7 @@ import { ref, watch } from 'vue'
 import { getRemittancesByFormId } from '@/api/business/remittance'
 import { getPaymentRemittancesByFormId } from '@/api/business/paymentRemittance'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
+import { formatDate } from '@/utils/common'
 
 interface Props {
   formId: number | null | undefined
@@ -157,7 +158,7 @@ const receiptColumns = [
   { title: '收汇金额', key: 'remittanceAmount', width: 110 },
   { title: '关联金额', key: 'relationAmount', width: 110 },
   { title: '币种', dataIndex: 'currency', key: 'currency', width: 70 },
-  { title: '收汇日期', dataIndex: 'remittanceDate', key: 'remittanceDate', width: 100 },
+  { title: '收汇日期', dataIndex: 'remittanceDate', key: 'remittanceDate', width: 100 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd') : '-' },
   { title: '状态', key: 'status', width: 80 },
   { title: '备注', key: 'remarks', width: 120, ellipsis: true }
 ]
@@ -168,7 +169,7 @@ const paymentColumns = [
   { title: '出款金额', key: 'paymentAmount', width: 110 },
   { title: '关联金额', key: 'relationAmount', width: 110 },
   { title: '币种', dataIndex: 'currency', key: 'currency', width: 70 },
-  { title: '出款日期', dataIndex: 'paymentDate', key: 'paymentDate', width: 100 },
+  { title: '出款日期', dataIndex: 'paymentDate', key: 'paymentDate', width: 100 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd') : '-' },
   { title: '状态', key: 'status', width: 80 },
   { title: '备注', key: 'remarks', width: 120, ellipsis: true }
 ]

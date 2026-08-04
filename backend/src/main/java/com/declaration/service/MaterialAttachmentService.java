@@ -20,6 +20,11 @@ public interface MaterialAttachmentService extends IService<MaterialAttachment> 
     MaterialAttachment uploadForItem(Long itemId, MultipartFile file, String stage) throws IOException;
 
     /**
+     * 上传文件并关联到资料项（补交模式：附件打 supplementId 标记）
+     */
+    MaterialAttachment uploadForItem(Long itemId, MultipartFile file, String stage, Long supplementId) throws IOException;
+
+    /**
      * 查询某资料项的所有附件
      */
     List<MaterialAttachment> listByItemId(Long itemId);

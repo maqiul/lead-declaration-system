@@ -40,6 +40,7 @@ function createDeclarationChildren(suffix: string): RouteRecordRaw[] {
     { path: 'entry', name: `DeclarationEntry${suffix}`, component: () => import('@/views/declaration/entry/index.vue'), meta: { title: '申报录入', icon: 'EditOutlined' } },
     { path: 'material', name: `DeclarationMaterial${suffix}`, component: () => import('@/views/declaration/material/index.vue'), meta: { title: '资料提交', icon: 'UploadOutlined' } },
     { path: 'supplement', name: `DeclarationSupplement${suffix}`, component: () => import('@/views/declaration/supplement/index.vue'), meta: { title: '补充资料', icon: 'FileAddOutlined' } },
+    { path: 'supplement-audit', name: `DeclarationSupplementAudit${suffix}`, component: () => import('@/views/declaration/supplement-audit/index.vue'), meta: { title: '补充资料审核', icon: 'AuditOutlined' } },
     { path: 'invoice-amount', name: `DeclarationInvoiceAmount${suffix}`, component: () => import('@/views/declaration/invoice-amount/index.vue'), meta: { title: '开票金额', icon: 'AccountBookOutlined' } },
     { path: 'invoice', name: `DeclarationInvoice${suffix}`, component: () => import('@/views/declaration/invoice/index.vue'), meta: { title: '发票提交', icon: 'FileTextOutlined' } },
     { path: 'archive', name: `DeclarationArchive${suffix}`, component: () => import('@/views/declaration/archive/index.vue'), meta: { title: '归档查询', icon: 'FolderOpenOutlined' } },

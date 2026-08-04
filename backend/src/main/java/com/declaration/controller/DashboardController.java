@@ -17,6 +17,7 @@ import com.declaration.service.PermissionService;
 import com.declaration.service.TaxRefundApplicationService;
 import com.declaration.service.TaskService;
 import com.declaration.service.UserService;
+import com.declaration.utils.DeclarationDataScopeUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -163,34 +164,10 @@ public class DashboardController {
     }
 
     /**
-     * 为申报单查询应用数据权限过滤
+     * 为申报单查询应用数据权限过滤（统一走 DeclarationDataScopeUtil 三级数据范围）
      */
     private void applyDeclarationDataPermission(LambdaQueryWrapper<DeclarationForm> wrapper) {
-        if (!StpUtil.isLogin()) {
-            // 未登录，返回空条件（会查询不到数据）
-            wrapper.eq(DeclarationForm::getId, -1);
-            return;
-        }
-
-        Long userId = StpUtil.getLoginIdAsLong();
-        
-        // 管理员或有审批权限的用户可以查看所有数据
-        boolean hasApprovePermission = StpUtil.hasPermission("business:declaration:audit");
-        if (userId == 1L || hasApprovePermission) {
-            // 不做过滤，查看所有数据
-            return;
-        }
-
-        // 普通用户只能查看自己创建的或本组织的数据
-        User currentUser = userService.getById(userId);
-        if (currentUser != null && currentUser.getOrgId() != null) {
-            // 查看自己创建的 或 本组织的数据
-            wrapper.and(w -> w.eq(DeclarationForm::getCreateBy, userId)
-                    .or().eq(DeclarationForm::getOrgId, currentUser.getOrgId()));
-        } else {
-            // 用户没有组织，只能看自己创建的
-            wrapper.eq(DeclarationForm::getCreateBy, userId);
-        }
+        DeclarationDataScopeUtil.apply(wrapper);
     }
 
     /**

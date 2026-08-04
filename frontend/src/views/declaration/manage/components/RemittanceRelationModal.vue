@@ -7,7 +7,7 @@
   >
     <a-card title="已关联的水单" size="small" style="margin-bottom: 16px">
       <template #extra>
-        <a-button type="primary" size="small" @click="showAddRemittance">
+        <a-button type="primary" size="small" @click="showAddRemittance" v-permission="['business:remittance:update']">
           <template #icon><PlusOutlined /></template>
           添加关联
         </a-button>
@@ -99,6 +99,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import { getRemittancesByFormId, relateToForm, unrelateFromForm, getRemittanceList } from '@/api/business/remittance'
+import { formatDate } from '@/utils/common'
 
 interface Props {
   visible: boolean
@@ -136,7 +137,7 @@ const addForm = reactive({
 const remittanceColumns = [
   { title: '水单编号', dataIndex: 'remittanceNo', key: 'remittanceNo', width: 160 },
   { title: '收汇名称', dataIndex: 'remittanceName', key: 'remittanceName', width: 140 },
-  { title: '收汇日期', dataIndex: 'remittanceDate', key: 'remittanceDate', width: 120 },
+  { title: '收汇日期', dataIndex: 'remittanceDate', key: 'remittanceDate', width: 120 , customRender: ({ text }: any) => text ? formatDate(text, 'yyyy-MM-dd') : '-' },
   { title: '收汇金额', dataIndex: 'remittanceAmount', key: 'remittanceAmount', width: 140 },
   { title: '关联金额', dataIndex: 'relationAmount', key: 'relationAmount', width: 120 },
   { title: '关联类型', dataIndex: 'relationType', key: 'relationType', width: 100 },
