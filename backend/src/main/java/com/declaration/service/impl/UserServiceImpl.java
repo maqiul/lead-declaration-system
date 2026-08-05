@@ -9,10 +9,18 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.declaration.common.PageParam;
 import com.declaration.dao.UserDao;
+import com.declaration.entity.Organization;
 import com.declaration.entity.User;
+import com.declaration.service.OrganizationService;
 import com.declaration.service.UserService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * 用户服务实现类
@@ -23,6 +31,10 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserService {
+
+    @Autowired
+    @Lazy
+    private OrganizationService organizationService;
 
     @Override
     public IPage<User> getUserPage(PageParam pageParam, User user) {
@@ -42,6 +54,13 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
             if (user.getStatus() != null) {
                 queryWrapper.eq(User::getStatus, user.getStatus());
             }
+            // 组织过滤：含选中组织及其全部子孙组织的用户
+            if (user.getOrgId() != null && user.getOrgId() > 0) {
+                Set<Long> orgIds = new HashSet<>();
+                orgIds.add(user.getOrgId());
+                collectChildOrgIds(user.getOrgId(), orgIds);
+                queryWrapper.in(User::getOrgId, orgIds);
+            }
         }
         
         // 排序
@@ -50,6 +69,17 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
         // 分页查询
         Page<User> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
         return this.page(page, queryWrapper);
+    }
+
+    /** 递归收集子组织ID（按 parentId 逐层展开） */
+    private void collectChildOrgIds(Long parentId, Set<Long> collector) {
+        List<Organization> children = organizationService.list(
+                new LambdaQueryWrapper<Organization>().eq(Organization::getParentId, parentId));
+        for (Organization child : children) {
+            if (collector.add(child.getId())) {
+                collectChildOrgIds(child.getId(), collector);
+            }
+        }
     }
 
     @Override

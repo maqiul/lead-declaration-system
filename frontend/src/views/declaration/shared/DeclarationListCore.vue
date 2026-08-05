@@ -124,7 +124,7 @@
           <template v-else-if="column.key === 'action'">
             <a-space>
               <!-- 草稿状态: 编辑、提交 -->
-              <template v-if="record.status === 0">
+              <template v-if="!onlyPendingSupplement && record.status === 0">
                 <a-button type="link" size="small" @click="handleEdit(record as any)" v-permission="['business:declaration:update']">
                   <template #icon><EditOutlined /></template>
                   编辑
@@ -136,7 +136,7 @@
               </template>
 
               <!-- 待初审状态: 初审按钮 -->
-              <template v-if="hasMyTaskForStatus(record, 1, 'deptAudit')">
+              <template v-if="!onlyPendingSupplement && hasMyTaskForStatus(record, 1, 'deptAudit')">
                 <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'deptAudit')">
                   <template #icon><CheckCircleOutlined /></template>
                   初审
@@ -144,7 +144,7 @@
               </template>
 
               <!-- 待资料提交状态: 提交资料按钮 -->
-              <template v-if="hasMyTaskForStatus(record, 2, 'materialSubmit')">
+              <template v-if="!onlyPendingSupplement && hasMyTaskForStatus(record, 2, 'materialSubmit')">
                 <a-button type="link" size="small" style="color: #1677ff;" @click="handleMaterialSubmit(record as any)">
                   <template #icon><UploadOutlined /></template>
                   提交资料
@@ -152,7 +152,7 @@
               </template>
 
               <!-- 待资料提交状态 + 当前用户有权审核豁免: 豁免审核按钮 -->
-              <template v-if="record.status === 2 && record.canAuditExemption">
+              <template v-if="!onlyPendingSupplement && record.status === 2 && record.canAuditExemption">
                 <a-button type="link" size="small" style="color: #fa541c;" @click="handleExemptionAudit(record as any)">
                   <template #icon><AuditOutlined /></template>
                   豁免审核
@@ -160,7 +160,7 @@
               </template>
 
               <!-- 待资料审核状态: 资料审核按钮 -->
-              <template v-if="hasMyTaskForStatus(record, 3, 'materialAudit')">
+              <template v-if="!onlyPendingSupplement && hasMyTaskForStatus(record, 3, 'materialAudit')">
                 <a-button type="link" size="small" style="color: #52c41a;" @click="handleMaterialAudit(record as any)">
                   <template #icon><CheckCircleOutlined /></template>
                   资料审核
@@ -168,7 +168,7 @@
               </template>
 
               <!-- 待补充资料提交: 提交补充资料按钮 -->
-              <template v-if="hasMyTaskForStatus(record, 4, 'supplementSubmit')">
+              <template v-if="!onlyPendingSupplement && hasMyTaskForStatus(record, 4, 'supplementSubmit')">
                 <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoMode(record as any, 'supplement')">
                   <template #icon><UploadOutlined /></template>
                   补充资料
@@ -176,7 +176,7 @@
               </template>
 
               <!-- 待补充资料审核: 补充审核按钮 -->
-              <template v-if="hasMyTaskForStatus(record, 5, 'supplementAudit')">
+              <template v-if="!onlyPendingSupplement && hasMyTaskForStatus(record, 5, 'supplementAudit')">
                 <a-button type="link" size="small" style="color: #52c41a;" @click="handleGoMode(record as any, 'supplementAudit')">
                   <template #icon><CheckCircleOutlined /></template>
                   补充审核
@@ -184,7 +184,7 @@
               </template>
 
               <!-- 待开票金额提交: 申请开票金额按钮 -->
-              <template v-if="hasMyTaskForStatus(record, 6, 'invoiceAmountSubmit')">
+              <template v-if="!onlyPendingSupplement && hasMyTaskForStatus(record, 6, 'invoiceAmountSubmit')">
                 <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoMode(record as any, 'invoiceAmount')">
                   <template #icon><MoneyCollectOutlined /></template>
                   开票金额
@@ -192,7 +192,7 @@
               </template>
 
               <!-- 待开票金额审核: 金额审核按钮 -->
-              <template v-if="hasMyTaskForStatus(record, 7, 'invoiceAmountAudit')">
+              <template v-if="!onlyPendingSupplement && hasMyTaskForStatus(record, 7, 'invoiceAmountAudit')">
                 <a-button type="link" size="small" style="color: #52c41a;" @click="handleGoMode(record as any, 'invoiceAmountAudit')">
                   <template #icon><CheckCircleOutlined /></template>
                   金额审核
@@ -200,7 +200,7 @@
               </template>
 
               <!-- 待发票提交状态: 提交发票按钮 -->
-              <template v-if="hasMyTaskForStatus(record, 8, 'invoiceSubmit')">
+              <template v-if="!onlyPendingSupplement && hasMyTaskForStatus(record, 8, 'invoiceSubmit')">
                 <a-button type="link" size="small" style="color: #1677ff;" @click="handleGoSubmitInvoice(record as any)">
                   <template #icon><UploadOutlined /></template>
                   提交发票
@@ -208,7 +208,7 @@
               </template>
 
               <!-- 待发票审核状态: 发票审核按钮 -->
-              <template v-if="hasMyTaskForStatus(record, 9, 'invoiceAudit')">
+              <template v-if="!onlyPendingSupplement && hasMyTaskForStatus(record, 9, 'invoiceAudit')">
                 <a-button type="link" size="small" style="color: #52c41a;" @click="handleInvoiceAudit(record as any)">
                   <template #icon><CheckCircleOutlined /></template>
                   发票审核
@@ -216,7 +216,7 @@
               </template>
 
               <!-- 资料补交：已过资料审核（status>3）且无在途补交时，申报人可发起 -->
-              <template v-if="record.status >= 4 && record.status !== 11 && !record.pendingSupplementId">
+              <template v-if="!onlyPendingSupplement && record.status >= 4 && record.status !== 11 && !record.pendingSupplementId">
                 <a-button type="link" size="small" style="color: #722ed1;" v-permission="['business:declaration:supplement:initiate']" @click="openSupplementStart(record as any)">
                   <template #icon><PlusOutlined /></template>
                   发起补交
@@ -224,10 +224,14 @@
               </template>
 
               <!-- 资料补交草稿：申报人可继续上传补交资料 -->
-              <template v-if="record.pendingSupplementStatus === -1">
+              <template v-if="!onlyPendingSupplement && record.pendingSupplementStatus === -1">
                 <a-button type="link" size="small" style="color: #1677ff;" v-permission="['business:declaration:supplement:initiate']" @click="handleContinueSupplement(record as any)">
                   <template #icon><EditOutlined /></template>
                   继续补交
+                </a-button>
+                <a-button type="link" size="small" style="color: #ff4d4f;" v-permission="['business:declaration:supplement:initiate']" @click="handleCancelSupplement(record as any)">
+                  <template #icon><CloseOutlined /></template>
+                  取消补交
                 </a-button>
               </template>
 
@@ -240,15 +244,15 @@
               </template>
 
               <!-- 退回待审: 退回审核（与「更多」内入口一致，便于发现） -->
-              <template v-if="record.status === 11">
+              <template v-if="!onlyPendingSupplement && record.status === 11">
                 <a-button type="link" size="small" style="color: #fa8c16;" @click="handleReturnAudit(record as any)" v-permission="['business:declaration:return:audit']">
                   <template #icon><AuditOutlined /></template>
                   退回审核
                 </a-button>
               </template>
 
-              <!-- 更多操作菜单 -->
-              <a-dropdown>
+              <!-- 更多操作菜单（补交审核列表不展示） -->
+              <a-dropdown v-if="!onlyPendingSupplement">
                 <a-button type="link" size="small">
                   更多
                   <DownOutlined />
@@ -537,7 +541,7 @@ import {
   applyReturnToDraft, auditReturnToDraft, getReturnAuditHistory
 } from '@/api/business/declaration'
 import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile, getContractDownloadUrl } from '@/api/business/contract'
-import { getBatchPendingExemptions, getBatchActiveSupplements } from '@/api/business/materialItem'
+import { getBatchPendingExemptions, getBatchActiveSupplements, cancelMaterialSupplement } from '@/api/business/materialItem'
 import MaterialAuditModal from '../material/components/MaterialAuditModal.vue'
 import InvoiceAuditModal from '../material/components/InvoiceAuditModal.vue'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
@@ -552,6 +556,8 @@ const props = withDefaults(defineProps<{
   showStatusSelect?: boolean
   statusOptions?: { value: number; label: string }[]
   declarationType?: string  // SELF/EXTERNAL，不传则从 route query 读取
+  /** 仅展示有待审补交单（status=0）的申报单：补交审核列表页专用 */
+  onlyPendingSupplement?: boolean
 }>(), {
   showAddButton: false,
   showExportButton: true,
@@ -563,7 +569,8 @@ const props = withDefaults(defineProps<{
     { value: 8, label: '待发票提交' }, { value: 9, label: '待发票审核' },
     { value: 10, label: '已完成' }, { value: 11, label: '退回待审' }
   ],
-  declarationType: undefined
+  declarationType: undefined,
+  onlyPendingSupplement: false
 })
 
 const router = useRouter()
@@ -669,7 +676,8 @@ const allColumns = [
   { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
 ]
 const DEFAULT_VISIBLE_KEYS = allColumns.map(c => c.key)
-const STORAGE_KEY = 'declaration-column-keys'
+// 列配置按页面分桶存储：补交审核列表独立一份，避免与其他环节页互相影响，默认全列展示（与申报页一致）
+const STORAGE_KEY = props.onlyPendingSupplement ? 'supplement-audit-column-keys' : 'declaration-column-keys'
 
 const visibleColumnKeys = ref<string[]>(
   JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || DEFAULT_VISIBLE_KEYS
@@ -753,6 +761,8 @@ const loadData = async () => {
     // declarationType 过滤：优先用 prop，其次读 route query，最后从路径推断
     const dt = currentDeclarationType.value
     if (dt) params.declarationType = dt
+    // 补交审核列表：仅查有待审补交单的申报单
+    if (props.onlyPendingSupplement) params.pendingSupplementAudit = true
     // 多状态过滤优先
     if (props.statusFilter && props.statusFilter.length > 0) {
       if (searchForm.status !== '') {
@@ -928,6 +938,30 @@ const openSupplementStart = (record: DeclarationRecord) => {
 /** 继续补交：草稿补交单重新进入补交上传模式 */
 const handleContinueSupplement = (record: DeclarationRecord) => {
   router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&scrollTo=material&supplementDraft=1`)
+}
+/** 取消补交：作废草稿补交单（同时清除草稿期上传的增量资料） */
+const handleCancelSupplement = (record: DeclarationRecord) => {
+  if (!record.pendingSupplementId) return
+  Modal.confirm({
+    title: '确认取消本次资料补交？',
+    content: `申报单 ${record.formNo || record.id} 的补交草稿将被作废，草稿期间已上传的补交资料会一并清除，存量资料不受影响。`,
+    okText: '取消补交',
+    okType: 'danger',
+    cancelText: '再想想',
+    onOk: async () => {
+      try {
+        const res = await cancelMaterialSupplement(record.pendingSupplementId!)
+        if (res.data?.code === 200) {
+          message.success('补交草稿已取消')
+          await loadData()
+        } else {
+          message.error(res.data?.message || '取消补交失败')
+        }
+      } catch (e: any) {
+        message.error('取消补交失败: ' + (e?.message || '未知错误'))
+      }
+    }
+  })
 }
 /** 补交审核：进入详情页补交审核模式，自动打开补交审核弹窗 */
 const handleSupplementAudit = (record: DeclarationRecord) => {

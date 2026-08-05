@@ -1,5 +1,31 @@
 <template>
   <div class="user-management px-6 py-6 bg-white min-h-full">
+    <div class="user-layout">
+      <!-- 左侧：组织树 -->
+      <a-card class="ui-card user-org-panel" :bordered="false">
+        <template #title>
+          <span class="user-org-title"><ApartmentOutlined /> 组织架构</span>
+        </template>
+        <div class="user-org-tree">
+          <div
+            class="user-org-all"
+            :class="{ active: !selectedOrgId }"
+            @click="handleSelectOrg(null)"
+          >全部组织</div>
+          <a-tree
+            v-if="orgSideTree.length"
+            :tree-data="orgSideTree"
+            :field-names="{ key: 'id', title: 'orgName', children: 'children' }"
+            :selected-keys="selectedOrgId ? [selectedOrgId] : []"
+            default-expand-all
+            block-node
+            @select="handleTreeSelect"
+          />
+        </div>
+      </a-card>
+
+      <!-- 右侧：用户列表 -->
+      <div class="user-main">
     <!-- 搜索区域 -->
     <a-card class="ui-card mb-4" :bordered="false">
       <a-form :model="searchForm" layout="inline" class="flex flex-wrap gap-4">
@@ -87,6 +113,8 @@
         </template>
       </a-table>
     </a-card>
+      </div>
+    </div>
 
     <!-- 用户编辑弹窗 -->
     <a-modal
@@ -162,7 +190,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined, EditOutlined, KeyOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined, EditOutlined, KeyOutlined, ApartmentOutlined } from '@ant-design/icons-vue'
 import type { TableProps } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { getUserList, getUser, addUser, updateUser, deleteUser, resetUserPwd, getOrgTree, getRoleList } from '@/api/system'
@@ -190,6 +218,20 @@ interface SearchForm {
 const loading = ref(false)
 const tableData = ref<User[]>([])
 const selectedRowKeys = ref<number[]>([])
+
+// 左侧组织树：当前选中组织（含子孙过滤），null=全部
+const selectedOrgId = ref<number | null>(null)
+const orgSideTree = ref<any[]>([])
+
+const handleSelectOrg = (orgId: number | null) => {
+  selectedOrgId.value = orgId
+  pagination.current = 1
+  loadData()
+}
+const handleTreeSelect = (keys: (string | number)[]) => {
+  // 再次点击已选中节点时取消筛选，回到全部组织
+  handleSelectOrg(keys.length ? Number(keys[0]) : null)
+}
 
 // 搜索表单
 const searchForm = reactive<SearchForm>({
@@ -324,7 +366,8 @@ const loadData = async () => {
       size: pagination.pageSize,
       username: searchForm.username || undefined,
       phone: searchForm.phone || undefined,
-      status: searchForm.status
+      status: searchForm.status,
+      orgId: selectedOrgId.value || undefined
     }
     
     const response = await getUserList(params)
@@ -352,6 +395,7 @@ const handleReset = () => {
   searchForm.username = ''
   searchForm.phone = ''
   searchForm.status = undefined
+  selectedOrgId.value = null
   handleSearch()
 }
 
@@ -484,6 +528,8 @@ const loadOrgTree = async () => {
   try {
     const response = await getOrgTree()
     if (response.data?.code === 200) {
+      // 左侧组织树直接用原始结构（id/orgName/children）
+      orgSideTree.value = response.data.data || []
       const convertToTreeData = (orgs: any[]): any[] => {
         return orgs.map(org => ({
           title: org.orgName,
@@ -522,5 +568,44 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 页面特有样式已由全局 index.less 覆盖 */
+/* 左组织树 + 右用户列表布局 */
+.user-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.user-org-panel {
+  width: 260px;
+  flex-shrink: 0;
+}
+.user-org-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.user-org-tree {
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+}
+.user-org-all {
+  padding: 5px 12px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #333;
+  font-size: 14px;
+}
+.user-org-all:hover {
+  background: #f5f5f5;
+}
+.user-org-all.active {
+  background: #e6f4ff;
+  color: #1677ff;
+  font-weight: 500;
+}
+.user-main {
+  flex: 1;
+  min-width: 0;
+}
 </style>

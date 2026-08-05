@@ -1,26 +1,5 @@
 <template>
   <div class="material-manager">
-    <!-- 补交横幅：发起免弹窗直接进入补交模式，原因可选、内联补填 -->
-    <div
-      v-if="activeSupplement && (mode === 'submit' || forceSupplementMode)"
-      class="supp-banner"
-      :class="{ 'supp-banner--draft': isDraftSupplement }"
-    >
-      <div class="supp-banner-icon"><FolderAddOutlined /></div>
-      <div class="supp-banner-main">
-        <div class="supp-banner-title">
-          <span class="supp-banner-name">资料补交</span>
-          <a-tag v-if="isDraftSupplement" color="blue">草稿 · 审核人尚不可见</a-tag>
-          <a-tag v-else color="orange">补交中 · 待审核</a-tag>
-          <span class="supp-banner-rule">存量资料只增不改</span>
-        </div>
-        <div class="supp-banner-tip">
-          <template v-if="isDraftSupplement">请上传补交资料，完成后点「提交补交审核」（提交时填写补交原因），增量资料审核通过后生效。</template>
-          <template v-else>补交的增量资料需审核通过后才生效。</template>
-        </div>
-        <div v-if="!isDraftSupplement && activeSupplement.reason" class="supp-banner-reason-text">补交原因：{{ activeSupplement.reason }}</div>
-      </div>
-    </div>
     <a-spin :spinning="loading">
       <!-- 动态渲染每个环节 -->
       <template v-for="(section, sectionIdx) in visibleSections" :key="section.itemValue">
@@ -427,7 +406,7 @@ import {
   UploadOutlined, FileDoneOutlined, FileTextOutlined, CloudUploadOutlined,
   CheckCircleOutlined, CloseCircleOutlined, PlusOutlined, SendOutlined,
   MoreOutlined, EditOutlined, DeleteOutlined, CloseOutlined,
-  UserOutlined, ClockCircleOutlined, HistoryOutlined, FolderAddOutlined,
+  UserOutlined, ClockCircleOutlined, HistoryOutlined,
   AuditOutlined,
 } from '@ant-design/icons-vue'
 import {
@@ -477,6 +456,8 @@ const props = withDefaults(defineProps<{
   forceSupplementMode?: boolean
   /** 补交原因（列表页发起弹窗填写，延迟到首次上传补交资料时才创建补交单） */
   supplementDraftReason?: string
+  /** 只读查看态（查看页 readonly=true）：隐藏发起补交等写操作入口 */
+  readonly?: boolean
 }>(), {
   mode: 'submit',
   formStatus: null,
@@ -484,7 +465,8 @@ const props = withDefaults(defineProps<{
   stopBefore: '',
   autoSupplementId: null,
   forceSupplementMode: false,
-  supplementDraftReason: ''
+  supplementDraftReason: '',
+  readonly: false
 })
 
 const emit = defineEmits<{
@@ -585,9 +567,10 @@ const materialAuditPassed = computed(() => {
   return s > ts
 })
 
-/** 可发起补交：submit 模式、已过资料审核、无在途补交、有发起权限 */
+/** 可发起补交：submit 模式、非只读查看、已过资料审核、无在途补交、有发起权限 */
 const canStartSupplement = computed(() =>
   props.mode === 'submit'
+  && !props.readonly
   && materialAuditPassed.value
   && !inSupplementMode.value
   && checkPermission(['business:declaration:supplement:initiate'])
@@ -1496,65 +1479,5 @@ defineExpose({ refresh })
   font-size: 12px;
   margin-left: auto;
   flex-shrink: 0;
-}
-/* 补交横幅：橙色系卡片，图标 + 状态标签 + 原因内联补填 */
-.supp-banner {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  background: #fff7e6;
-  border: 1px solid #ffd591;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 12px;
-}
-/* 补交中（待审核）：更醒目的深一档底色 */
-.supp-banner:not(.supp-banner--draft) {
-  background: #fff1d6;
-  border-color: #ffc069;
-}
-.supp-banner-icon {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  color: #fff;
-  background: #fa8c16;
-  border-radius: 8px;
-}
-.supp-banner-main {
-  flex: 1;
-  min-width: 0;
-}
-.supp-banner-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.supp-banner-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #d46b08;
-}
-.supp-banner-rule {
-  color: #ad6800;
-  font-size: 12px;
-  background: #ffe7ba;
-  border-radius: 4px;
-  padding: 1px 6px;
-}
-.supp-banner-tip {
-  margin-top: 4px;
-  color: #8c8c8c;
-  font-size: 13px;
-}
-.supp-banner-reason-text {
-  margin-top: 6px;
-  color: #595959;
-  font-size: 13px;
 }
 </style>

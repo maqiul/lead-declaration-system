@@ -74,6 +74,7 @@ public class DeclarationFormController {
     private final OrganizationService organizationService;
     private final FlowTemplateService flowTemplateService;
     private final DeclarationMaterialItemService materialItemService;
+    private final MaterialSupplementService materialSupplementService;
 
     /**
      * 获取申报单统计数据
@@ -1143,7 +1144,8 @@ public class DeclarationFormController {
             @Parameter(description = "发货人（模糊）") @RequestParam(required = false) String shipper,
             @Parameter(description = "发票号（模糊）") @RequestParam(required = false) String invoiceNo,
             @Parameter(description = "申报人（模糊）") @RequestParam(required = false) String applicant,
-            @Parameter(description = "申报类型（SELF/EXTERNAL）") @RequestParam(required = false) String declarationType) {
+            @Parameter(description = "申报类型（SELF/EXTERNAL）") @RequestParam(required = false) String declarationType,
+            @Parameter(description = "仅查有待审补交单（status=0）的申报单") @RequestParam(required = false) Boolean pendingSupplementAudit) {
 
         Page<DeclarationForm> page = new Page<>(pageParam.getCurrent(), pageParam.getSize());
 
@@ -1201,6 +1203,19 @@ public class DeclarationFormController {
             // 申报类型过滤
             if (declarationType != null && !declarationType.isEmpty()) {
                 queryWrapper.eq(DeclarationForm::getDeclarationType, declarationType);
+            }
+
+            // 仅查存在待审补交单（status=0）的申报单：补交审核列表专用
+            if (Boolean.TRUE.equals(pendingSupplementAudit)) {
+                LambdaQueryWrapper<MaterialSupplement> suppWrapper = new LambdaQueryWrapper<>();
+                suppWrapper.eq(MaterialSupplement::getStatus, 0)
+                        .select(MaterialSupplement::getFormId);
+                List<Long> suppFormIds = materialSupplementService.list(suppWrapper).stream()
+                        .map(MaterialSupplement::getFormId).distinct().collect(Collectors.toList());
+                if (suppFormIds.isEmpty()) {
+                    return Result.success(new Page<>(pageParam.getCurrent(), pageParam.getSize()));
+                }
+                queryWrapper.in(DeclarationForm::getId, suppFormIds);
             }
 
             // 数据权限隔离：admin/审核权限看全部；主管权限看自己+本组织及子组织；其他仅看自己

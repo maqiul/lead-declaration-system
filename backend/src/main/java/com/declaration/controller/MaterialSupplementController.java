@@ -93,6 +93,21 @@ public class MaterialSupplementController {
         }
     }
 
+    /** 取消草稿补交单（仅草稿态，删除草稿期增量后作废补交单） */
+    @PostMapping("/{id}/cancel")
+    @Operation(summary = "取消草稿补交单")
+    @RequiresPermissions("business:declaration:supplement:initiate")
+    public Result<String> cancel(@PathVariable Long id) {
+        Long operatorId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
+        try {
+            supplementService.cancel(id, operatorId);
+            return Result.success("补交草稿已取消");
+        } catch (Exception e) {
+            log.warn("取消补交草稿失败 supplementId={} : {}", id, e.getMessage());
+            return Result.fail(e.getMessage());
+        }
+    }
+
     /** 批量查询在途补交单（列表页展示补交中状态与审核入口用） */
     @GetMapping("/batch-active")
     @Operation(summary = "批量查询在途补交单")

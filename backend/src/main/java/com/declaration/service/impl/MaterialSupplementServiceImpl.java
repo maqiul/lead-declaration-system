@@ -247,6 +247,22 @@ public class MaterialSupplementServiceImpl extends ServiceImpl<MaterialSupplemen
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancel(Long supplementId, Long operatorId) {
+        MaterialSupplement supplement = this.getById(supplementId);
+        if (supplement == null) {
+            throw new RuntimeException("补交记录不存在");
+        }
+        if (supplement.getStatus() == null || supplement.getStatus() != -1) {
+            throw new RuntimeException("仅草稿状态的补交单可取消");
+        }
+        // 删除草稿期上传的增量附件与新增资料项（存量资料不受影响），再删除补交单本身
+        removeIncrements(supplementId);
+        this.removeById(supplementId);
+        log.info("取消资料补交(草稿) supplementId={} formId={} operator={}", supplementId, supplement.getFormId(), operatorId);
+    }
+
+    @Override
     public Map<String, Object> getIncrements(Long supplementId) {
         MaterialSupplement supplement = this.getById(supplementId);
         if (supplement == null) {

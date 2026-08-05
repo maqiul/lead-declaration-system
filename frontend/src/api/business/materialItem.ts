@@ -509,6 +509,14 @@ export function getPendingSupplements(params?: { declarationType?: string }) {
   })
 }
 
+/** 取消草稿补交单（仅草稿态，删除草稿期增量后作废补交单） */
+export function cancelMaterialSupplement(id: number | string) {
+  return request({
+    url: `/v1/material-supplement/${id}/cancel`,
+    method: 'post'
+  })
+}
+
 /** 补交增量明细（supplement_id 命中的资料项 + 附件） */
 export function getSupplementIncrements(id: number | string) {
   return request({

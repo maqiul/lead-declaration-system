@@ -58,6 +58,11 @@ public interface MaterialSupplementService extends IService<MaterialSupplement> 
     List<MaterialSupplement> listPending(String declarationType);
 
     /**
+     * 取消草稿补交单（仅 status=-1）：删除草稿期增量并删除补交单
+     */
+    void cancel(Long supplementId, Long operatorId);
+
+    /**
      * 增量明细：该补交单打标的资料项 + 附件
      * @return {items: [...], attachments: [...]}
      */
