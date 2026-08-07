@@ -209,7 +209,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onActivated, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { SearchOutlined, PlusOutlined, ReloadOutlined, EyeOutlined, EditOutlined, SendOutlined, AuditOutlined, ThunderboltOutlined, DeleteOutlined, LinkOutlined, RollbackOutlined } from '@ant-design/icons-vue'
@@ -573,6 +573,13 @@ const formatCurrency = (amount: number | undefined, currency: string | undefined
 // 初始化
 onMounted(() => {
   applyRouteFilter()
+  loadRemittanceList()
+})
+
+// keep-alive 缓存页：从关联/审核操作返回时自动刷新列表（跳过首次挂载）
+const isFirstActivation = ref(true)
+onActivated(() => {
+  if (isFirstActivation.value) { isFirstActivation.value = false; return }
   loadRemittanceList()
 })
 </script>

@@ -542,3 +542,12 @@ export function auditMaterialSupplement(id: number | string, approved: boolean, 
     params: remark ? { approved, remark } : { approved }
   })
 }
+
+/** 批量查询资料上传进度（列表页展示用，返回 formId -> { total, required, uploaded, percent }） */
+export function getBatchMaterialProgress(ids: string) {
+  return request({
+    url: '/v1/material/items/batch-progress',
+    method: 'get',
+    params: { ids }
+  })
+}

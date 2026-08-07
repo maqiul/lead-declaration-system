@@ -702,7 +702,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onActivated } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
 import { PlusOutlined, DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, LinkOutlined, SearchOutlined, CloseOutlined, EyeOutlined, AuditOutlined } from '@ant-design/icons-vue'
@@ -1133,10 +1133,6 @@ const handleAdd = async () => {
     let templates: any[] = []
     if (flowRes.data?.code === 200) {
       templates = (flowRes.data.data || []).filter((t: any) => t.status === 1)
-      if (!checkPermission(['business:declaration:template:select'])) {
-        const defaultFlows = templates.filter((t: any) => t.isDefault === 1)
-        if (defaultFlows.length > 0) templates = defaultFlows
-      }
     }
 
     if (templates.length === 0) {
@@ -1144,8 +1140,17 @@ const handleAdd = async () => {
       return
     }
 
-    // 选择默认模板（或第一个）
-    const tpl = templates.find((t: any) => t.isDefault === 1) || templates[0]
+    // 模板选择已不开放给用户：严格按当前页面 declarationType 同步匹配模板，
+    // 保证 template 与 declarationType 始终一致（集洛页→EXTERNAL 模板，内部页→SELF 模板）
+    const currentDt = (route.query.declarationType as string)
+      || (route.path.startsWith('/declaration-self') ? 'SELF'
+        : route.path.startsWith('/declaration-external') ? 'EXTERNAL' : 'EXTERNAL')
+    const matchedTemplates = templates.filter((t: any) => (t.declarationType || 'EXTERNAL') === currentDt)
+    if (matchedTemplates.length === 0) {
+      message.warning(`没有与当前申报类型（${currentDt}）匹配的流程模板，请联系管理员配置`)
+      return
+    }
+    const tpl = matchedTemplates.find((t: any) => t.isDefault === 1) || matchedTemplates[0]
 
     // 运输方式：自动选择第一个（如果只有一个）
     let transport = ''
@@ -1156,8 +1161,10 @@ const handleAdd = async () => {
 
     const params = new URLSearchParams()
     params.set('template', tpl.code)
-    params.set('type', tpl.declarationType || 'EXTERNAL')
+    // type/declarationType 均以当前页面类型为准，与模板保持同步，避免两者不一致
+    params.set('type', currentDt)
     if (transport) params.set('transport', transport)
+    params.set('declarationType', currentDt)
     router.push(`${declarationPrefix.value}/form-v2?${params.toString()}`)
   } catch {
     message.warning('加载流程模板失败')
@@ -2191,6 +2198,13 @@ onMounted(() => {
       }, 300)
     }
   }
+})
+
+// keep-alive 缓存页：从表单提交/审核返回时自动刷新列表（跳过首次挂载，数据已由 onMounted 加载）
+const isFirstActivation = ref(true)
+onActivated(() => {
+  if (isFirstActivation.value) { isFirstActivation.value = false; return }
+  loadData()
 })
 
 onUnmounted(() => {

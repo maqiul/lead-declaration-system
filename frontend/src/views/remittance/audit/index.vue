@@ -248,7 +248,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onActivated } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { SearchOutlined, ReloadOutlined, EyeOutlined, AuditOutlined, FilePdfOutlined, RollbackOutlined } from '@ant-design/icons-vue'
 import { getRemittanceList, auditRemittance, getRelatedForms, revokeRemittanceAudit } from '@/api/business/remittance'
@@ -530,6 +530,13 @@ const getStatusText = (status: number | undefined) => {
 
 // 初始化
 onMounted(() => {
+  loadRemittanceList()
+})
+
+// keep-alive 缓存页：从审核操作返回时自动刷新列表（跳过首次挂载）
+const isFirstActivation = ref(true)
+onActivated(() => {
+  if (isFirstActivation.value) { isFirstActivation.value = false; return }
   loadRemittanceList()
 })
 </script>

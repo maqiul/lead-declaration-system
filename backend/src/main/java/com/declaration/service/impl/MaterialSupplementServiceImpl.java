@@ -16,7 +16,6 @@ import com.declaration.entity.MaterialSupplement;
 import com.declaration.entity.MaterialSupplementFile;
 import com.declaration.entity.User;
 import com.declaration.service.BpmnGeneratorService;
-import com.declaration.service.FlowNodeService;
 import com.declaration.service.DeclarationFormService;
 import com.declaration.service.DeclarationMaterialItemService;
 import com.declaration.service.FlowTemplateService;
@@ -64,7 +63,6 @@ public class MaterialSupplementServiceImpl extends ServiceImpl<MaterialSupplemen
     private final RepositoryService repositoryService;
     private final FlowTemplateService flowTemplateService;
     private final BpmnGeneratorService bpmnGeneratorService;
-    private final FlowNodeService flowNodeService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -73,11 +71,11 @@ public class MaterialSupplementServiceImpl extends ServiceImpl<MaterialSupplemen
         if (form == null) {
             throw new RuntimeException("申报单不存在");
         }
-        // 资料审核环节通过之后才允许发起（动态取 materialAudit 节点目标状态，无配置回退 3）
-        Integer auditStatus = flowNodeService.getTargetStatusByNodeKey("materialAudit");
-        int threshold = auditStatus != null ? auditStatus : 3;
-        if (form.getStatus() == null || form.getStatus() <= threshold) {
-            throw new RuntimeException("申报单尚未通过资料审核，不能发起资料补交");
+        // 补交覆盖全阶段：进入资料环节（待资料提交及之后）即可发起，支持老数据缺文件、已完成单据补交；
+        // 草稿/待初审（<2）与退回待审（11）除外
+        Integer status = form.getStatus();
+        if (status == null || status < 2 || status == 11) {
+            throw new RuntimeException("申报单尚未进入资料环节，不能发起资料补交");
         }
         if (getCurrentByFormId(formId) != null) {
             throw new RuntimeException("该申报单已有发起中的资料补交，请勿重复发起");
@@ -281,10 +279,38 @@ public class MaterialSupplementServiceImpl extends ServiceImpl<MaterialSupplemen
                 .orderByDesc(MaterialAttachment::getCreateTime);
         List<MaterialAttachment> attachments = materialAttachmentService.list(attWrapper);
 
+        // 附件回填所属资料项名称与环节（审核页需标明文件属于哪个环节）：itemId 可能在本次补交新增资料项或存量资料项中
+        List<Map<String, Object>> attachmentList = new java.util.ArrayList<>();
+        if (!attachments.isEmpty()) {
+            Map<Long, DeclarationMaterialItem> newItemMap = items.stream()
+                    .collect(java.util.stream.Collectors.toMap(DeclarationMaterialItem::getId, i -> i, (a, b) -> a));
+            Set<Long> restItemIds = attachments.stream().map(MaterialAttachment::getItemId)
+                    .filter(java.util.Objects::nonNull).filter(id -> !newItemMap.containsKey(id))
+                    .collect(java.util.stream.Collectors.toSet());
+            Map<Long, DeclarationMaterialItem> existItemMap = new HashMap<>();
+            if (!restItemIds.isEmpty()) {
+                itemService.listByIds(restItemIds).forEach(i -> existItemMap.put(i.getId(), i));
+            }
+            for (MaterialAttachment att : attachments) {
+                Map<String, Object> vo = new LinkedHashMap<>();
+                vo.put("id", att.getId());
+                vo.put("itemId", att.getItemId());
+                vo.put("fileName", att.getFileName());
+                vo.put("fileUrl", att.getFileUrl());
+                vo.put("uploadTime", att.getUploadTime());
+                DeclarationMaterialItem item = att.getItemId() == null ? null
+                        : newItemMap.getOrDefault(att.getItemId(), existItemMap.get(att.getItemId()));
+                vo.put("itemName", item != null ? item.getName() : null);
+                // 提交环节：附件自身 stage 为上传时记录的所处环节（单值）；资料项 stage 是多环节归属，仅兼容老数据回退
+                vo.put("stage", att.getStage() != null ? att.getStage() : (item != null ? item.getStage() : null));
+                attachmentList.add(vo);
+            }
+        }
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("supplement", supplement);
         result.put("items", items);
-        result.put("attachments", attachments);
+        result.put("attachments", attachmentList);
         return result;
     }
 

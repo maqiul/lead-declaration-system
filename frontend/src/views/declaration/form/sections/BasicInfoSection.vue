@@ -719,13 +719,14 @@
                       <div v-if="record.remark" class="name-remark">{{ record.remark }}</div>
                       <!-- 附件列表（与资料提交环节同款卡片样式） -->
                       <template v-if="record.attachments && record.attachments.length > 0">
-                        <div v-for="att in record.attachments" :key="att.id" class="att-invoice-card">
+                        <div v-for="att in record.attachments" :key="att.id" class="att-invoice-card" :class="{ 'att-increment': Number(att.supplementId) > 0 }">
                           <div class="att-row-main">
                             <div class="att-file-name">
                               <FileTextOutlined class="file-icon-sm" />
                               <a @click.prevent="previewFile(att.fileUrl)" class="file-name-sm" style="cursor:pointer" :title="att.fileName">{{ att.fileName || '查看附件' }}</a>
+                              <a-tag v-if="Number(att.supplementId) > 0" color="orange" style="margin-left:4px">补交待审核</a-tag>
                             </div>
-                            <a-popconfirm v-if="draftMaterialEditable && canDeleteAttachment(att, 'BASIC')" title="确定删除？" @confirm="handleDeleteAttachment(record, att, 'BASIC')">
+                            <a-popconfirm v-if="draftMaterialEditable && !isAttSupplementLocked(att) && canDeleteAttachment(att, 'BASIC')" title="确定删除？" @confirm="handleDeleteAttachment(record, att, 'BASIC')">
                               <DeleteOutlined class="file-delete-btn" />
                             </a-popconfirm>
                           </div>
@@ -817,6 +818,13 @@ import { hasStage, isItemRequiredInStage } from '@/api/system/materialTemplate'
 import { canDeleteAttachment } from '@/api/business/materialItem'
 
 // emit：结构性操作（父组件处理数据增删 + API）
+const props = withDefaults(defineProps<{
+  /** 补交进行中：开放基础资料框的增量上传（存量附件锁定） */
+  supplementActive?: boolean
+}>(), {
+  supplementActive: false
+})
+
 const emit = defineEmits<{
   'add-product': []
   'remove-product': [index: number]
@@ -853,11 +861,16 @@ const {
 const elementsModalVisible = ref(false)
 
 // ========== 基础资料“资料”框（BASIC 环节，独立于资料提交环节） ==========
-// 草稿期可上传/删除；提交后只读展示已传文件
+// 草稿期可上传/删除；提交后只读展示已传文件；补交进行中开放增量上传
+// 注意：不受 isFormReadonly 拦截——补交草稿入口下 isFormReadonly 恒为 true（其它模块只读），
+// 但资料框需开放补交上传；查看/审核模式由 supplementActive 为 false 天然拦住
 const draftMaterialEditable = computed(() => {
   const s = formStatus.value
-  return (s == null || s === 0) && !isFormReadonly.value
+  return ((s == null || s === 0) && !isFormReadonly.value) || props.supplementActive
 })
+// 补交锁定：补交中存量附件（非增量）不可删除，与 MaterialManager 锁规则一致
+const isAttSupplementLocked = (att: any): boolean =>
+  props.supplementActive && !(Number(att?.supplementId) > 0)
 // 仅展示“基础资料”环节的资料项（来自资料模板 + 已上传实例合并视图，stage 支持多环节包含匹配）
 const draftMaterialItems = computed(() =>
   ((materialItems.value || []) as any[]).filter(i => hasStage(i.stage, 'BASIC')))
@@ -984,3 +997,12 @@ const filterProductOption = (input: string, option: any) => {
   return String(label).toLowerCase().includes(lower)
 }
 </script>
+
+<style scoped>
+/* 补交增量附件高亮：浅橙底色 + 橙色边框，与存量文件区分（与 MaterialManager 同款） */
+.att-invoice-card.att-increment {
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 4px;
+}
+</style>

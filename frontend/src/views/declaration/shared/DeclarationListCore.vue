@@ -215,8 +215,8 @@
                 </a-button>
               </template>
 
-              <!-- 资料补交：已过资料审核（status>3）且无在途补交时，申报人可发起 -->
-              <template v-if="!onlyPendingSupplement && record.status >= 4 && record.status !== 11 && !record.pendingSupplementId">
+              <!-- 资料补交：已进入资料环节（status>=2，退回待审除外）且无在途补交时，申报人可发起 -->
+              <template v-if="!onlyPendingSupplement && record.status >= 2 && record.status !== 11 && !record.pendingSupplementId">
                 <a-button type="link" size="small" style="color: #722ed1;" v-permission="['business:declaration:supplement:initiate']" @click="openSupplementStart(record as any)">
                   <template #icon><PlusOutlined /></template>
                   发起补交
@@ -526,7 +526,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch, h } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, onActivated, watch, h } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useRouter, useRoute } from 'vue-router'
 import { DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, SearchOutlined, CloseOutlined, AuditOutlined, UndoOutlined, EyeOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons-vue'
@@ -541,7 +541,7 @@ import {
   applyReturnToDraft, auditReturnToDraft, getReturnAuditHistory
 } from '@/api/business/declaration'
 import { getEnabledTemplates, generateContract, downloadContract, getContractsByDeclaration, replaceContractFile, getContractDownloadUrl } from '@/api/business/contract'
-import { getBatchPendingExemptions, getBatchActiveSupplements, cancelMaterialSupplement } from '@/api/business/materialItem'
+import { getBatchPendingExemptions, getBatchActiveSupplements, cancelMaterialSupplement, startMaterialSupplement, getBatchMaterialProgress } from '@/api/business/materialItem'
 import MaterialAuditModal from '../material/components/MaterialAuditModal.vue'
 import InvoiceAuditModal from '../material/components/InvoiceAuditModal.vue'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
@@ -619,11 +619,6 @@ const handleAdd = async () => {
     let templates: any[] = []
     if (flowRes.data?.code === 200) {
       templates = (flowRes.data.data || []).filter((t: any) => t.status === 1)
-      // 权限控制：有权限显示全部流程，无权限只显示默认流程
-      if (!checkPermission(['business:declaration:template:select'])) {
-        const defaultFlows = templates.filter((t: any) => t.isDefault === 1)
-        if (defaultFlows.length > 0) templates = defaultFlows
-      }
     }
 
     if (templates.length === 0) {
@@ -631,13 +626,15 @@ const handleAdd = async () => {
       return
     }
 
-    // 优先选择与当前页面 declarationType 匹配的默认模板
+    // 模板选择已不开放给用户：严格按当前页面 declarationType 同步匹配模板，
+    // 保证 template 与 declarationType 始终一致（集洛页→EXTERNAL 模板，内部页→SELF 模板）
     const currentDt = currentDeclarationType.value
-    const matchedTemplates = currentDt
-      ? templates.filter((t: any) => (t.declarationType || 'EXTERNAL') === currentDt)
-      : templates
-    const pool = matchedTemplates.length > 0 ? matchedTemplates : templates
-    const tpl = pool.find((t: any) => t.isDefault === 1) || pool[0]
+    const matchedTemplates = templates.filter((t: any) => (t.declarationType || 'EXTERNAL') === currentDt)
+    if (matchedTemplates.length === 0) {
+      message.warning(`没有与当前申报类型（${currentDt}）匹配的流程模板，请联系管理员配置`)
+      return
+    }
+    const tpl = matchedTemplates.find((t: any) => t.isDefault === 1) || matchedTemplates[0]
 
     // 运输方式：自动选择第一个（如果只有一个）
     let transport = ''
@@ -648,9 +645,10 @@ const handleAdd = async () => {
 
     const params = new URLSearchParams()
     params.set('template', tpl.code)
-    params.set('type', tpl.declarationType || 'EXTERNAL')
+    // type/declarationType 均以当前页面类型为准，与模板保持同步，避免两者不一致
+    params.set('type', currentDt)
     if (transport) params.set('transport', transport)
-    if (currentDt) params.set('declarationType', currentDt)
+    params.set('declarationType', currentDt)
     router.push(`${declarationPrefix.value}/form-v2?${params.toString()}`)
   } catch {
     message.warning('加载流程模板失败')
@@ -662,6 +660,22 @@ const bpmnPreviewVisible = ref(false)
 const previewTemplateId = ref<number | null>(null)
 
 // --- 列配置 ---
+/** 资料进度单元格：已上传/必填 + 百分比进度条（数据由 refreshMaterialProgress 回填） */
+const renderMaterialProgress = (record: any) => {
+  const p = record.materialProgress
+  if (!p || p.required <= 0) return h('span', { style: 'color:#bfbfbf' }, '-')
+  const pct = Math.min(p.percent ?? 0, 100)
+  const color = pct >= 100 ? '#52c41a' : '#1677ff'
+  return h('div', { style: 'min-width:100px' }, [
+    h('div', { style: 'display:flex;justify-content:space-between;font-size:12px;line-height:18px' }, [
+      h('span', `${p.uploaded}/${p.required}`),
+      h('span', { style: `color:${color}` }, `${pct}%`)
+    ]),
+    h('div', { style: 'height:6px;border-radius:3px;background:#f0f0f0;overflow:hidden' }, [
+      h('div', { style: `width:${pct}%;height:100%;background:${color}` })
+    ])
+  ])
+}
 const allColumns = [
   { title: '申报单号', dataIndex: 'formNo', key: 'formNo', width: 160 },
   { title: '申报人', dataIndex: 'applicantName', key: 'applicantName', width: 100, ellipsis: true },
@@ -669,10 +683,11 @@ const allColumns = [
   { title: '收货人', dataIndex: 'consigneeCompany', key: 'consigneeCompany', width: 150, ellipsis: true },
   { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo', width: 120, ellipsis: true },
   { title: '贸易国', dataIndex: 'tradeCountry', key: 'tradeCountry', width: 100, ellipsis: true },
-  { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate', width: 120 },
+  { title: '申报日期', dataIndex: 'declarationDate', key: 'declarationDate', width: 120, customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd') : '-' },
   { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', width: 100 },
   { title: '总箱数', dataIndex: 'totalCartons', key: 'totalCartons', width: 80 },
   { title: '状态', key: 'status', width: 100, customRender: ({ record }: { record: any }) => h('a-tag', { color: getStatusColor(record.status) }, getStatusText(record.status)) },
+  { title: '资料进度', key: 'materialProgress', width: 130, customRender: ({ record }: { record: any }) => renderMaterialProgress(record) },
   { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 , customRender: ({ text }: any) => text ? fmtDateTime(text, 'yyyy-MM-dd HH:mm:ss') : '-' },
 ]
 const DEFAULT_VISIBLE_KEYS = allColumns.map(c => c.key)
@@ -682,6 +697,10 @@ const STORAGE_KEY = props.onlyPendingSupplement ? 'supplement-audit-column-keys'
 const visibleColumnKeys = ref<string[]>(
   JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || DEFAULT_VISIBLE_KEYS
 )
+// 新增列兼容：老用户已存的列配置里没有资料进度列时默认展示
+if (!visibleColumnKeys.value.includes('materialProgress')) {
+  visibleColumnKeys.value.push('materialProgress')
+}
 
 const toggleColumn = (key: string, checked: boolean) => {
   if (checked) {
@@ -848,6 +867,8 @@ const loadData = async () => {
       }
       // 查询已过资料提交环节的申报单的在途补交单（补交中标签 + 发起/审核入口）
       await refreshSupplementFlags()
+      // 回填资料上传进度（不阻塞列表渲染，失败仅该列显示 -）
+      refreshMaterialProgress()
     } else { dataSource.value = []; pagination.total = 0 }
   } catch (error: any) {
     console.error('加载数据失败:', error)
@@ -879,12 +900,15 @@ const startAutoRefresh = () => {
     }
     // 同步刷新在途补交单标记
     refreshSupplementFlags()
+    // 同步刷新资料上传进度
+    refreshMaterialProgress()
   }, 30000)
 }
 
 /** 批量刷新在途补交单标记（pendingSupplementId），供首次加载与定时刷新复用 */
 const refreshSupplementFlags = async () => {
-  const supplementCheckIds = dataSource.value.filter((r: any) => r.status >= 3 && r.status !== 11).map((r: any) => r.id)
+  // 与后端补交发起门槛一致：status>=2（进入资料环节）即可存在在途补交单，需回填补交标记
+  const supplementCheckIds = dataSource.value.filter((r: any) => r.status >= 2 && r.status !== 11).map((r: any) => r.id)
   if (supplementCheckIds.length === 0) return
   try {
     const supRes = await getBatchActiveSupplements(supplementCheckIds.join(','))
@@ -898,6 +922,18 @@ const refreshSupplementFlags = async () => {
       })
     }
   } catch (e: any) { console.error('查询在途补交单失败:', e) }
+}
+/** 批量回填资料上传进度（materialProgress），口径与表单页进度一致：全环节必填项 vs 已上传项 */
+const refreshMaterialProgress = async () => {
+  const ids = dataSource.value.map((r: any) => r.id)
+  if (ids.length === 0) return
+  try {
+    const res = await getBatchMaterialProgress(ids.join(','))
+    if (res.data?.code === 200 && res.data.data) {
+      const map = res.data.data as Record<string, { total: number; required: number; uploaded: number; percent: number }>
+      dataSource.value.forEach((r: any) => { r.materialProgress = map[String(r.id)] ?? null })
+    }
+  } catch (e: any) { console.error('查询资料进度失败:', e) }
 }
 const stopAutoRefresh = () => { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null } }
 
@@ -931,13 +967,23 @@ const handleInvoiceAudit = (record: DeclarationRecord) => { router.push(`${decla
 
 // ==================== 资料补交（列表页发起/审核） ====================
 
-/** 发起资料补交：免弹窗直接跳转详情页进入补交上传模式（自动创建草稿补交单，原因可在页面内联补填） */
-const openSupplementStart = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&scrollTo=material&supplementDraft=1`)
+/** 发起补交：先在服务端创建草稿补交单（补交意图落库），再进入补交上传模式。
+ *  supplementDraft=1 仅在确有在途补交单时有效，避免补交通过/取消后残留 URL 误入补交模式 */
+const openSupplementStart = async (record: DeclarationRecord) => {
+  try {
+    const res = await startMaterialSupplement({ formId: record.id, reason: '' })
+    if (res.data?.code === 200) {
+      router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&supplementDraft=1`)
+    } else {
+      message.error(res.data?.message || '发起补交失败')
+    }
+  } catch (e: any) {
+    message.error(e?.message || '发起补交失败')
+  }
 }
-/** 继续补交：草稿补交单重新进入补交上传模式 */
+/** 继续补交：草稿补交单重新进入补交上传模式（同样不滚动，保持页面顶部） */
 const handleContinueSupplement = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&scrollTo=material&supplementDraft=1`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&supplementDraft=1`)
 }
 /** 取消补交：作废草稿补交单（同时清除草稿期上传的增量资料） */
 const handleCancelSupplement = (record: DeclarationRecord) => {
@@ -963,9 +1009,9 @@ const handleCancelSupplement = (record: DeclarationRecord) => {
     }
   })
 }
-/** 补交审核：进入详情页补交审核模式，自动打开补交审核弹窗 */
+/** 补交审核：进入详情页补交审核模式，审核卡片置顶展示，不再滚动到资料区 */
 const handleSupplementAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&supplementId=${record.pendingSupplementId}&mode=materialSupplementAudit&scrollTo=material`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&supplementId=${record.pendingSupplementId}&mode=materialSupplementAudit`)
 }
 /** 更多菜单：无活跃任务时恢复流程（非迁移场景） */
 const canShowResumeFlow = (record: DeclarationRecord) => {
@@ -1187,6 +1233,13 @@ const viewReturnHistory = async (r: DeclarationRecord) => {
 onMounted(() => {
   loadData(); startAutoRefresh()
   if (route.query.action === 'audit' && route.query.id) { const id = Number(route.query.id); if (!isNaN(id)) setTimeout(() => router.push(`${declarationPrefix.value}/form-v2?id=${id}&mode=audit`), 300) }
+})
+
+// keep-alive 缓存页：从表单提交/审核返回时自动刷新列表（跳过首次挂载，数据已由 onMounted 加载）
+const isFirstActivation = ref(true)
+onActivated(() => {
+  if (isFirstActivation.value) { isFirstActivation.value = false; return }
+  loadData()
 })
 
 // 监听申报类型变化（从 SELF 切到 EXTERNAL 或反之），重新加载数据

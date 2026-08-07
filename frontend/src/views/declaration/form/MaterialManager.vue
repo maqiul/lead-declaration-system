@@ -39,42 +39,9 @@
                 <template #icon><CloseCircleOutlined /></template>
                 {{ exemptionStep === 2 ? '豁免复核驳回' : '豁免驳回' }}
               </a-button>
-              <!-- 资料补交状态标签与操作（仅第一个环节卡片） -->
-              <a-tag v-if="sectionIdx === 0 && activeSupplement && isDraftSupplement" color="blue">补交草稿</a-tag>
-              <a-tag v-else-if="sectionIdx === 0 && activeSupplement" color="orange">资料补交中</a-tag>
+              <!-- submit 模式：提交按钮（补交进行中隐藏，避免与补交提交混淆） -->
               <a-button
-                v-if="sectionIdx === 0 && isDraftSupplement && (mode === 'submit' || forceSupplementMode)"
-                v-permission="['business:declaration:supplement:initiate']"
-                type="primary"
-                size="small"
-                :loading="supplementAuditSubmitting"
-                @click="handleSubmitSupplementForAudit"
-              >
-                <template #icon><SendOutlined /></template>
-                提交补交审核
-              </a-button>
-              <a-button
-                v-if="sectionIdx === 0 && canStartSupplement"
-                v-permission="['business:declaration:supplement:initiate']"
-                size="small"
-                :loading="supplementSubmitting"
-                @click="handleStartSupplement"
-              >
-                <template #icon><PlusOutlined /></template>
-                发起资料补交
-              </a-button>
-              <!-- 补交历史：每一次补交了哪些文件的留档记录 -->
-              <a-button
-                v-if="sectionIdx === 0 && formId"
-                size="small"
-                @click="openSupplementHistory"
-              >
-                <template #icon><HistoryOutlined /></template>
-                补交记录
-              </a-button>
-              <!-- submit 模式：提交按钮 -->
-              <a-button
-                v-if="mode === 'submit' && canOperateSection(section) && section.config.submitKey"
+                v-if="mode === 'submit' && !supplementActive && canOperateSection(section) && section.config.submitKey"
                 type="primary"
                 size="small"
                 :loading="submittingKey === section.config.submitKey"
@@ -83,9 +50,9 @@
                 <template #icon><UploadOutlined /></template>
                 {{ section.config.btnText || '提交审核' }}
               </a-button>
-              <!-- audit 模式：通过/驳回按钮 -->
+              <!-- audit 模式：通过/驳回按钮（补交进行中隐藏） -->
               <a-button
-                v-if="mode === 'audit' && canOperateSection(section) && section.config.auditTaskKey"
+                v-if="mode === 'audit' && !supplementActive && canOperateSection(section) && section.config.auditTaskKey"
                 type="primary"
                 size="small"
                 :loading="submittingKey === section.config.auditTaskKey"
@@ -95,7 +62,7 @@
                 审核通过
               </a-button>
               <a-button
-                v-if="mode === 'audit' && canOperateSection(section) && section.config.auditTaskKey"
+                v-if="mode === 'audit' && !supplementActive && canOperateSection(section) && section.config.auditTaskKey"
                 danger
                 size="small"
                 :loading="submittingKey === section.config.auditTaskKey"
@@ -128,65 +95,6 @@
                 :stroke-color="getSectionStats(section).percent === 100 ? '#52c41a' : (section.config.btnColor || '#1677ff')"
               />
             </div>
-          </div>
-
-          <!-- 补交审核卡片（第一个环节内联展示：头部操作按钮 + 申请信息 + 增量明细） -->
-          <div v-if="sectionIdx === 0 && currentAuditSupplement" class="supp-audit-card">
-            <div class="supp-audit-head">
-              <div class="supp-audit-title">
-                <span class="supp-audit-icon"><AuditOutlined /></span>
-                <span class="supp-audit-name">资料补交审核</span>
-                <a-tag color="orange">待审核</a-tag>
-              </div>
-              <a-space v-if="mode === 'audit' || autoSupplementId">
-                <a-button
-                  v-permission="['business:declaration:audit:material']"
-                  danger
-                  size="small"
-                  @click="handleAuditSupplement(currentAuditSupplement, false)"
-                >
-                  <template #icon><CloseCircleOutlined /></template>
-                  驳回
-                </a-button>
-                <a-button
-                  v-permission="['business:declaration:audit:material']"
-                  type="primary"
-                  size="small"
-                  class="supp-audit-btn-pass"
-                  @click="handleAuditSupplement(currentAuditSupplement, true)"
-                >
-                  <template #icon><CheckCircleOutlined /></template>
-                  审核通过
-                </a-button>
-              </a-space>
-            </div>
-            <div class="supp-audit-info">
-              <div class="supp-audit-reason">
-                <span class="supp-audit-label">补交原因</span>
-                <span class="supp-audit-value">{{ currentAuditSupplement.reason || '未填写原因' }}</span>
-              </div>
-              <div class="supp-audit-info-grid">
-                <span class="supp-audit-info-item"><UserOutlined class="supp-audit-info-icon" />发起人：{{ currentAuditSupplement.initiatorName || '-' }}</span>
-                <span class="supp-audit-info-item"><ClockCircleOutlined class="supp-audit-info-icon" />发起时间：{{ currentAuditSupplement.createTime ? currentAuditSupplement.createTime.substring(0, 16) : '-' }}</span>
-              </div>
-            </div>
-            <a-spin :spinning="supplementAuditLoading">
-              <template v-if="currentIncrements">
-                <div v-if="currentIncrements.items?.length" class="supp-incr-body">
-                  <div class="supp-incr-section-title">补交新增资料项（{{ currentIncrements.items.length }}）<span class="supp-incr-section-hint">下方列表中对应橙色「补交待审核」标签</span></div>
-                  <a-tag v-for="it in currentIncrements.items" :key="it.id" color="orange" style="margin-bottom:4px">{{ it.name }}</a-tag>
-                </div>
-                <div v-if="currentIncrements.attachments?.length" class="supp-incr-body">
-                  <div class="supp-incr-section-title">补交上传文件（{{ currentIncrements.attachments.length }}）</div>
-                  <div v-for="att in currentIncrements.attachments" :key="att.id" class="supp-incr-file">
-                    <span class="supp-incr-file-icon"><FileTextOutlined /></span>
-                    <a @click.prevent="emit('previewFile', att.fileUrl)" class="supp-incr-file-name" :title="att.fileName">{{ att.fileName }}</a>
-                    <span class="supp-incr-file-time">{{ att.uploadTime ? att.uploadTime.substring(0, 16) : '' }}</span>
-                  </div>
-                </div>
-                <a-empty v-if="!currentIncrements.items?.length && !currentIncrements.attachments?.length" description="暂无增量数据" :image-style="{ height: '40px' }" />
-              </template>
-            </a-spin>
           </div>
 
           <!-- 工具栏：新增自定义资料项 -->
@@ -404,10 +312,9 @@ import { message, Modal, Textarea } from 'ant-design-vue'
 import { h } from 'vue'
 import {
   UploadOutlined, FileDoneOutlined, FileTextOutlined, CloudUploadOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, PlusOutlined, SendOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, PlusOutlined,
   MoreOutlined, EditOutlined, DeleteOutlined, CloseOutlined,
   UserOutlined, ClockCircleOutlined, HistoryOutlined,
-  AuditOutlined,
 } from '@ant-design/icons-vue'
 import {
   getMaterialItems, submitStage, auditStage,
@@ -557,23 +464,26 @@ const isAttLocked = (att: any): boolean =>
  *  必须按数值判定（>0 才是有效补交单ID），直接判真值会把 "0" 误认为有标记 */
 const hasSupplementMark = (v: any): boolean => Number(v) > 0
 
-/** 资料审核已通过：当前状态已越过资料审核节点的目标状态（动态映射，无配置时回退 3） */
-const materialAuditPassed = computed(() => {
+/** 已进入资料环节：待资料提交（status>=2）及之后，退回待审（11）除外；补交覆盖全阶段（含老数据/已完成单据） */
+const supplementStageReached = computed(() => {
   const s = props.formStatus
-  if (s == null) return false
-  const map = props.stepStatusMap
-  const auditKey = sections.value[0]?.config.auditTaskKey
-  const ts = Number((auditKey && map?.get(auditKey)) ?? map?.get('materialAudit') ?? 3)
-  return s > ts
+  return s != null && s >= 2 && s !== 11
 })
 
-/** 可发起补交：submit 模式、非只读查看、已过资料审核、无在途补交、有发起权限 */
+/** 可发起补交：submit 模式、非只读查看、已进入资料环节、无在途补交、豁免审批中禁止（主流程阻塞）、有发起权限 */
 const canStartSupplement = computed(() =>
   props.mode === 'submit'
   && !props.readonly
-  && materialAuditPassed.value
+  && supplementStageReached.value
   && !inSupplementMode.value
+  && !props.hasPendingExemption
   && checkPermission(['business:declaration:supplement:initiate'])
+)
+
+/** 可提交补交审核：存在草稿补交单且处于提交侧（submit 模式或强制补交入口）；只读查看态与豁免审批中禁止 */
+const canSubmitSupplementAudit = computed(() =>
+  isDraftSupplement.value && !props.readonly && !props.hasPendingExemption
+  && (props.mode === 'submit' || props.forceSupplementMode)
 )
 
 /** 确保草稿补交单存在（强制补交模式下无单时兑底创建，原因为空允许后补） */
@@ -583,6 +493,14 @@ const ensureDraftSupplement = async (): Promise<MaterialSupplement | null> => {
     message.error('补交单尚未创建，请先点「发起资料补交」')
     return null
   }
+  // 先读后写：另一实例（pre）可能已创建草稿单，直接复用，避免并发重复建单
+  try {
+    const curRes = await getCurrentSupplement(props.formId)
+    if (curRes.data?.code === 200 && curRes.data.data) {
+      activeSupplement.value = curRes.data.data
+      return activeSupplement.value
+    }
+  } catch { /* 忽略，继续建单 */ }
   try {
     const res = await startMaterialSupplement({ formId: props.formId, reason: props.supplementDraftReason || '' })
     if (res.data?.code === 200 && res.data.data) {
@@ -665,19 +583,16 @@ const loadData = async () => {
     // 资料项
     allItems.value = itemsRes.data?.data || []
 
-    // 补交流程状态：submit 模式（或强制补交模式）且已过资料提交时查当前补交单（含草稿）；audit 模式查待审列表
-    if ((props.mode === 'submit' || props.forceSupplementMode) && (props.formStatus ?? 0) >= 3) {
+    // 补交流程状态：submit 模式（或强制补交模式）且已进入资料环节时查当前补交单（含草稿）；audit 模式查待审列表
+    if ((props.mode === 'submit' || props.forceSupplementMode) && (props.formStatus ?? 0) >= 2) {
       try {
         const suppRes = await getCurrentSupplement(props.formId)
         activeSupplement.value = suppRes.data?.data || null
       } catch {
         activeSupplement.value = null
       }
-      // 强制补交模式（列表页发起）：无补交单时直接自动建草稿单，不再延迟到首次上传，
-      // 保证进入补交即有单，存量资料锁定立即生效
-      if (props.forceSupplementMode && !activeSupplement.value) {
-        await ensureDraftSupplement()
-      }
+      // 注意：不在挂载时自动建草稿补交单——草稿单由列表页「发起补交」创建（或首次上传时延迟创建），
+      // 避免补交通过/取消后残留 supplementDraft URL 刷新时误建新单
     } else {
       activeSupplement.value = null
     }
@@ -781,12 +696,28 @@ const supplementUploadActive = computed(() =>
   props.forceSupplementMode
   && (isDraftSupplement.value || !activeSupplement.value)
 )
+/** 补交进行中（草稿窗口期或已有补交单）：隐藏环节常规提交/审核按钮，避免与补交操作混淆 */
+const supplementActive = computed(() => supplementUploadActive.value || inSupplementMode.value)
+/** 资料审核节点目标状态（动态映射，无配置回退 3） */
+const materialAuditTargetStatus = computed(() => {
+  const map = props.stepStatusMap
+  const key = sections.value.find(sec => sec.config.submitKey === 'materialSubmit')?.config.auditTaskKey
+  return Number((key && map?.get(key)) ?? map?.get('materialAudit') ?? 3)
+})
+/** 补交仅限基础资料：资料审核通过前（资料提交/审核阶段）只能补交基础资料（BASIC），
+ *  资料提交区块由正常流程维护不可补交修改；资料审核通过后（申报资料定型）所有资料块均可补交 */
+const supplementBasicOnly = computed(() => {
+  const s = props.formStatus
+  return s != null && s <= materialAuditTargetStatus.value
+})
 /** 控制编辑操作（上传/删除/修改）：仅 submit 模式且可操作时为 true；
- *  补交草稿强制模式下仅第一个环节（申报资料）开放上传增量，其它环节维持正常规则 */
+ *  补交模式下开放增量上传，存量资料由 isRowLocked/isAttLocked 锁死：
+ *  - 资料审核通过前：仅基础资料（BASIC）环节可补交，资料提交等其他区块冻结
+ *  - 资料审核通过后：全部环节可补交（含开票金额/业务发票） */
 const isEditableSection = (section: SectionInfo): boolean => {
-  if (supplementUploadActive.value) {
-    // 补交只限第一个环节（与补交标签/提交按钮的 sectionIdx===0 口径一致）；存量资料由 isRowLocked/isAttLocked 锁死
-    return sections.value.length > 0 && section.itemValue === sections.value[0].itemValue
+  if (props.readonly) return false
+  if (props.mode === 'submit' && supplementActive.value) {
+    return supplementBasicOnly.value ? section.config.templateStage === 'BASIC' : true
   }
   return props.mode === 'submit' && canOperateSection(section)
 }
@@ -1009,7 +940,7 @@ const tryParseInvoicePdf = async (file: File, record: MaterialItem) => {
 
 const handleUpload = async (file: File, record: MaterialItem, stage?: string) => {
   try {
-    // 补交草稿入口且尚未建单：首次上传时延迟创建补交单
+    // 补交草稿入口且尚未建单：首次上传时延迟创建补交单（不自动建单的 post 实例同样兼容）
     if (props.forceSupplementMode && !activeSupplement.value) {
       const supp = await ensureDraftSupplement()
       if (!supp) return false
@@ -1303,7 +1234,25 @@ watch(() => props.formId, loadData)
 
 /** 供父组件调用刷新 */
 const refresh = () => loadData()
-defineExpose({ refresh })
+// 暴露补交状态与操作：页面顶部补交操作栏/审核卡片由父组件（FormComposition）渲染，状态/方法集中在此
+ defineExpose({
+  refresh,
+  activeSupplement,
+  isDraftSupplement,
+  canStartSupplement,
+  canSubmitSupplementAudit,
+  supplementActive,
+  supplementSubmitting,
+  supplementAuditSubmitting,
+  handleStartSupplement,
+  handleSubmitSupplementForAudit,
+  openSupplementHistory,
+  // 补交审核卡片（页面置顶）所需状态与方法
+  currentAuditSupplement,
+  currentIncrements,
+  supplementAuditLoading,
+  handleAuditSupplement
+})
 </script>
 
 <style scoped>
@@ -1350,134 +1299,5 @@ defineExpose({ refresh })
   color: #999;
   font-size: 12px;
   margin-left: 8px;
-}
-/* 补交审核卡片：头部标题+操作按钮，申请信息，增量明细 */
-.supp-audit-card {
-  margin: 4px 0 14px;
-  background: #fffbf2;
-  border: 1px solid #ffe7ba;
-  border-radius: 10px;
-  padding: 0 16px 12px;
-}
-.supp-audit-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 12px 0;
-  border-bottom: 1px dashed #ffe7ba;
-}
-.supp-audit-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.supp-audit-icon {
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  color: #fff;
-  background: linear-gradient(135deg, #ffa940, #fa8c16);
-  border-radius: 7px;
-}
-.supp-audit-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #d46b08;
-}
-/* 审核通过按钮：绿色主按钮 */
-.supp-audit-btn-pass {
-  background: #52c41a;
-  border-color: #52c41a;
-}
-.supp-audit-btn-pass:hover,
-.supp-audit-btn-pass:focus {
-  background: #73d13d !important;
-  border-color: #73d13d !important;
-}
-/* 申请信息：原因突出展示 + 发起人/时间一行 */
-.supp-audit-info {
-  padding: 10px 0 2px;
-}
-.supp-audit-reason {
-  background: #fff;
-  border-left: 3px solid #fa8c16;
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 13px;
-  color: #333;
-}
-.supp-audit-label {
-  color: #999;
-  margin-right: 8px;
-}
-.supp-audit-info-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 28px;
-  margin-top: 8px;
-  font-size: 13px;
-  color: #595959;
-}
-.supp-audit-info-icon {
-  color: #fa8c16;
-  margin-right: 4px;
-}
-/* 增量明细分区 */
-.supp-incr-body {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed #ffe7ba;
-}
-.supp-incr-section-title {
-  color: #666;
-  font-size: 13px;
-  margin-bottom: 6px;
-}
-.supp-incr-section-hint {
-  color: #bbb;
-  font-size: 12px;
-  margin-left: 6px;
-}
-.supp-incr-file {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid #f0f0f0;
-  border-radius: 6px;
-  padding: 6px 10px;
-  margin-bottom: 6px;
-  transition: border-color 0.2s;
-}
-.supp-incr-file:hover {
-  border-color: #ffd591;
-}
-.supp-incr-file-icon {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fa8c16;
-  background: #fff7e6;
-  border-radius: 5px;
-}
-.supp-incr-file-name {
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.supp-incr-file-time {
-  color: #999;
-  font-size: 12px;
-  margin-left: auto;
-  flex-shrink: 0;
 }
 </style>

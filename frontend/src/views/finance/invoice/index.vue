@@ -173,7 +173,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, onActivated, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, UploadOutlined, DownloadOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
@@ -363,6 +363,13 @@ const downloadFile = async (invoiceId: number) => {
 onMounted(() => {
   loadData()
   loadDeclarations()
+})
+
+// keep-alive 缓存页：从提交/审核操作返回时自动刷新列表（跳过首次挂载）
+const isFirstActivation = ref(true)
+onActivated(() => {
+  if (isFirstActivation.value) { isFirstActivation.value = false; return }
+  loadData()
 })
 </script>
 

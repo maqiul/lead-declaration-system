@@ -44,6 +44,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -422,6 +423,68 @@ public class DeclarationMaterialItemServiceImpl
         sanitizeSupplementMarks(formId, result);
 
         return result;
+    }
+
+    /**
+     * 批量统计资料上传进度：只统计申报单当前所处环节的资料项（列表页菜单按状态限定，
+     * 状态→环节映射见 resolveStageByStatus），口径与表单页环节进度一致：
+     * 分母取该环节必填项，分子取其中已上传附件（status=1）的项
+     */
+    @Override
+    public Map<Long, Map<String, Object>> mapUploadProgress(List<Long> formIds) {
+        Map<Long, Map<String, Object>> result = new LinkedHashMap<>();
+        if (formIds == null || formIds.isEmpty()) return result;
+        for (Long formId : formIds) {
+            DeclarationForm form = declarationFormService.getById(formId);
+            String stage = resolveStageByStatus(form == null ? null : form.getStatus());
+            Map<String, Object> stat = new LinkedHashMap<>();
+            if (stage == null) {
+                // 当前状态无资料上传环节（待初审/开票金额/已完成/退回待审等）
+                stat.put("total", 0);
+                stat.put("required", 0);
+                stat.put("uploaded", 0);
+                stat.put("percent", 0);
+                stat.put("stage", null);
+                result.put(formId, stat);
+                continue;
+            }
+            List<DeclarationMaterialItem> items = viewByFormId(formId);
+            int total = 0;
+            int required = 0;
+            int uploaded = 0;
+            for (DeclarationMaterialItem it : items) {
+                // 仅统计归属当前环节的资料项（stage 逗号分隔多环节，空值兑底 MATERIAL_SUBMIT）
+                if (!hasStage(it.getStage(), stage)) continue;
+                total++;
+                // 必填判定与表单页一致：优先 requiredStages 分环节配置，回退 required 字段
+                boolean req = StringUtils.hasText(it.getRequiredStages())
+                        ? hasStage(it.getRequiredStages(), stage)
+                        : (it.getRequired() != null && it.getRequired() == 1);
+                if (!req) continue;
+                required++;
+                if (it.getStatus() != null && it.getStatus() == 1) uploaded++;
+            }
+            int percent = required > 0 ? Math.round(uploaded * 100f / required) : (total > 0 ? 100 : 0);
+            stat.put("total", total);
+            stat.put("required", required);
+            stat.put("uploaded", uploaded);
+            stat.put("percent", percent);
+            stat.put("stage", stage);
+            result.put(formId, stat);
+        }
+        return result;
+    }
+
+    /** 状态 → 当前资料环节：列表页菜单按状态限定，直接映射即可 */
+    private String resolveStageByStatus(Integer status) {
+        if (status == null) return null;
+        switch (status) {
+            case 0: return "BASIC";                  // 草稿：基础资料
+            case 2: case 3: return "MATERIAL_SUBMIT"; // 待资料提交/待资料审核
+            case 4: case 5: return "SUPPLEMENT";      // 待补充资料提交/审核
+            case 8: case 9: return "INVOICE";         // 待发票提交/审核
+            default: return null;                     // 待初审/开票金额环节/已完成/退回待审：无资料上传环节
+        }
     }
 
     /**

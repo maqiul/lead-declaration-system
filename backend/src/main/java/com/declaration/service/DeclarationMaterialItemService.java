@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.declaration.entity.DeclarationMaterialItem;
 
 import java.util.List;
+import java.util.Map;
 
 public interface DeclarationMaterialItemService extends IService<DeclarationMaterialItem> {
 
@@ -15,6 +16,13 @@ public interface DeclarationMaterialItemService extends IService<DeclarationMate
      * 懒创建模式：用户未操作的资料项不落库，只以虚拟项形式在前端展示
      */
     List<DeclarationMaterialItem> viewByFormId(Long formId);
+
+    /**
+     * 批量统计资料上传进度（列表页展示用）：口径与表单页进度一致，
+     * 基于合并视图（模板虚拟项+实例）统计必填项总数与已上传数
+     * @return formId -> { total, required, uploaded, percent }
+     */
+    Map<Long, Map<String, Object>> mapUploadProgress(List<Long> formIds);
 
     /**
      * 幂等确保模板对应的资料项实例已落库：已存在则直接返回，不存在则按模板克隆一条

@@ -14,7 +14,7 @@ public interface MaterialSupplementService extends IService<MaterialSupplement> 
 
     /**
      * 发起资料补交（创建草稿补交单，审核人不可见；不启动流程）
-     * 校验：申报单已过资料提交环节（status>=3）、无在途/草稿补交
+     * 校验：申报单已进入资料环节（status>=2，退回待审11除外）、无在途/草稿补交；补交上传覆盖全部资料环节
      */
     MaterialSupplement start(Long formId, String reason, Long initiatorId);
 

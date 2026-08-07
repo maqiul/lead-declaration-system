@@ -1329,6 +1329,12 @@ public class DeclarationFormController {
             }
             form.setStatus(0); // 确保是草稿状态
 
+            // 发票号留空自动按规则生成（与新增接口同规则；新建/编辑草稿均走本接口，已有值不覆盖）
+            if (form.getInvoiceNo() == null || form.getInvoiceNo().isEmpty()) {
+                String currentDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yy-MMdd"));
+                form.setInvoiceNo("ZIYI-" + currentDate);
+            }
+
             if (form.getId() != null) {
                 declarationFormService.updateDeclarationForm(form);
             } else {
@@ -1558,35 +1564,54 @@ public class DeclarationFormController {
                 variables.put("orgId", form.getOrgId());
                 variables.put("formNo", form.getFormNo());
 
-                // 根据模板编码解析申报类型（内部/外部）
+                // 申报类型以申报单自身的值为准（前端新建时明确传入），防止模板配置反向覆盖申报类型；
+                // 仅当表单值缺失时才回退按模板/默认 EXTERNAL 推断
                 String declarationType = form.getDeclarationType();
                 String templateCode = form.getTemplateCode();
-
-                // 优先从模板配置中读取申报类型
-                if (templateCode != null && !templateCode.isEmpty()) {
-                    try {
-                        List<FlowTemplate> templates = flowTemplateService.listByProcessType("declaration");
-                        for (FlowTemplate t : templates) {
+                List<FlowTemplate> declarationTemplates;
+                try {
+                    declarationTemplates = flowTemplateService.listByProcessType("declaration");
+                } catch (Exception ex) {
+                    declarationTemplates = java.util.Collections.emptyList();
+                    log.warn("查询申报流程模板列表失败", ex);
+                }
+                if (declarationType == null || declarationType.isEmpty()) {
+                    if (templateCode != null && !templateCode.isEmpty()) {
+                        for (FlowTemplate t : declarationTemplates) {
                             if (templateCode.equals(t.getCode()) && t.getDeclarationType() != null) {
                                 declarationType = t.getDeclarationType();
                                 break;
                             }
                         }
-                    } catch (Exception ex) {
-                        log.warn("查询模板申报类型失败，回退到表单值", ex);
+                    }
+                    if (declarationType == null || declarationType.isEmpty()) {
+                        declarationType = "EXTERNAL";
                     }
                 }
 
-                // 最终回退：未指定则默认 EXTERNAL
-                if (declarationType == null || declarationType.isEmpty()) {
-                    declarationType = "EXTERNAL";
+                // 模板一致性纠偏：绑定模板的申报类型与申报单类型不一致时（如集洛单误绑内部模板），
+                // 按申报类型重新选择模板，避免跑错流程
+                FlowTemplate boundTemplate = null;
+                if (templateCode != null && !templateCode.isEmpty()) {
+                    for (FlowTemplate t : declarationTemplates) {
+                        if (templateCode.equals(t.getCode())) {
+                            boundTemplate = t;
+                            break;
+                        }
+                    }
+                }
+                if (boundTemplate == null || !declarationType.equals(boundTemplate.getDeclarationType())) {
+                    String resolved = resolveProcessKey(declarationType);
+                    log.warn("申报单 {} 模板与申报类型不一致：绑定模板={}, 申报类型={}, 重选模板={}",
+                            form.getFormNo(), templateCode, declarationType, resolved);
+                    templateCode = resolved;
+                    form.setTemplateCode(resolved);
                 }
                 form.setDeclarationType(declarationType);
                 declarationFormService.updateById(form);
                 variables.put("declarationType", declarationType);
                 log.info("申报类型: {}, 模板编码: {}, 流程变量: {}", declarationType, templateCode, variables);
 
-                // 优先使用前端选择的模板编码，回退到按 declarationType 匹配
                 String processKey = templateCode != null && !templateCode.isEmpty()
                         ? templateCode
                         : resolveProcessKey(declarationType);
@@ -2387,7 +2412,14 @@ public class DeclarationFormController {
                 return enabled.get(0).getCode();
             }
 
-            // 多个模板时，按 code 模糊匹配 declarationType
+            // 多个模板时，优先按模板的申报类型字段精确匹配（比 code 模糊匹配可靠）
+            for (FlowTemplate t : enabled) {
+                if (declarationType != null && declarationType.equals(t.getDeclarationType())) {
+                    return t.getCode();
+                }
+            }
+
+            // 回退：按 code 模糊匹配 declarationType
             String typeHint = declarationType != null ? declarationType.toLowerCase() : "external";
             for (FlowTemplate t : enabled) {
                 if (t.getCode() != null && t.getCode().toLowerCase().contains(typeHint)) {

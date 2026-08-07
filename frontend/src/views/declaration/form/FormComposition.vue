@@ -17,8 +17,8 @@
             审核详情
           </a-button>
           
-          <!-- 审核模式下的按钮 -->
-          <template v-if="isAudit">
+          <!-- 审核模式下的按钮：初审（状态1）/退回待审（状态11）才显示，审核完成后状态变化自动隐藏 -->
+          <template v-if="isAudit && (formStatus === 1 || formStatus === 11)">
             <a-button
               type="primary"
               @click="handleApprove"
@@ -41,9 +41,9 @@
 
           <!-- 资料提交模式下的按钮：状态 2（待资料提交）时显示 -->
           <template v-else-if="isMaterialMode && !isReadonly">
-            <!-- 无豁免申请：显示正常提交按钮 -->
+            <!-- 无豁免申请：显示正常提交按钮（补交草稿入口隐藏，避免与补交提交混淆；豁免状态加载完成前不渲染，避免闪现） -->
             <a-button
-              v-if="formStatus === 2 && !pendingExemption"
+              v-if="formStatus === 2 && exemptionLoaded && !pendingExemption && !isSupplementDraftEntry"
               type="primary"
               @click="handleSubmitMaterial"
               :loading="submitting"
@@ -195,9 +195,55 @@
               提交申报
             </a-button>
           </template>
+
+          <!-- 资料补交操作区（页面置顶；状态与方法来自资料区第一个 MaterialManager 实例）；
+               只读查看与豁免审核入口不渲染：审核类入口由内部 computed 把关发起/提交按钮 -->
+          <template v-if="preMaterialManagerRef && route.query.readonly !== 'true' && !isExemptionAuditMode">
+            <a-divider type="vertical" />
+            <a-tag v-if="preMaterialManagerRef.isDraftSupplement" color="blue">补交草稿</a-tag>
+            <a-tag v-else-if="preMaterialManagerRef.activeSupplement" color="orange">资料补交中</a-tag>
+            <a-button
+              v-if="preMaterialManagerRef.canSubmitSupplementAudit"
+              v-permission="['business:declaration:supplement:initiate']"
+              type="primary"
+              :loading="preMaterialManagerRef.supplementAuditSubmitting"
+              @click="preMaterialManagerRef.handleSubmitSupplementForAudit()"
+            >
+              <template #icon><SendOutlined /></template>
+              提交补交审核
+            </a-button>
+            <a-button
+              v-if="preMaterialManagerRef.canStartSupplement"
+              v-permission="['business:declaration:supplement:initiate']"
+              :loading="preMaterialManagerRef.supplementSubmitting"
+              @click="preMaterialManagerRef.handleStartSupplement()"
+            >
+              <template #icon><PlusOutlined /></template>
+              发起资料补交
+            </a-button>
+            <!-- 补交历史：每一次补交了哪些文件的留档记录 -->
+            <a-button
+              v-if="formId"
+              @click="preMaterialManagerRef.openSupplementHistory()"
+            >
+              <template #icon><HistoryOutlined /></template>
+              补交记录
+            </a-button>
+          </template>
         </a-space>
       </template>
       
+      <!-- 资料补交审核卡片（页面置顶）：状态与方法来自资料区第一个 MaterialManager 实例 -->
+      <SupplementAuditCard
+        v-if="preMaterialManagerRef?.currentAuditSupplement"
+        :supplement="preMaterialManagerRef.currentAuditSupplement"
+        :increments="preMaterialManagerRef.currentIncrements"
+        :loading="preMaterialManagerRef.supplementAuditLoading"
+        :show-actions="materialManagerMode === 'audit' || !!autoSupplementId"
+        @audit="(approved: boolean) => preMaterialManagerRef!.handleAuditSupplement(preMaterialManagerRef!.currentAuditSupplement!, approved)"
+        @preview="previewFile"
+      />
+
       <!-- 退回原因提示 -->
       <a-alert
         v-if="formStatus === 11 && returnReason"
@@ -211,6 +257,7 @@
       <!-- 基本信息 + 产品明细 + 箱子信息 -->
       <BasicInfoSection
         v-if="hasSection('basic')"
+        :supplement-active="basicSupplementActive"
         @add-product="addProduct"
         @remove-product="(i: number) => removeProduct(i)"
         @add-carton="addCarton"
@@ -258,15 +305,16 @@
         :stop-before="'invoiceAmount'"
         :force-supplement-mode="isSupplementDraftEntry"
         :supplement-draft-reason="supplementDraftReason"
-        :readonly="route.query.readonly === 'true'"
+        :readonly="route.query.readonly === 'true' || isAuditEntry || isExemptionAuditMode"
         :can-operate="canOperateMaterialStage"
         :exemption-count="exemptionHistory.length"
         :has-pending-exemption="!!pendingExemption"
         :exemption-step="exemptionTaskInfo?.step || 1"
         :show-exemption-audit="isExemptionAuditMode"
         :auto-supplement-id="autoSupplementId"
-        @submitted="() => goBack()"
-        @audited="() => goBack()"
+        ref="preMaterialManagerRef"
+        @submitted="() => stayAndRefresh()"
+        @audited="() => stayAndRefresh()"
         @preview-file="previewFile"
         @view-exemption-history="exemptionHistoryModalVisible = true"
         @exemption-approve="handleExemptionAudit(true)"
@@ -283,7 +331,7 @@
         @download-invoice-package="handleDownloadInvoicePackage"
       />
 
-      <!-- 资料管理：开票金额及之后的环节（发票资料；补交草稿入口强制只读） -->
+      <!-- 资料管理：开票金额及之后的环节（发票资料；补交草稿入口同样开放补交上传，但建单由 pre 实例统一负责） -->
       <MaterialManager
         v-if="showMaterialManager && hasSection('invoiceAmount')"
         :form-id="formId!"
@@ -293,10 +341,13 @@
         :section-order-map="sectionOrderMap"
         section-range="post"
         :stop-before="'invoiceAmount'"
-        :readonly="route.query.readonly === 'true'"
+        :force-supplement-mode="isSupplementDraftEntry"
+        :supplement-draft-reason="supplementDraftReason"
+        :readonly="route.query.readonly === 'true' || isAuditEntry || isExemptionAuditMode"
         :can-operate="canOperateMaterialStage"
-        @submitted="() => goBack()"
-        @audited="() => goBack()"
+        ref="postMaterialManagerRef"
+        @submitted="() => stayAndRefresh()"
+        @audited="() => stayAndRefresh()"
         @preview-file="previewFile"
       />
 
@@ -405,7 +456,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, h, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, h, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message, Modal, Textarea } from 'ant-design-vue'
 import { checkPermission } from '@/directives/permission'
@@ -436,6 +487,7 @@ import {
   
   exportInvoicePackage,
   getInvoiceSplitItems,
+  getAvailableFlowTemplates,
   // 业务发票 API 已废弃，统一使用资料项 INVOICE 环节
 } from '@/api/business/declaration'
 import {
@@ -461,6 +513,7 @@ import {
   auditExemption,
   getExemptionCurrentTask,
   getSupplementIncrements,
+  getCurrentSupplement,
   type MaterialItem,
   type MaterialAttachment
 } from '@/api/business/materialItem'
@@ -492,6 +545,7 @@ import InvoiceAmountSection from './sections/InvoiceAmountSection.vue'
 import InvoiceSection from './sections/InvoiceSection.vue'
 import RemittanceDisplaySection from './sections/RemittanceDisplaySection.vue'
 import MaterialManager from './MaterialManager.vue'
+import SupplementAuditCard from './SupplementAuditCard.vue'
 import { provideFormState } from './composables/useDeclarationForm'
 import { formatDate } from '@/utils/common'
 
@@ -510,7 +564,7 @@ const router = useRouter()
 // 页面状态
 const isAudit = ref(route.query.mode === 'audit')
 const isPaymentMode = ref(route.query.mode === 'payment') // 水单提交模式
-const isMaterialMode = ref(route.query.mode === 'material' || route.query.mode === 'exemptionAudit') // 资料提交/查看/豁免审核模式
+const isMaterialMode = ref(route.query.mode === 'material') // 资料提交/查看模式（豁免审核已独立拆分，不再复用本分支按钮）
 const isMaterialAuditMode = ref(route.query.mode === 'materialAudit') // 资料审核模式
 const isExemptionAuditMode = ref(route.query.mode === 'exemptionAudit') // 豁免审核模式
 const isMaterialSupplementAuditMode = ref(route.query.mode === 'materialSupplementAudit') // 资料补交审核模式（独立 Flowable 流程）
@@ -863,8 +917,8 @@ const handleApprove = async () => {
         message.info('全套单证已自动生成')
       }
     }
-    // 直接跳转到列表页，无需刷新当前页面数据
-    goBack()
+    // 提交/审核成功：停留当前详情页并刷新最新状态
+    stayAndRefresh()
   } catch (error) {
     console.error('审核操作失败:', error)
     message.error('审批操作失败')
@@ -895,8 +949,8 @@ const handleReject = async () => {
       await auditDeclaration(formId.value, 2, remark, taskKey)
       message.success(`${getAuditActionText()}已驳回`)
     }
-    // 直接跳转到列表页，无需刷新当前页面数据
-    goBack()
+    // 提交/审核成功：停留当前详情页并刷新最新状态
+    stayAndRefresh()
   } catch (error) {
     console.error('驳回操作失败:', error)
     message.error('审批操作失败')
@@ -1227,25 +1281,17 @@ const showMaterialManager = computed(() => {
   return hasSection('material') || hasSection('supplement') || hasSection('invoice')
 })
 
-/** MaterialManager 模式：从流程配置动态判断 submit/audit；补交草稿入口强制 submit（允许上传补交资料） */
+/** MaterialManager 模式：仅审核类入口（审核列表/任务中心跳转）才渲染审核按钮；
+ *  普通入口（提交人视角）即使状态处于待审也按 submit 渲染，避免提交人看到/操作自己提交资料的审核按钮 */
 const materialManagerMode = computed<'submit' | 'audit'>(() => {
   if (isSupplementDraftEntry.value) return 'submit'
-  const s = formStatus.value
-  if (s == null) return 'submit'
-  const map = stepStatusMap.value
-  // 检查当前状态是否匹配某个 auditTaskKey 的 targetStatus
-  for (const [nodeKey, targetStatus] of map) {
-    if (targetStatus === s && nodeKey.toLowerCase().includes('audit')) {
-      return 'audit'
-    }
-  }
-  return 'submit'
+  return isAuditEntry.value ? 'audit' : 'submit'
 })
 
-/** 第二个 MaterialManager（开票金额及之后环节）的模式：补交草稿入口强制只读（audit 模式下无编辑区，
- *  且当前非审核态不会出审核按钮），其它情况沿用正常规则 */
+/** 第二个 MaterialManager（开票金额及之后环节）的模式：补交草稿入口同样强制 submit，
+ *  开放开票金额/业务发票等后置环节的补交增量上传；其它情况沿用正常规则 */
 const postMaterialManagerMode = computed<'submit' | 'audit'>(() =>
-  isSupplementDraftEntry.value ? 'audit' : materialManagerMode.value
+  isSupplementDraftEntry.value ? 'submit' : materialManagerMode.value
 )
 
 /** MaterialManager 可操作性判断：从流程配置动态匹配 nodeKey → targetStatus */
@@ -1253,14 +1299,20 @@ const canOperateMaterialStage = (section: { submitKey?: string; auditTaskKey?: s
   if (route.query.readonly === 'true' || isAudit.value) return false
   // 补交审核模式：仅补交审核操作可用，其它环节的提交/审核按钮一律隐藏
   if (isMaterialSupplementAuditMode.value) return false
+  // 豁免审核入口：仅豁免审核操作可用，环节提交/审核按钮一律隐藏（豁免审核完成后也不例外，
+  // 避免通过后 pendingExemption 解除时环节提交按钮重新出现）
+  if (isExemptionAuditMode.value) return false
   // 豁免审批中：资料区域只读
   if (pendingExemption.value) return false
   const s = formStatus.value
   if (s == null) return false
   const map = stepStatusMap.value
-  // 动态检查：当前状态是否匹配该 submitKey/auditTaskKey 对应的 targetStatus
+  // 动态检查：当前状态是否命中该环节的提交节点 targetStatus
   if (section.submitKey && map.get(section.submitKey) === s) return true
-  if (section.auditTaskKey && map.get(section.auditTaskKey) === s) return true
+  // 审核节点命中仅在审核入口生效（供审核通过/驳回按钮显隐）；
+  // 提交人视角（submit 模式）不可复用审核节点命中，否则状态进入待资料审核（如豁免通过后自动推进）
+  // 时，环节提交按钮会借 auditTaskKey 命中重新出现
+  if (materialManagerMode.value === 'audit' && section.auditTaskKey && map.get(section.auditTaskKey) === s) return true
   return false
 }
 
@@ -1467,9 +1519,14 @@ const pendingExemption = ref<any>(null)
 const exemptionTaskInfo = ref<any>(null)
 const exemptionHistory = ref<any[]>([])
 const exemptionHistoryModalVisible = ref(false)
+/** 豁免状态是否已加载完成：加载完成前不渲染依赖豁免状态的按钮，避免异步窗口期误显示 */
+const exemptionLoaded = ref(false)
 
 const loadExemptionStatus = async () => {
-  if (!formId.value) return
+  if (!formId.value) {
+    exemptionLoaded.value = true
+    return
+  }
   try {
     const res = await getExemptionList(formId.value)
     if (res.data?.code === 200) {
@@ -1486,7 +1543,9 @@ const loadExemptionStatus = async () => {
         exemptionTaskInfo.value = null
       }
     }
-  } catch { /* silent */ }
+  } catch { /* silent */ } finally {
+    exemptionLoaded.value = true
+  }
 }
 
 const parseExemptionMissingItems = (exemption: any): any[] => {
@@ -1513,7 +1572,7 @@ const handleExemptionAudit = (approved: boolean) => {
           const res = await auditExemption({ id: pendingExemption.value.id, result: 1, remark: '' })
           if (res.data?.code === 200) {
             message.success('豁免审核通过')
-            goBack()
+            stayAndRefresh()
           } else {
             message.error(res.data?.message || '操作失败')
           }
@@ -1550,7 +1609,7 @@ const handleExemptionAudit = (approved: boolean) => {
           const res = await auditExemption({ id: pendingExemption.value.id, result: 2, remark })
           if (res.data?.code === 200) {
             message.success('豁免已驳回')
-            goBack()
+            stayAndRefresh()
           } else {
             message.error(res.data?.message || '操作失败')
           }
@@ -1610,7 +1669,9 @@ const beforeMaterialUpload = async (file: File, record: MaterialItem, stage?: st
       formId: formId.value,
       templateId: record.templateId ?? null,
       // 记录上传时所处环节，用于跨环节删除保护
-      uploadStage: stage ?? null
+      uploadStage: stage ?? null,
+      // 补交模式：新附件打补交增量标记（基础资料框补交上传）
+      supplementId: preMaterialManagerRef.value?.activeSupplement?.id ?? null
     })
     if (res.data?.code === 200) {
       if (res.data.data?.id) record.id = res.data.data.id
@@ -1764,7 +1825,7 @@ const handleSubmitMaterial = async () => {
       const res = await submitMaterial(formId.value!, skipRequiredCheck)
       if (res.data?.code === 200) {
         message.success(skipRequiredCheck ? '资料已提交，等待豁免审核' : '资料提交成功，等待审核')
-        goBack()
+        stayAndRefresh()
       } else {
         message.error(res.data?.message || '提交失败')
       }
@@ -1817,7 +1878,7 @@ const handleMaterialAuditApprove = () => {
         const res = await auditMaterial({ formId: formId.value!, result: 1, remark })
         if (res.data?.code === 200) {
           message.success('资料审核已通过')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '操作失败')
         }
@@ -1857,7 +1918,7 @@ const handleMaterialAuditReject = () => {
         const res = await auditMaterial({ formId: formId.value!, result: 2, remark })
         if (res.data?.code === 200) {
           message.success('已驳回，申报人需重新提交资料')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '操作失败')
         }
@@ -1891,7 +1952,7 @@ const handleSubmitSupplement = async () => {
         const res = await submitSupplement(formId.value!)
         if (res.data?.code === 200) {
           message.success('补充资料提交成功，等待审核')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '提交失败')
         }
@@ -1925,7 +1986,7 @@ const handleSupplementAuditApprove = () => {
         const res = await auditSupplement({ formId: formId.value!, result: 1, remark })
         if (res.data?.code === 200) {
           message.success('补充资料审核已通过')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '操作失败')
         }
@@ -1964,7 +2025,7 @@ const handleSupplementAuditReject = () => {
         const res = await auditSupplement({ formId: formId.value!, result: 2, remark })
         if (res.data?.code === 200) {
           message.success('已驳回，申报人需重新提交补充资料')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '操作失败')
         }
@@ -2074,7 +2135,7 @@ const handleSubmitInvoiceAmount = async () => {
         const res = await submitInvoiceAmount(formId.value!)
         if (res.data?.code === 200) {
           message.success('开票金额申请已提交，等待审核')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '提交失败')
         }
@@ -2108,7 +2169,7 @@ const handleInvoiceAmountAuditApprove = () => {
         const res = await auditInvoiceAmount({ formId: formId.value!, result: 1, remark })
         if (res.data?.code === 200) {
           message.success('开票金额审核已通过')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '操作失败')
         }
@@ -2147,7 +2208,7 @@ const handleInvoiceAmountAuditReject = () => {
         const res = await auditInvoiceAmount({ formId: formId.value!, result: 2, remark })
         if (res.data?.code === 200) {
           message.success('已驳回，申报人需重新提交开票金额申请')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '操作失败')
         }
@@ -2186,7 +2247,7 @@ const handleInvoiceAuditApprove = () => {
         const res = await auditInvoice({ formId: formId.value!, result: 1, remark })
         if (res.data?.code === 200) {
           message.success('发票审核已通过')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '操作失败')
         }
@@ -2226,7 +2287,7 @@ const handleInvoiceAuditReject = () => {
         const res = await auditInvoice({ formId: formId.value!, result: 2, remark })
         if (res.data?.code === 200) {
           message.success('已驳回，申报人需重新提交发票')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '操作失败')
         }
@@ -2258,7 +2319,7 @@ const handleSubmitInvoice = async () => {
         const res = await submitInvoice(formId.value!)
         if (res.data?.code === 200) {
           message.success('发票提交成功，等待审核')
-          goBack()
+          stayAndRefresh()
         } else {
           message.error(res.data?.message || '提交失败')
         }
@@ -3209,6 +3270,77 @@ const goBack = () => {
   }
 }
 
+// 提交/审核成功后：停留当前详情页，原地重新加载最新状态（不再跳回列表）
+const stayAndRefresh = async () => {
+  await loadData()
+  // 同步刷新两个资料区实例（环节状态、补交单、审核按钮显隐均由其内部数据驱动）
+  preMaterialManagerRef.value?.refresh()
+  postMaterialManagerRef.value?.refresh()
+}
+
+// 两个 MaterialManager 实例引用，供原地刷新时同步重载内部数据
+const preMaterialManagerRef = ref<InstanceType<typeof MaterialManager> | null>(null)
+const postMaterialManagerRef = ref<InstanceType<typeof MaterialManager> | null>(null)
+/** 审核类入口（审核人视角）：页面整体只读，禁止上传/提交资料（豁免审核除外，其资料只读由 pendingExemption 单独控制） */
+const isAuditEntry = computed(() =>
+  isAudit.value || isMaterialAuditMode.value || isMaterialSupplementAuditMode.value
+  || isSupplementAuditMode.value || isInvoiceAmountAuditMode.value || isInvoiceAuditMode.value
+)
+/** 补交进行中（资料区状态）：开放基础资料（BASIC）框的补交上传；
+ *  只读查看态、审核类入口、豁免审核入口与豁免审批中一律禁止（豁免中主流程阻塞，不允许补交） */
+const basicSupplementActive = computed(() =>
+  route.query.readonly !== 'true' && !isAuditEntry.value && !isExemptionAuditMode.value
+  && !pendingExemption.value && !!preMaterialManagerRef.value?.supplementActive
+)
+
+// 自动刷新：每 3s 轮询最新状态；非编辑状态整页刷新，编辑状态仅状态变化时重载
+/** 编辑状态：用户正在页面录入/上传数据（基础信息编辑、资料/补交/发票上传等）；
+ *  其余状态（只读查看、审核入口、非可编辑状态等）均视为非编辑，需 3s 整页刷新 */
+const isEditingState = computed(() => {
+  // 交互上传类入口：用户随时可能在上传文件，整页刷新会打断操作
+  if (isSupplementDraftEntry.value || isMaterialMode.value || isInvoiceUploadMode.value
+    || isPaymentMode.value || isInvoiceAmountMode.value || isSupplementMode.value) return true
+  // 基础信息可编辑：草稿/待资料提交且未被置为只读
+  const s = Number(formStatus.value ?? -1)
+  return !isReadonly.value && (s === 0 || s === 2)
+})
+let autoRefreshTimer: number | null = null
+let autoRefreshBusy = false
+const startAutoRefresh = () => {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer)
+  autoRefreshTimer = window.setInterval(async () => {
+    if (!formId.value || submitting.value || autoRefreshBusy) return
+    autoRefreshBusy = true
+    try {
+      const res = await getDeclarationDetail(formId.value)
+      const latest = res.data?.data
+      if (!latest) return
+      const latestStatus = Number(latest.status ?? 0)
+      if (!isEditingState.value) {
+        // 非编辑状态：每 3s 整体刷新，保证补交/豁免状态、按钮显隐、环节进度及时更新
+        await stayAndRefresh()
+      } else if (latestStatus !== Number(formStatus.value ?? 0)) {
+        // 编辑状态：仅状态变化时整体重载（重算只读态、审批按钮、环节展示，含资料区实例）
+        await stayAndRefresh()
+      } else if (latestStatus >= 1 && latestStatus <= 9) {
+        // 状态未变：静默同步活跃任务，保证审批按钮显隐及时
+        const taskRes = await getActiveTasks(formId.value)
+        activeTasks.value = taskRes.data?.data || []
+      }
+    } catch (e) {
+      // 轮询失败静默忽略，不打扰用户
+    } finally {
+      autoRefreshBusy = false
+    }
+  }, 3000)
+}
+const stopAutoRefresh = () => {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer)
+    autoRefreshTimer = null
+  }
+}
+
 // 保存草稿
 const handleSaveDraft = async (options?: { deferUrlSync?: boolean }) => {
   const deferUrlSync = options?.deferUrlSync === true
@@ -3566,7 +3698,16 @@ const handleSubmit = async () => {
       }
     }
     
-    goBack()
+    // 提交成功停留当前详情页：新建申报先回填 formId 并同步 URL（整页重挂载加载最新状态）
+    if (finalId && String(formId.value ?? '') !== String(finalId)) {
+      formId.value = finalId
+      router.replace({
+        path: route.path,
+        query: { ...route.query, id: String(finalId), status: 1 }
+      })
+    } else {
+      stayAndRefresh()
+    }
   } catch (error) {
     console.error('提交失败:', error)
     message.error('提交失败')
@@ -3650,7 +3791,7 @@ const loadData = async () => {
         // 2. 如果是审核模式 (isAudit)，保持只读
         // 3. 如果是水单提交模式、资料模式或发票上传模式，由各自区域内部判断
         // 4. 否则根据状态判断：状态 0/2 可编辑，其他只读
-        if (route.query.readonly === 'true' || isAudit.value || isMaterialSupplementAuditMode.value) {
+        if (route.query.readonly === 'true' || isAudit.value || isMaterialSupplementAuditMode.value || isExemptionAuditMode.value) {
           isReadonly.value = true
           console.log('查看模式或审核模式, 设置为只读')
         } else if (!isPaymentMode.value && !isMaterialMode.value && !isInvoiceUploadMode.value) {
@@ -3809,8 +3950,8 @@ const loadData = async () => {
           } else {
             activeStageTab.value = DEFAULT_STAGE
           }
-          // 豁免审核 / 资料补交审核模式：自动滚动到资料区域
-          if (isExemptionAuditMode.value || isMaterialSupplementAuditMode.value) {
+          // 豁免审核模式：自动滚动到资料区域；补交审核不滚动（审核卡片已置顶展示）
+          if (isExemptionAuditMode.value) {
             nextTick(() => {
               setTimeout(() => {
                 const el = document.querySelector('.material-manager')
@@ -4036,18 +4177,14 @@ provideFormState({
   MATERIAL_FIXED_KEYS: ['amount', 'currency', 'invoiceNo', 'invoiceDate'],
 })
 
-onMounted(() => {
+onMounted(async () => {
   loadMaterialStages()
-  // 新申报单时：优先使用 URL 中的 template 参数，回退到 type 参数，最后默认 EXTERNAL
+  // 新申报单时：优先使用 URL 中的 template 参数，回退到 type/templateType 参数，最后默认 EXTERNAL
   if (!formId.value) {
     const templateFromQuery = route.query.template as string
-    const typeFromQuery = route.query.type as string
+    // 兼容两种传参写法：type（列表页标准）与 templateType（历史/手工 URL）
+    const typeFromQuery = (route.query.type || route.query.templateType) as string
     const transportFromQuery = route.query.transport as string
-    if (templateFromQuery) {
-      formData.templateCode = templateFromQuery
-      // 根据模板配置加载区块显示
-      loadTemplateSections(templateFromQuery)
-    }
     // 优先使用页面上下文的 declarationType（来自申报列表页），回退到模板的 type
     const dtFromQuery = route.query.declarationType as string
     const resolvedType = (dtFromQuery && ['SELF', 'EXTERNAL'].includes(dtFromQuery))
@@ -4055,6 +4192,28 @@ onMounted(() => {
       : (typeFromQuery && ['SELF', 'EXTERNAL'].includes(typeFromQuery) ? typeFromQuery : null)
     if (resolvedType) {
       formData.declarationType = resolvedType
+    }
+    if (templateFromQuery) {
+      // 模板一致性纠偏：URL 模板与申报类型不一致时（如集洛单误带内部模板），
+      // 自动换选与申报类型匹配的模板，避免提交时被模板配置带偏
+      let effectiveTemplate = templateFromQuery
+      try {
+        const tplRes = await getAvailableFlowTemplates('declaration')
+        if (tplRes.data?.code === 200) {
+          const tpls = (tplRes.data.data || []).filter((t: any) => t.status === 1)
+          const bound = tpls.find((t: any) => t.code === templateFromQuery)
+          if (bound && bound.declarationType && bound.declarationType !== formData.declarationType) {
+            const matched = tpls.filter((t: any) => (t.declarationType || 'EXTERNAL') === formData.declarationType)
+            const swap = matched.find((t: any) => t.isDefault === 1) || matched[0]
+            if (swap) effectiveTemplate = swap.code
+          }
+        }
+      } catch {
+        // 校验失败保持 URL 模板，提交时后端会按申报类型兼容纠偏
+      }
+      formData.templateCode = effectiveTemplate
+      // 根据模板配置加载区块显示
+      loadTemplateSections(effectiveTemplate)
     }
     // 运输方式从 URL 预选并锁定
     if (transportFromQuery) {
@@ -4070,6 +4229,25 @@ onMounted(() => {
   loadMeasurementUnits()
   loadEntityList()
   loadCustomers()
+  startAutoRefresh()
+
+  // 补交草稿入口校验：supplementDraft=1 仅在确有在途补交单时有效。
+  // 补交已通过/取消后该参数可能残留在多标签页 URL，刷新会误入补交模式，需立即失效并清理参数
+  if (isSupplementDraftEntry.value && formId.value) {
+    try {
+      const suppRes = await getCurrentSupplement(formId.value)
+      if (!(suppRes.data?.code === 200 && suppRes.data.data)) {
+        isSupplementDraftEntry.value = false
+        const q = { ...route.query }
+        delete q.supplementDraft
+        router.replace({ path: route.path, query: q })
+      }
+    } catch { /* 校验失败保持入口，由内部兑底逻辑处理 */ }
+  }
+})
+
+onUnmounted(() => {
+  stopAutoRefresh()
 })
 </script>
 

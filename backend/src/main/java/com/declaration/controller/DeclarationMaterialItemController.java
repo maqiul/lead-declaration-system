@@ -64,6 +64,22 @@ public class DeclarationMaterialItemController {
         return Result.success(itemService.viewByFormId(formId));
     }
 
+    /** 批量查询资料上传进度（列表页展示用，口径与表单页进度一致） */
+    @GetMapping("/batch-progress")
+    @Operation(summary = "批量查询资料上传进度")
+    public Result<Map<Long, Map<String, Object>>> batchProgress(@RequestParam String ids) {
+        List<Long> formIds = new java.util.ArrayList<>();
+        for (String part : ids.split(",")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                try { formIds.add(Long.valueOf(trimmed)); } catch (NumberFormatException ignored) { }
+            }
+        }
+        // 限制单次批量上限，避免列表页误传大列表导致重查询
+        if (formIds.size() > 100) formIds = formIds.subList(0, 100);
+        return Result.success(itemService.mapUploadProgress(formIds));
+    }
+
     /** 幂等确保模板对应的资料项已落库，返回带 id 的实例
      *  用于前端在"上传附件/编辑字段"时从虚拟项升格为真实记录 */
     @PostMapping("/ensure")
