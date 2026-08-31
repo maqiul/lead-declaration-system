@@ -109,11 +109,10 @@ export function getDeclarationList(params: DeclarationQueryParams) {
 }
 
 // 获取申报单详情
-export function getDeclarationDetail(id: number, status?: number) {
+export function getDeclarationDetail(id: number) {
   return request({
     url: `/v1/declarations/${id}`,
-    method: 'get',
-    params: { status }
+    method: 'get'
   })
 }
 

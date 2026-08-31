@@ -234,8 +234,9 @@
         </a-card>
       </template>
 
-      <!-- 空状态 -->
-      <a-empty v-if="!loading && visibleSections.length === 0" description="暂无资料项" />
+      <!-- 空状态：仅完整模式下展示；拆分实例（pre/post）无可见环节时整体隐藏，
+           避免在环节卡片之间出现孤立的「暂无资料项」占位 -->
+      <a-empty v-if="!loading && visibleSections.length === 0 && sectionRange === 'all'" description="暂无资料项" />
     </a-spin>
 
     <!-- 新增/编辑自定义资料项弹窗 -->
@@ -281,7 +282,7 @@
         <div v-for="record in supplementHistory" :key="record.id" class="supp-history-card">
           <div class="supp-history-head">
             <a-tag v-if="record.status === -1" color="blue">草稿</a-tag>
-            <a-tag v-else-if="record.status === 0" color="orange">补交中</a-tag>
+            <a-tag v-else-if="record.status === 0" color="orange">补交待审核</a-tag>
             <a-tag v-else-if="record.status === 1" color="green">已通过</a-tag>
             <a-tag v-else-if="record.status === 2" color="red">已驳回</a-tag>
             <span class="supp-history-time">发起：{{ record.createTime ? record.createTime.substring(0, 16) : '-' }} · {{ record.initiatorName || '-' }}</span>
@@ -323,6 +324,7 @@ import {
   clearMaterialFile, deleteMaterialAttachment, updateMaterialAttachment,
   parseInvoicePdf, canDeleteAttachment,
   getCurrentSupplement, startMaterialSupplement, submitMaterialSupplement,
+  cancelMaterialSupplement,
   updateMaterialSupplementReason,
   getPendingSupplements, getSupplementIncrements, auditMaterialSupplement,
   getSupplementHistory,
@@ -696,28 +698,48 @@ const supplementUploadActive = computed(() =>
   props.forceSupplementMode
   && (isDraftSupplement.value || !activeSupplement.value)
 )
-/** 补交进行中（草稿窗口期或已有补交单）：隐藏环节常规提交/审核按钮，避免与补交操作混淆 */
-const supplementActive = computed(() => supplementUploadActive.value || inSupplementMode.value)
+/** 补交进行中（仅补交草稿入口）：解锁补交增量上传、隐藏环节常规提交/审核按钮。
+ *  必须带 forceSupplementMode 闸门——仅凭单据上存在补交单（inSupplementMode）不能解锁资料区，
+ *  否则从开票金额提交等主流程入口进入时，残留的草稿补交单会把全部环节资料项误开放为可编辑 */
+const supplementActive = computed(() =>
+  props.forceSupplementMode && (supplementUploadActive.value || inSupplementMode.value)
+)
 /** 资料审核节点目标状态（动态映射，无配置回退 3） */
 const materialAuditTargetStatus = computed(() => {
   const map = props.stepStatusMap
   const key = sections.value.find(sec => sec.config.submitKey === 'materialSubmit')?.config.auditTaskKey
   return Number((key && map?.get(key)) ?? map?.get('materialAudit') ?? 3)
 })
-/** 补交仅限基础资料：资料审核通过前（资料提交/审核阶段）只能补交基础资料（BASIC），
- *  资料提交区块由正常流程维护不可补交修改；资料审核通过后（申报资料定型）所有资料块均可补交 */
+/** 补交范围分级：资料审核通过前（资料提交/审核阶段）只能补交基础资料（BASIC），
+ *  资料提交区块由正常流程维护不可补交修改；资料审核通过后仅「已走过的环节」可补交 */
 const supplementBasicOnly = computed(() => {
   const s = props.formStatus
   return s != null && s <= materialAuditTargetStatus.value
 })
+/** 环节是否已走过（可补交）：环节最早目标状态早于当前状态才算过去。
+ *  当前所处环节由正常流程提交（如发票提交阶段的业务发票走提交发票审核），不得混入补交；
+ *  未来环节本就不可见。无流程节点映射的环节不受限制 */
+const isSectionPassed = (section: SectionInfo): boolean => {
+  const s = props.formStatus
+  const map = props.stepStatusMap
+  if (s == null) return false
+  const keys = [section.config.submitKey, section.config.auditTaskKey].filter(Boolean) as string[]
+  let minTarget: number | null = null
+  for (const key of keys) {
+    const ts = map?.get(key)
+    if (ts != null) minTarget = minTarget == null ? ts : Math.min(minTarget, ts)
+  }
+  if (minTarget == null) return true
+  return minTarget < s
+}
 /** 控制编辑操作（上传/删除/修改）：仅 submit 模式且可操作时为 true；
  *  补交模式下开放增量上传，存量资料由 isRowLocked/isAttLocked 锁死：
  *  - 资料审核通过前：仅基础资料（BASIC）环节可补交，资料提交等其他区块冻结
- *  - 资料审核通过后：全部环节可补交（含开票金额/业务发票） */
+ *  - 资料审核通过后：仅已走过的环节可补交，当前环节（如发票提交阶段的业务发票）走正常流程 */
 const isEditableSection = (section: SectionInfo): boolean => {
   if (props.readonly) return false
   if (props.mode === 'submit' && supplementActive.value) {
-    return supplementBasicOnly.value ? section.config.templateStage === 'BASIC' : true
+    return supplementBasicOnly.value ? section.config.templateStage === 'BASIC' : isSectionPassed(section)
   }
   return props.mode === 'submit' && canOperateSection(section)
 }
@@ -1137,6 +1159,32 @@ const handleSubmitSupplementForAudit = () => {
   submitReason.value = supp.reason || ''
   supplementSubmitVisible.value = true
 }
+
+/** 取消补交：作废草稿补交单（同时清除草稿期上传的增量资料），与列表页入口一致 */
+const handleCancelSupplement = () => {
+  const supp = activeSupplement.value
+  if (!supp || supp.status !== -1) return
+  Modal.confirm({
+    title: '确认取消本次补交？',
+    content: '取消后草稿补交单将作废，补交期间上传的增量资料会被清除。',
+    okText: '取消补交',
+    okType: 'danger',
+    cancelText: '再想想',
+    onOk: async () => {
+      try {
+        const res = await cancelMaterialSupplement(supp.id)
+        if (res.data?.code === 200) {
+          message.success('补交已取消')
+          await loadData()
+        } else {
+          message.error(res.data?.message || '取消补交失败')
+        }
+      } catch (e: any) {
+        message.error(e?.message || '取消补交失败')
+      }
+    },
+  })
+}
 const handleConfirmSubmitSupplement = async () => {
   const supp = activeSupplement.value
   if (!supp) return
@@ -1147,6 +1195,16 @@ const handleConfirmSubmitSupplement = async () => {
   }
   try {
     supplementAuditSubmitting.value = true
+    // 空草稿拦截：未上传任何增量资料时不允许提交，避免审核人收到空补交单
+    const incRes = await getSupplementIncrements(supp.id)
+    if (incRes.data?.code === 200) {
+      const inc = incRes.data.data
+      const incCount = (inc?.items?.length || 0) + (inc?.attachments?.length || 0)
+      if (incCount === 0) {
+        message.warning('请先上传补交资料后再提交审核')
+        return
+      }
+    }
     // 原因有变化先保存（提交审核时填写，后端仅草稿态可改），再提交审核
     if (reason !== (supp.reason || '')) {
       const rRes = await updateMaterialSupplementReason(supp.id, reason)
@@ -1245,6 +1303,7 @@ const refresh = () => loadData()
   supplementSubmitting,
   supplementAuditSubmitting,
   handleStartSupplement,
+  handleCancelSupplement,
   handleSubmitSupplementForAudit,
   openSupplementHistory,
   // 补交审核卡片（页面置顶）所需状态与方法

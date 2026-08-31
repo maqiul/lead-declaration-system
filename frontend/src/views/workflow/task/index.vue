@@ -340,19 +340,19 @@ const handleTabChange = (key: any) => {
 }
 
 const handleView = (task: Task) => {
-  // 豁免审核任务：跳转到豁免审核模式
+  // 豁免审核任务：跳转到豁免审核模式（表单页按 exemptionId 反查自动进入）
   if (task.activityId === 'exemptionAudit' || task.activityId === 'exemptionInvoiceAudit') {
     router.push({
       path: '/declaration/form-v2',
-      query: { exemptionId: task.businessKey, mode: 'exemptionAudit' }
+      query: { exemptionId: task.businessKey }
     })
     return
   }
-  // 资料补交审核任务：跳转到补交审核模式（businessKey=补交单ID）
+  // 资料补交审核任务：跳转到补交审核模式（businessKey=补交单ID，表单页反查自动进入）
   if (task.activityId === 'materialSupplementAudit') {
     router.push({
       path: '/declaration/form-v2',
-      query: { supplementId: task.businessKey, mode: 'materialSupplementAudit' }
+      query: { supplementId: task.businessKey }
     })
     return
   }
@@ -393,28 +393,24 @@ const handleComplete = (task: Task) => {
     return
   }
   if (task.activityId === 'pickupListUpload') {
-    // 提货单上传任务：跳转到申报单详情页，并设置为提货单上传模式
+    // 提货单上传任务：跳转到申报单详情页，并设置为提货单上传模式（payment 入口不在任务推断范围，保留 mode）
     router.push({
       path: '/declaration/form-v2',
       query: { 
         id: task.businessKey, 
-        taskId: task.taskId, 
         mode: 'payment',
-        type: 'pickup',
-        status: 6  // 提货单待传状态
+        type: 'pickup'
       }
     })
     return
   }
   if (task.activityId === 'pickupListAudit') {
-    // 提货单审核任务：跳转到申报单详情页，并设置为审核模式
+    // 提货单审核任务：跳转到申报单详情页，并设置为审核模式（推断映射不覆盖提货单任务，保留 mode）
     router.push({
       path: '/declaration/form-v2',
       query: { 
         id: task.businessKey, 
-        taskId: task.taskId, 
-        mode: 'audit',
-        status: 7  // 提货单待审状态
+        mode: 'audit'
       }
     })
     return
@@ -424,9 +420,7 @@ const handleComplete = (task: Task) => {
     router.push({
       path: '/declaration/form-v2',
       query: {
-        exemptionId: task.businessKey,
-        taskId: task.taskId,
-        mode: 'exemptionAudit'
+        exemptionId: task.businessKey
       }
     })
     return
@@ -436,9 +430,7 @@ const handleComplete = (task: Task) => {
     router.push({
       path: '/declaration/form-v2',
       query: {
-        supplementId: task.businessKey,
-        taskId: task.taskId,
-        mode: 'materialSupplementAudit'
+        supplementId: task.businessKey
       }
     })
     return

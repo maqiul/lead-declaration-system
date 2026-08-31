@@ -152,7 +152,20 @@
                   />
                 </a-form-item>
               </a-col>
-              <a-col :span="isArrivalPortRequired ? 5 : 7">
+              <!-- EXW 贸易方式：买方承担费用，需录入杂费（与到达港口同槽位，条件互斥） -->
+              <a-col :span="5" v-if="isExwTradeTerm">
+                <a-form-item label="杂费">
+                  <a-input-number
+                    v-model:value="formData.miscFee"
+                    :min="0"
+                    :precision="2"
+                    placeholder="请输入杂费金额"
+                    :disabled="isFormReadonly"
+                    style="width: 100%"
+                  />
+                </a-form-item>
+              </a-col>
+              <a-col :span="hasTermExtraCol ? 5 : 7">
                 <a-form-item label="支付方式">
                   <a-select 
                     v-model:value="formData.paymentMethod" 
@@ -164,7 +177,7 @@
                   />
                 </a-form-item>
               </a-col>
-              <a-col :span="isArrivalPortRequired ? 5 : 8">
+              <a-col :span="hasTermExtraCol ? 5 : 8">
                 <a-form-item label="币种">
                   <a-select 
                     v-model:value="formData.currency" 
@@ -435,7 +448,7 @@
                 <a-col :span="5">
                   <div class="total-item">
                     <span class="total-label">总体积(CBM):</span>
-                    <span class="total-value">{{ totals.totalVolume.toFixed(3) }}</span>
+                    <span class="total-value">{{ totals.totalVolume.toFixed(4) }}</span>
                   </div>
                 </a-col>
                 <a-col :span="5">
@@ -546,17 +559,13 @@
               :pagination="false"
               rowKey="id"
               size="small"
+              :scroll="{ x: 1480 }"
               class="carton-table"
             >
               <template #bodyCell="{ column, record, index }">
                 <template v-if="column.key === 'cartonNo'">
-                  <a-input 
-                    v-if="!isFormReadonly" 
-                    v-model:value="record.cartonNo" 
-                    placeholder="箱号"
-                    size="small"
-                  />
-                  <span v-else class="value-display">{{ record.cartonNo }}</span>
+                  <!-- 箱号由系统自动生成（类型英文前缀+连续区间），不可手动修改 -->
+                  <span class="value-display">{{ record.cartonNo }}</span>
                 </template>
                 
                 <template v-else-if="column.key === 'typeChinese'">
@@ -570,6 +579,8 @@
                                     } else if (value === '托盘') {
                                       record.typeEnglish = 'PALLETS';
                                     }
+                                    // 类型前缀变了，全表箱号重排
+                                    regenerateCartonNos();
                                   }"
                     style="width: 100%"
                     size="small"
@@ -588,20 +599,64 @@
                     :min="1"
                     size="small"
                     style="width: 100%"
+                    @change="() => handleCartonQuantityChange(record)"
                   />
                   <span v-else class="value-display">{{ record.quantity }}</span>
                 </template>
                 
+                <template v-else-if="column.key === 'lengthCm'">
+                  <a-input-number
+                    v-if="!isFormReadonly"
+                    v-model:value="record.lengthCm"
+                    :min="0"
+                    size="small"
+                    style="width: 100%"
+                    @change="() => recalcCartonVolume(record)"
+                  />
+                  <span v-else class="value-display">{{ record.lengthCm ?? '-' }}</span>
+                </template>
+                
+                <template v-else-if="column.key === 'widthCm'">
+                  <a-input-number
+                    v-if="!isFormReadonly"
+                    v-model:value="record.widthCm"
+                    :min="0"
+                    size="small"
+                    style="width: 100%"
+                    @change="() => recalcCartonVolume(record)"
+                  />
+                  <span v-else class="value-display">{{ record.widthCm ?? '-' }}</span>
+                </template>
+                
+                <template v-else-if="column.key === 'heightCm'">
+                  <a-input-number
+                    v-if="!isFormReadonly"
+                    v-model:value="record.heightCm"
+                    :min="0"
+                    size="small"
+                    style="width: 100%"
+                    @change="() => recalcCartonVolume(record)"
+                  />
+                  <span v-else class="value-display">{{ record.heightCm ?? '-' }}</span>
+                </template>
+                
+                <template v-else-if="column.key === 'unitVolume'">
+                  <!-- 单箱体积：长×宽×高(cm) ÷ 1,000,000，三维填全才展示 -->
+                  <span class="value-display">{{ cartonUnitVolume(record) }}</span>
+                </template>
+                
                 <template v-else-if="column.key === 'volume'">
+                  <!-- 体积统一 4 位小数（与 DB decimal(12,4) 对齐） -->
                   <a-input-number 
                     v-if="!isFormReadonly"
                     v-model:value="record.volume" 
                     :min="0"
-                    :step="0.001"
+                    :step="0.0001"
+                    :precision="4"
                     size="small"
                     style="width: 100%"
                   />
-                  <span v-else class="value-display">{{ record.volume }} <span style="font-size: 12px; color: #999;">CBM</span></span>
+                  <span v-else class="value-display">{{ formatVolume(record.volume) }} <span style="font-size: 12px; color: #999;">CBM</span></span>
                 </template>
                 
                 <template v-else-if="column.key === 'selectedProducts'">
@@ -989,6 +1044,55 @@ function removeProduct(index: number) { emit('remove-product', index) }
 // 添加/删除箱子代理
 function addCarton() { emit('add-carton') }
 function removeCarton(index: number) { emit('remove-carton', index) }
+
+// 箱号全自动生成：类型英文前缀 + 全表按数量连续编号（如 CARTONS1-90 / PALLETS91-140），
+// 单箱不带区间直接“CARTONS1”，箱号列不可手动修改
+function regenerateCartonNos() {
+  let start = 1
+  ;(cartonList.value || []).forEach((c: any) => {
+    const qty = Number(c.quantity) || 1
+    const prefix = String(c.typeEnglish || (c.typeChinese === '托盘' ? 'PALLETS' : 'CARTONS')).toUpperCase()
+    c.cartonNo = qty > 1 ? `${prefix}${start}-${start + qty - 1}` : `${prefix}${start}`
+    start += qty
+  })
+}
+// 增删箱子时重排箱号；首次加载（prev=0）不覆盖历史单证的既有箱号，
+// 用户改动数量/类型后才按新规则接管
+let lastCartonCount = 0
+watch(() => cartonList.value?.length ?? 0, (len) => {
+  if (lastCartonCount > 0 && len !== lastCartonCount) regenerateCartonNos()
+  lastCartonCount = len
+})
+function handleCartonQuantityChange(record: any) {
+  regenerateCartonNos()
+  recalcCartonVolume(record)
+}
+// 体积展示：统一保留 4 位小数（DB 列为 decimal(12,4)）
+function formatVolume(value: any): string {
+  const n = Number(value)
+  return Number.isFinite(n) ? n.toFixed(4) : '-'
+}
+// 单箱体积(CBM)：长×宽×高(cm) ÷ 1,000,000 保留4位小数；三维未填全返回 '-'
+function cartonUnitVolume(record: any): string {
+  const l = Number(record.lengthCm), w = Number(record.widthCm), h = Number(record.heightCm)
+  if (l > 0 && w > 0 && h > 0) {
+    return (Math.round((l * w * h) / 1e6 * 10000) / 10000).toFixed(4)
+  }
+  return '-'
+}
+// 体积自动计算：单箱 长×宽×高(cm) ÷ 1,000,000 → CBM × 数量，保留4位小数；
+// 三维填全才重算，否则保留手动体积（兼容老数据）
+function recalcCartonVolume(record: any) {
+  const l = Number(record.lengthCm), w = Number(record.widthCm), h = Number(record.heightCm), q = Number(record.quantity)
+  if (l > 0 && w > 0 && h > 0 && q > 0) {
+    record.volume = Math.round((l * w * h * q) / 1e6 * 10000) / 10000
+  }
+}
+
+// EXW 贸易方式：显示杂费录入
+const isExwTradeTerm = computed(() => String(formData.value?.tradeTerm || '').toUpperCase() === 'EXW')
+// 运输方式行是否占用了条件槽位（到达港口/杂费二选一，互斥），决定支付方式与币种宽度
+const hasTermExtraCol = computed(() => isArrivalPortRequired.value || isExwTradeTerm.value)
 
 // 过滤函数（纯 UI，本地定义）
 const filterProductOption = (input: string, option: any) => {

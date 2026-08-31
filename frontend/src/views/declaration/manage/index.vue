@@ -118,7 +118,7 @@
 
               <!-- 待初审状态: 初审按钮 -->
               <template v-if="record.status === 1">
-                <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'deptAudit')" v-permission="['business:declaration:audit:initial']">
+                <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any)" v-permission="['business:declaration:audit:initial']">
                   <template #icon><CheckCircleOutlined /></template>
                   初审
                 </a-button>
@@ -734,7 +734,6 @@ import { h } from 'vue'
 
 import { useRoute } from 'vue-router'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
-import { getAvailableFlowTemplates } from '@/api/business/declaration'
 import { getEnabledCurrencies } from '@/api/system/currency'
 import { getBatchPendingExemptions } from '@/api/business/materialItem'
 
@@ -1125,32 +1124,7 @@ const handleTableChange = (pag: any) => {
 
 const handleAdd = async () => {
   try {
-    const [flowRes, transportRes] = await Promise.all([
-      getAvailableFlowTemplates('declaration'),
-      getEnabledTransportModes()
-    ])
-
-    let templates: any[] = []
-    if (flowRes.data?.code === 200) {
-      templates = (flowRes.data.data || []).filter((t: any) => t.status === 1)
-    }
-
-    if (templates.length === 0) {
-      message.warning('没有可用的流程模板，请联系管理员配置')
-      return
-    }
-
-    // 模板选择已不开放给用户：严格按当前页面 declarationType 同步匹配模板，
-    // 保证 template 与 declarationType 始终一致（集洛页→EXTERNAL 模板，内部页→SELF 模板）
-    const currentDt = (route.query.declarationType as string)
-      || (route.path.startsWith('/declaration-self') ? 'SELF'
-        : route.path.startsWith('/declaration-external') ? 'EXTERNAL' : 'EXTERNAL')
-    const matchedTemplates = templates.filter((t: any) => (t.declarationType || 'EXTERNAL') === currentDt)
-    if (matchedTemplates.length === 0) {
-      message.warning(`没有与当前申报类型（${currentDt}）匹配的流程模板，请联系管理员配置`)
-      return
-    }
-    const tpl = matchedTemplates.find((t: any) => t.isDefault === 1) || matchedTemplates[0]
+    const transportRes = await getEnabledTransportModes()
 
     // 运输方式：自动选择第一个（如果只有一个）
     let transport = ''
@@ -1159,15 +1133,16 @@ const handleAdd = async () => {
       if (modes.length === 1) transport = modes[0]
     }
 
+    // 模板由表单页按申报类型自动匹配默认值（规则与原列表页选择一致）；
+    // 申报类型优先沿用当前页面路由的 declarationType，否则由路由前缀推导
     const params = new URLSearchParams()
-    params.set('template', tpl.code)
-    // type/declarationType 均以当前页面类型为准，与模板保持同步，避免两者不一致
-    params.set('type', currentDt)
+    const currentDt = route.query.declarationType as string
+    if (currentDt && ['SELF', 'EXTERNAL'].includes(currentDt)) params.set('declarationType', currentDt)
     if (transport) params.set('transport', transport)
-    params.set('declarationType', currentDt)
-    router.push(`${declarationPrefix.value}/form-v2?${params.toString()}`)
+    const query = params.toString()
+    router.push(`${declarationPrefix.value}/form-v2${query ? '?' + query : ''}`)
   } catch {
-    message.warning('加载流程模板失败')
+    message.warning('加载运输方式失败')
   }
 }
 
@@ -1177,7 +1152,7 @@ const previewTemplateId = ref<number | null>(null)
 
 // 查看详情
 const handleView = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&readonly=true&status=${record.status}`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&readonly=true`)
 }
 
 // 提交操作 (从列表直接触发流程启动)
@@ -1185,7 +1160,7 @@ const handleStatusSubmit = async (record: DeclarationRecord) => {
   try {
     loading.value = true
     // 提交前预校验：拉取完整详情在本地校验完整性（与后端规则一致）
-    const detailRes = await getDeclarationDetail(record.id, record.status)
+    const detailRes = await getDeclarationDetail(record.id)
     const detail = detailRes.data?.data
     const check = validateDeclarationCompleteness(detail)
     if (!check.valid) {
@@ -1195,7 +1170,7 @@ const handleStatusSubmit = async (record: DeclarationRecord) => {
         content: `${check.message}。是否前往编辑页补全？`,
         okText: '去补全',
         cancelText: '取消',
-        onOk: () => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}`) }
+        onOk: () => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}`) }
       })
       return
     }
@@ -1220,7 +1195,7 @@ const handleEdit = (record: DeclarationRecord) => {
     message.warning('只有草稿状态的申报单可以编辑')
     return
   }
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}`)
 }
 
 // 付款操作（定金/尾款）- 跳转到水单提交模式
@@ -1236,11 +1211,9 @@ const handleEdit = (record: DeclarationRecord) => {
 //   router.push({ path: `${declarationPrefix.value}/form-v2`, query })
 // }
 
-// 审核申报单
-const handleAudit = (record: DeclarationRecord, taskKey?: string) => {
-  const query: Record<string, any> = { id: record.id, mode: 'audit' }
-  if (taskKey) query.taskKey = taskKey
-  router.push({ path: `${declarationPrefix.value}/form-v2`, query })
+// 审核申报单：跳转只带 id，入口模式由表单页按后端实时任务推断（兼容带 mode 的老链接）
+const handleAudit = (record: DeclarationRecord) => {
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}`)
 }
 
 // 财务补充 - 弹窗模式（有数据则编辑，无数据则新增）
@@ -1249,49 +1222,49 @@ const handleFinanceUpload = (record: DeclarationRecord) => {
   financeModalVisible.value = true
 }
 
-// 提交申报资料——跳转到主表单 mode=material
+// 提交申报资料——跳转到主表单（入口由后端任务推断）
 const handleMaterialSubmit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=material`)
 }
 
 // 资料审核（跳转到详情页审核）
 const handleMaterialAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=materialAudit`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=material`)
 }
 
-// 豁免审核（跳转到豁免审核模式）
+// 豁免审核（跳转到豁免审核模式，表单页按 exemptionId 反查自动进入）
 const handleExemptionAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?exemptionId=${record.pendingExemptionId}&mode=exemptionAudit`)
+  router.push(`${declarationPrefix.value}/form-v2?exemptionId=${record.pendingExemptionId}`)
 }
 
-// 提交业务发票——跳转到主表单 mode=invoiceUpload
+// 提交业务发票——跳转到主表单
 const handleGoSubmitInvoice = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceUpload&scrollTo=invoice`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=invoice`)
 }
 
 // 发票审核（跳转到详情页审核）
 const handleInvoiceAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceAudit&scrollTo=invoice`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=invoice`)
 }
 
 // 补充资料提交（跳转到详情页）
 const handleSupplementSubmit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=supplement&scrollTo=supplement`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=supplement`)
 }
 
 // 补充资料审核（跳转到详情页审核）
 const handleSupplementAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=supplementAudit`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=supplement`)
 }
 
 // 申请开票金额提交（跳转到详情页）
 const handleInvoiceAmountSubmit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceAmount`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=invoice-amount`)
 }
 
 // 开票金额审核（跳转到详情页审核）
 const handleInvoiceAmountAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceAmountAudit`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=invoice-amount`)
 }
 
 const canShowResumeFlow = (record: DeclarationRecord) => {
@@ -1467,7 +1440,7 @@ const handleDownload = async (record: DeclarationRecord) => {
   try {
     loading.value = true
     currentDeclaration.value = record
-    const response = await getDeclarationDetail(record.id, record.status)
+    const response = await getDeclarationDetail(record.id)
     if (response.data && response.data.code === 200) {
       currentAttachments.value = response.data.data.attachments || []
       
@@ -2048,7 +2021,7 @@ const handleReplaceAttachment = async () => {
       // 重新加载附件列表
       if (currentAttachments.value.length > 0) {
         const formId = currentAttachments.value[0].formId
-        const response = await getDeclarationDetail(formId, 8) // 假设已完成状态
+        const response = await getDeclarationDetail(formId)
         if (response.data && response.data.code === 200) {
           currentAttachments.value = response.data.data.attachments || []
         }
@@ -2194,7 +2167,7 @@ onMounted(() => {
     if (!isNaN(id)) {
       // 稍微延迟确保数据渲染，不过我们这是路由跳转，此时直接用 params 跳表单详情即可
       setTimeout(() => {
-        router.push(`${declarationPrefix.value}/form-v2?id=${id}&mode=audit`)
+        router.push(`${declarationPrefix.value}/form-v2?id=${id}`)
       }, 300)
     }
   }

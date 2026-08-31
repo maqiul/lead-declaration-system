@@ -1354,8 +1354,7 @@ public class DeclarationFormController {
     @Operation(summary = "获取申报单详情")
     @RequiresPermissions("business:declaration:view")
     public Result<DeclarationForm> getDeclaration(
-            @Parameter(description = "申报单ID") @PathVariable Long id,
-            @Parameter(description = "状态") @RequestParam(required = false) Integer status) {
+            @Parameter(description = "申报单ID") @PathVariable Long id) {
 
         DeclarationForm form = declarationFormService.getFullDeclarationForm(id);
 

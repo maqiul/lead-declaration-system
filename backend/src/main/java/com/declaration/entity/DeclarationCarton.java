@@ -37,6 +37,21 @@ public class DeclarationCarton {
     private Integer quantity;
 
     /**
+     * 单箱长度(cm)
+     */
+    private BigDecimal lengthCm;
+
+    /**
+     * 单箱宽度(cm)
+     */
+    private BigDecimal widthCm;
+
+    /**
+     * 单箱高度(cm)
+     */
+    private BigDecimal heightCm;
+
+    /**
      * 总体积(CBM)
      */
     private BigDecimal volume;

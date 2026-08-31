@@ -197,11 +197,13 @@
           </template>
 
           <!-- 资料补交操作区（页面置顶；状态与方法来自资料区第一个 MaterialManager 实例）；
-               只读查看与豁免审核入口不渲染：审核类入口由内部 computed 把关发起/提交按钮 -->
-          <template v-if="preMaterialManagerRef && route.query.readonly !== 'true' && !isExemptionAuditMode">
+               只读查看、豁免审核入口不渲染；带区块意图的入口（scrollTo，如开票金额提交）聚焦主流程也不渲染，
+               补交管理走列表页（发起/继续/取消）或补交草稿入口 -->
+          <template v-if="preMaterialManagerRef && route.query.readonly !== 'true' && !isExemptionAuditMode && !route.query.scrollTo">
             <a-divider type="vertical" />
             <a-tag v-if="preMaterialManagerRef.isDraftSupplement" color="blue">补交草稿</a-tag>
-            <a-tag v-else-if="preMaterialManagerRef.activeSupplement" color="orange">资料补交中</a-tag>
+            <!-- 已提交审核（status=0）：展示待审档，避免误读为仍在补交 -->
+            <a-tag v-else-if="preMaterialManagerRef.activeSupplement" color="orange">补交待审核</a-tag>
             <a-button
               v-if="preMaterialManagerRef.canSubmitSupplementAudit"
               v-permission="['business:declaration:supplement:initiate']"
@@ -212,7 +214,16 @@
               <template #icon><SendOutlined /></template>
               提交补交审核
             </a-button>
-            <a-button
+            <!-- 草稿补交期间可作废：与列表页「取消补交」入口对齐 -->
+            <!-- <a-button
+              v-if="preMaterialManagerRef.isDraftSupplement && preMaterialManagerRef.canSubmitSupplementAudit"
+              v-permission="['business:declaration:supplement:initiate']"
+              danger
+              @click="preMaterialManagerRef.handleCancelSupplement()"
+            >
+              取消补交
+            </a-button> -->
+            <!-- <a-button
               v-if="preMaterialManagerRef.canStartSupplement"
               v-permission="['business:declaration:supplement:initiate']"
               :loading="preMaterialManagerRef.supplementSubmitting"
@@ -220,7 +231,7 @@
             >
               <template #icon><PlusOutlined /></template>
               发起资料补交
-            </a-button>
+            </a-button> -->
             <!-- 补交历史：每一次补交了哪些文件的留档记录 -->
             <a-button
               v-if="formId"
@@ -482,6 +493,7 @@ import {
   submitDeclaration,
   auditDeclaration,
   getActiveTasks,
+  getBatchActiveTasks,
   auditReturnToDraft,
   getReturnAuditHistory,
   
@@ -584,7 +596,8 @@ const isInvoiceAmountMode = ref(route.query.mode === 'invoiceAmount') // 申请�
 const isInvoiceAmountAuditMode = ref(route.query.mode === 'invoiceAmountAudit') // 开票金额审核模式
 const isReadonly = ref(route.query.readonly === 'true' || isAudit.value)
 const formId = ref(route.query.id ? Number(route.query.id) : null)
-const formStatus = ref<number | null>(route.query.status ? Number(route.query.status) : null)
+// 不信任 URL 的 status 参数：初始为 null，数据加载后以后端实时状态覆盖，消除伪造 status 的首屏窗口期
+const formStatus = ref<number | null>(null)
 const submitting = ref(false)
 
 // 流程模板节点配置（控制区块显示）
@@ -838,6 +851,10 @@ const auditHistoryColumns = [
 
 // 活跃任务状态（用于任务驱动的 UI 判断）
 const activeTasks = ref<any[]>([])
+/** 当前用户可处理的任务 taskKey 集合（入口推断与审核 taskKey 兕底用，不再依赖 URL 参数） */
+const myTaskKeys = ref<Set<string>>(new Set())
+/** 推断出的待审核任务 taskKey（通用审核按钮提交时用，替代 URL 的 taskKey 参数） */
+const inferredAuditTaskKey = ref<string | null>(null)
 
 // 计量单位列表
 const measurementUnits = ref<MeasurementUnit[]>([])
@@ -908,8 +925,8 @@ const handleApprove = async () => {
       await auditReturnToDraft(formId.value, { approved: true, remark })
       message.success('退回审核已通过，单据已重置为草稿')
     } else {
-      // 普通业务审核通过
-      const taskKey = route.query.taskKey as string
+      // 普通业务审核通过：taskKey 优先 URL 显式参数（老链接兼容），其次用推断出的待审任务，都没有则由后端智能匹配
+      const taskKey = (route.query.taskKey as string) || inferredAuditTaskKey.value || undefined
       console.log('执行审核通过操作:', { formId: formId.value, taskKey, result: 1, remark })
       await auditDeclaration(formId.value, 1, remark, taskKey)
       message.success(`${getAuditActionText()}已通过`)
@@ -943,8 +960,8 @@ const handleReject = async () => {
       await auditReturnToDraft(formId.value, { approved: false, remark })
       message.success('退回审核已驳回，单据恢复原状态')
     } else {
-      // 普通业务审核驳回
-      const taskKey = route.query.taskKey as string
+      // 普通业务审核驳回：taskKey 兜底逻辑同审核通过
+      const taskKey = (route.query.taskKey as string) || inferredAuditTaskKey.value || undefined
       console.log('执行驳回操作:', { formId: formId.value, taskKey, result: 2, remark })
       await auditDeclaration(formId.value, 2, remark, taskKey)
       message.success(`${getAuditActionText()}已驳回`)
@@ -1336,6 +1353,7 @@ const invoiceStats = computed(() => {
 const canSubmitSupplement = computed(() => {
   if (formStatus.value !== 4) return false
   if (route.query.readonly === 'true') return false
+  if (supplementDraftInProgress.value) return false
   if (isSupplementAuditMode.value || isMaterialAuditMode.value || isMaterialSupplementAuditMode.value || isAudit.value) return false
   return true
 })
@@ -1344,6 +1362,7 @@ const canSubmitSupplement = computed(() => {
 const canAuditSupplement = computed(() => {
   if (formStatus.value !== 5) return false
   if (route.query.readonly === 'true') return false
+  if (supplementDraftInProgress.value) return false
   if (isMaterialMode.value || isMaterialSupplementAuditMode.value) return false
   return true
 })
@@ -1357,6 +1376,7 @@ const canSubmitInvoiceAmount = computed(() => {
   if (formData.declarationType === 'SELF') return false
   if (formStatus.value !== 6) return false
   if (route.query.readonly === 'true') return false
+  if (supplementDraftInProgress.value) return false
   if (isInvoiceAmountAuditMode.value || isInvoiceAuditMode.value || isInvoiceUploadMode.value) return false
   if (isMaterialAuditMode.value || isSupplementAuditMode.value || isMaterialSupplementAuditMode.value || isAudit.value) return false
   // 仅资料/补充/开票金额等业务入口，不因 URL 上残留的 mode 拦截
@@ -1369,6 +1389,7 @@ const canAuditInvoiceAmount = computed(() => {
   if (formData.declarationType === 'SELF') return false
   if (formStatus.value !== 7) return false
   if (route.query.readonly === 'true') return false
+  if (supplementDraftInProgress.value) return false
   if (isMaterialMode.value || isSupplementMode.value || isMaterialSupplementAuditMode.value) return false
   return true
 })
@@ -1414,6 +1435,7 @@ const canSubmitInvoice = computed(() => {
   if (!hasSection('invoice')) return false
   if (formStatus.value !== 8) return false
   if (route.query.readonly === 'true') return false
+  if (supplementDraftInProgress.value) return false
   if (isInvoiceAuditMode.value || isMaterialAuditMode.value || isSupplementAuditMode.value || isMaterialSupplementAuditMode.value || isAudit.value) return false
   return true
 })
@@ -1423,6 +1445,7 @@ const canAuditInvoice = computed(() => {
   if (!hasSection('invoice')) return false
   if (formStatus.value !== 9) return false
   if (route.query.readonly === 'true') return false
+  if (supplementDraftInProgress.value) return false
   if (isMaterialMode.value || isSupplementMode.value || isMaterialSupplementAuditMode.value) return false
   return true
 })
@@ -1696,9 +1719,10 @@ const beforeMaterialUpload = async (file: File, record: MaterialItem, stage?: st
 /** 将新建草稿的 id 同步到 URL（延迟同步场景专用，已同步过则跳过） */
 const syncDraftUrl = () => {
   if (formId.value && String(route.query.id ?? '') !== String(formId.value)) {
+    // 只回填 id（刷新/分享需要）；status 不再写入 URL，表单页以后端实时状态为准
     router.replace({
       path: route.path,
-      query: { ...route.query, id: formId.value, status: 0 }
+      query: { ...route.query, id: formId.value }
     })
   }
 }
@@ -2363,6 +2387,7 @@ const formData = reactive({
   invoiceNo: '',
   transportMode: undefined as string | undefined,
   tradeTerm: undefined as string | undefined,
+  miscFee: undefined as number | undefined,
   arrivalPort: '',
   paymentMethod: undefined as string | undefined,
   departureCity: '',
@@ -2941,9 +2966,13 @@ const productColumns = [
 
 // 箱子表格列配置
 const cartonColumns = [
-  { title: '箱号', dataIndex: 'cartonNo', key: 'cartonNo', width: 120 },
+  { title: '箱号', dataIndex: 'cartonNo', key: 'cartonNo', width: 160 },
   { title: '类型', dataIndex: 'typeChinese', key: 'typeChinese', width: 100 },
   { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 100 },
+  { title: '长(cm)', dataIndex: 'lengthCm', key: 'lengthCm', width: 90 },
+  { title: '宽(cm)', dataIndex: 'widthCm', key: 'widthCm', width: 90 },
+  { title: '高(cm)', dataIndex: 'heightCm', key: 'heightCm', width: 90 },
+  { title: '单箱体积(CBM)', key: 'unitVolume', width: 120 },
   { title: '总体积(CBM)', dataIndex: 'volume', key: 'volume', width: 150 },
   { title: '产品选择(数量/毛重/净重)', key: 'selectedProducts', width: 500 },
   { title: '操作', key: 'action', width: 80 }
@@ -2966,10 +2995,11 @@ const totals = computed(() => {
     totalAmount += parseFloat(item.amount) || 0
   })
   
-  // 箱子总体积直接累加（因为输入的就是总体积）
+  // 箱子总体积直接累加（体积由单箱长宽高×数量自动计算，或手动填写）；全局体积保留4位小数
   cartonList.value.forEach(carton => {
     totalVolume += (carton.volume || 0)
   })
+  totalVolume = Math.round(totalVolume * 10000) / 10000
   
   return {
     totalQuantity,
@@ -3196,11 +3226,16 @@ const addCarton = () => {
     maxId = Math.max(...cartonList.value.map(c => c.id))
   }
   const newId = maxId + 1
+  // 箱号占位默认值：首箱即正确格式；非首箱由 BasicInfoSection 的增删监听立即按
+  // “类型英文前缀+连续区间”全表重排覆盖
   
   cartonList.value.push({
     id: newId,
-    cartonNo: `CTN${String(newId).padStart(3, '0')}`,
+    cartonNo: 'CARTONS1',
     quantity: 1,
+    lengthCm: null,
+    widthCm: null,
+    heightCm: null,
     volume: 0,
     typeChinese: '纸箱', // 默认类型
     typeEnglish: 'CARTONS', // 默认类型
@@ -3292,53 +3327,62 @@ const basicSupplementActive = computed(() =>
   route.query.readonly !== 'true' && !isAuditEntry.value && !isExemptionAuditMode.value
   && !pendingExemption.value && !!preMaterialManagerRef.value?.supplementActive
 )
+/** 补交草稿入口（supplementDraft=1）：页头主流程提交/审核按钮隐藏，操作聚焦补交本身。
+ *  其它入口（如开票金额提交）主流程照常——补交是独立流程，残留的草稿补交单不应劫持主流程入口 */
+const supplementDraftInProgress = computed(() => isSupplementDraftEntry.value)
 
-// 自动刷新：每 3s 轮询最新状态；非编辑状态整页刷新，编辑状态仅状态变化时重载
-/** 编辑状态：用户正在页面录入/上传数据（基础信息编辑、资料/补交/发票上传等）；
- *  其余状态（只读查看、审核入口、非可编辑状态等）均视为非编辑，需 3s 整页刷新 */
-const isEditingState = computed(() => {
-  // 交互上传类入口：用户随时可能在上传文件，整页刷新会打断操作
-  if (isSupplementDraftEntry.value || isMaterialMode.value || isInvoiceUploadMode.value
-    || isPaymentMode.value || isInvoiceAmountMode.value || isSupplementMode.value) return true
-  // 基础信息可编辑：草稿/待资料提交且未被置为只读
-  const s = Number(formStatus.value ?? -1)
-  return !isReadonly.value && (s === 0 || s === 2)
-})
+// 自动刷新：每 5s 静默探测最新状态/任务，仅在确有变化时整页重载
 let autoRefreshTimer: number | null = null
 let autoRefreshBusy = false
+/** 单次轮询体：静默探测最新状态/任务，仅在确有变化时才整页刷新，避免频繁重载打扰用户 */
+const runAutoRefreshTick = async () => {
+  if (!formId.value || submitting.value || autoRefreshBusy) return
+  autoRefreshBusy = true
+  try {
+    const res = await getDeclarationDetail(formId.value)
+    const latest = res.data?.data
+    if (!latest) return
+    const latestStatus = Number(latest.status ?? 0)
+    if (latestStatus !== Number(formStatus.value ?? 0)) {
+      // 状态变化：整体重载（重算只读态、审批按钮、环节展示，含资料区实例）
+      await stayAndRefresh()
+    } else if (latestStatus >= 1 && latestStatus <= 9) {
+      // 状态未变：静默比对活跃任务，仅任务清单变化时才重载（审批人变化/环节推进）
+      const taskRes = await getActiveTasks(formId.value)
+      const newTasks = taskRes.data?.data || []
+      const sig = (arr: any[]) => arr.map((t: any) => t.taskKey).sort().join(',')
+      if (sig(newTasks) !== sig(activeTasks.value)) {
+        activeTasks.value = newTasks
+        await stayAndRefresh()
+      }
+    }
+    // 其余情况（草稿/已完成/退回等状态未变）：本轮静默跳过，不做任何重载
+  } catch (e) {
+    // 轮询失败静默忽略，不打扰用户
+  } finally {
+    autoRefreshBusy = false
+  }
+}
+/** 页面从后台回到前台：立即补一次刷新（后台期间轮询被跳过，避免积压后连弹提示） */
+const handleVisibilityChange = () => {
+  if (!document.hidden) runAutoRefreshTick()
+}
 const startAutoRefresh = () => {
   if (autoRefreshTimer) clearInterval(autoRefreshTimer)
-  autoRefreshTimer = window.setInterval(async () => {
-    if (!formId.value || submitting.value || autoRefreshBusy) return
-    autoRefreshBusy = true
-    try {
-      const res = await getDeclarationDetail(formId.value)
-      const latest = res.data?.data
-      if (!latest) return
-      const latestStatus = Number(latest.status ?? 0)
-      if (!isEditingState.value) {
-        // 非编辑状态：每 3s 整体刷新，保证补交/豁免状态、按钮显隐、环节进度及时更新
-        await stayAndRefresh()
-      } else if (latestStatus !== Number(formStatus.value ?? 0)) {
-        // 编辑状态：仅状态变化时整体重载（重算只读态、审批按钮、环节展示，含资料区实例）
-        await stayAndRefresh()
-      } else if (latestStatus >= 1 && latestStatus <= 9) {
-        // 状态未变：静默同步活跃任务，保证审批按钮显隐及时
-        const taskRes = await getActiveTasks(formId.value)
-        activeTasks.value = taskRes.data?.data || []
-      }
-    } catch (e) {
-      // 轮询失败静默忽略，不打扰用户
-    } finally {
-      autoRefreshBusy = false
-    }
-  }, 3000)
+  autoRefreshTimer = window.setInterval(() => {
+    // 页面在后台（切走标签页/锁屏）时跳过轮询：浏览器会节流定时器，
+    // 回前台后积压补跳会连续发起请求，失败时堆一堆重复提示
+    if (document.hidden) return
+    runAutoRefreshTick()
+  }, 5000)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 }
 const stopAutoRefresh = () => {
   if (autoRefreshTimer) {
     clearInterval(autoRefreshTimer)
     autoRefreshTimer = null
   }
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 }
 
 // 保存草稿
@@ -3462,7 +3506,7 @@ const handleSaveDraft = async (options?: { deferUrlSync?: boolean }) => {
         if (!deferUrlSync) {
           router.replace({
             path: route.path,
-            query: { ...route.query, id: newDraftId.formId, status: 0 }
+            query: { ...route.query, id: newDraftId.formId }
           })
         }
       }
@@ -3703,7 +3747,7 @@ const handleSubmit = async () => {
       formId.value = finalId
       router.replace({
         path: route.path,
-        query: { ...route.query, id: String(finalId), status: 1 }
+        query: { ...route.query, id: String(finalId) }
       })
     } else {
       stayAndRefresh()
@@ -3716,6 +3760,68 @@ const handleSubmit = async () => {
   }
 }
 
+/** 入口校正：URL 的 mode 入口与后端实时数据比对，无效入口降级只读查看，防止伪造 URL 参数渲染审核/提交入口。
+ *  豁免审核/补交审核入口在各自反查处已按记录状态校正，此处仅处理主流程任务绑定类入口 */
+const sanitizeEntryByBackend = () => {
+  const taskKeys = new Set(activeTasks.value.map((t: any) => t.taskKey).filter(Boolean))
+  const downgrade = (flag: { value: boolean }, reason: string) => {
+    flag.value = false
+    isReadonly.value = true
+    console.warn('入口校正：' + reason + '，已降级为只读查看')
+  }
+  // 初审审核入口：仅在待初审(1)/提货单待审(7)/退回待审(11)状态有效（提货单审核复用 audit 入口）
+  if (isAudit.value && formStatus.value !== 1 && formStatus.value !== 7 && formStatus.value !== 11) {
+    downgrade(isAudit, 'mode=audit 但当前状态=' + formStatus.value)
+  }
+  // 主流程任务绑定入口：对应 Flowable 任务存在才有效
+  const taskBoundEntries: Array<[{ value: boolean }, string, string]> = [
+    [isMaterialAuditMode, 'materialAudit', '资料审核'],
+    [isSupplementAuditMode, 'supplementAudit', '补充资料审核'],
+    [isInvoiceAuditMode, 'invoiceAudit', '发票审核'],
+    [isInvoiceAmountAuditMode, 'invoiceAmountAudit', '开票金额审核'],
+    [isSupplementMode, 'supplementSubmit', '补充资料提交'],
+    [isInvoiceUploadMode, 'invoiceSubmit', '发票上传'],
+    [isInvoiceAmountMode, 'invoiceAmountSubmit', '开票金额提交'],
+  ]
+  for (const [flag, taskKey, label] of taskBoundEntries) {
+    if (flag.value && !taskKeys.has(taskKey)) {
+      downgrade(flag, label + '入口但无 ' + taskKey + ' 任务')
+    }
+  }
+  // 资料提交入口：补交草稿入口例外（补交不占用主流程任务）
+  if (isMaterialMode.value && !isSupplementDraftEntry.value && !taskKeys.has('materialSubmit')) {
+    downgrade(isMaterialMode, '资料入口但无 materialSubmit 任务')
+  }
+}
+
+/** 入口推断：URL 未显式指定 mode 时，按当前用户可处理的任务推断操作入口（URL 只带 id 的新跳转形态）。
+ *  推断命中则置对应 mode；无任务命中则不干预，保持按状态的可编辑/只读语义 */
+const inferEntryFromBackend = () => {
+  const keys = myTaskKeys.value
+  if (keys.size === 0) return
+  // 优先级与后端审核智能匹配一致：审核类优先，其次提交类
+  const inferMap: Array<[string, { value: boolean }]> = [
+    ['deptAudit', isAudit],
+    ['materialAudit', isMaterialAuditMode],
+    ['supplementAudit', isSupplementAuditMode],
+    ['invoiceAudit', isInvoiceAuditMode],
+    ['invoiceAmountAudit', isInvoiceAmountAuditMode],
+    ['materialSubmit', isMaterialMode],
+    ['supplementSubmit', isSupplementMode],
+    ['invoiceSubmit', isInvoiceUploadMode],
+    ['invoiceAmountSubmit', isInvoiceAmountMode],
+  ]
+  for (const [taskKey, flag] of inferMap) {
+    if (keys.has(taskKey)) {
+      flag.value = true
+      // 审核类任务记录 taskKey，供通用审核按钮提交时使用
+      if (taskKey.endsWith('Audit')) inferredAuditTaskKey.value = taskKey
+      console.log('入口推断：当前用户持有任务 ' + taskKey)
+      return
+    }
+  }
+}
+
 // 加载数据
 const loadData = async () => {
   // 豁免审核模式：通过 exemptionId 反查 formId
@@ -3725,6 +3831,14 @@ const loadData = async () => {
       if (exDetail.data?.code === 200 && exDetail.data.data) {
         formId.value = exDetail.data.data.formId
         formStatus.value = 2 // 豁免审核时主流程状态必然是2
+        // 入口校正：仅豁免记录待审核（status=0）时保留豁免审核入口，否则降级只读查看
+        // （新跳转只带 exemptionId 不带 mode，此处主动置位审核模式）
+        if (exDetail.data.data.status !== 0) {
+          isExemptionAuditMode.value = false
+          isReadonly.value = true
+        } else {
+          isExemptionAuditMode.value = true
+        }
       }
     } catch (e) {
       console.error('加载豁免记录失败', e)
@@ -3734,9 +3848,17 @@ const loadData = async () => {
   // 资料补交审核模式：通过 supplementId 反查 formId（补交不阻塞主流程，状态以申报单实际状态为准）
   if (!formId.value && route.query.supplementId) {
     try {
-      const supRes = await getSupplementIncrements(route.query.supplementId as string)
+            const supRes = await getSupplementIncrements(route.query.supplementId as string)
       if (supRes.data?.code === 200 && supRes.data.data?.supplement) {
         formId.value = Number(supRes.data.data.supplement.formId)
+        // 入口校正：仅补交单待审核（status=0）时保留补交审核入口，否则降级只读查看
+        // （新跳转只带 supplementId 不带 mode，此处主动置位审核模式）
+        if (supRes.data.data.supplement.status !== 0) {
+          isMaterialSupplementAuditMode.value = false
+          isReadonly.value = true
+        } else {
+          isMaterialSupplementAuditMode.value = true
+        }
       }
     } catch (e) {
       console.error('加载资料补交记录失败', e)
@@ -3756,7 +3878,7 @@ const loadData = async () => {
   
   if (formId.value) {
     try {
-      const response = await getDeclarationDetail(formId.value, formStatus.value ?? undefined)
+      const response = await getDeclarationDetail(formId.value)
       console.log('=== 申报单详情 API 响应 ===', response)
       console.log('response.data:', response.data)
       
@@ -3784,6 +3906,24 @@ const loadData = async () => {
           }
         } else {
           activeTasks.value = []
+        }
+
+        // 查询当前用户可处理的任务（入口推断/审核 taskKey 用）
+        try {
+          const myRes = await getBatchActiveTasks(String(formId.value))
+          const myPayload = myRes.data?.data
+          myTaskKeys.value = new Set<string>(((myPayload?.myTasks ?? {}) as Record<string, string[]>)[String(formId.value)] || [])
+        } catch (e) {
+          console.warn('获取用户可处理任务失败', e)
+          myTaskKeys.value = new Set()
+        }
+
+        // 入口处理：URL 显式指定 mode 时校正合法性；否则按用户任务推断入口（新跳转只带 id）
+        if (route.query.mode) {
+          sanitizeEntryByBackend()
+        } else if (route.query.readonly !== 'true' && !route.query.supplementDraft
+          && !route.query.autoSubmit && !route.query.exemptionId && !route.query.supplementId) {
+          inferEntryFromBackend()
         }
         
         // 只读状态判断：
@@ -3827,6 +3967,7 @@ const loadData = async () => {
         formData.invoiceNo = detailData.invoiceNo || ''
         formData.transportMode = detailData.transportMode
         formData.tradeTerm = detailData.tradeTerm || undefined
+        formData.miscFee = detailData.miscFee != null ? Number(detailData.miscFee) : undefined
         formData.arrivalPort = detailData.arrivalPort || ''
         formData.paymentMethod = detailData.paymentMethod
         formData.departureCity = detailData.departureCity || 'SHANGHAI, CHINA'
@@ -4179,38 +4320,47 @@ provideFormState({
 
 onMounted(async () => {
   loadMaterialStages()
-  // 新申报单时：优先使用 URL 中的 template 参数，回退到 type/templateType 参数，最后默认 EXTERNAL
+  // 新申报单初始化：申报类型与模板均可推导，新建 URL 可只带运输方式（甚至不带参数）
   if (!formId.value) {
     const templateFromQuery = route.query.template as string
     // 兼容两种传参写法：type（列表页标准）与 templateType（历史/手工 URL）
     const typeFromQuery = (route.query.type || route.query.templateType) as string
     const transportFromQuery = route.query.transport as string
-    // 优先使用页面上下文的 declarationType（来自申报列表页），回退到模板的 type
+    // 申报类型解析：declarationType > type/templateType（老链接兼容）> 路由前缀推导
+    // （declaration-self 路由即 SELF 申报，declaration-external 即 EXTERNAL）
     const dtFromQuery = route.query.declarationType as string
     const resolvedType = (dtFromQuery && ['SELF', 'EXTERNAL'].includes(dtFromQuery))
       ? dtFromQuery
       : (typeFromQuery && ['SELF', 'EXTERNAL'].includes(typeFromQuery) ? typeFromQuery : null)
-    if (resolvedType) {
-      formData.declarationType = resolvedType
-    }
-    if (templateFromQuery) {
-      // 模板一致性纠偏：URL 模板与申报类型不一致时（如集洛单误带内部模板），
-      // 自动换选与申报类型匹配的模板，避免提交时被模板配置带偏
-      let effectiveTemplate = templateFromQuery
-      try {
-        const tplRes = await getAvailableFlowTemplates('declaration')
-        if (tplRes.data?.code === 200) {
-          const tpls = (tplRes.data.data || []).filter((t: any) => t.status === 1)
-          const bound = tpls.find((t: any) => t.code === templateFromQuery)
+    formData.declarationType = resolvedType ?? (route.path.startsWith('/declaration-self') ? 'SELF' : 'EXTERNAL')
+    // 模板解析：URL 显式指定时校验与申报类型一致（不一致自动纠偏）；
+    // 未指定时按申报类型自动匹配默认模板（与列表页新建选择规则一致）
+    let effectiveTemplate = templateFromQuery || ''
+    try {
+      const tplRes = await getAvailableFlowTemplates('declaration')
+      if (tplRes.data?.code === 200) {
+        const tpls = (tplRes.data.data || []).filter((t: any) => t.status === 1)
+        if (effectiveTemplate) {
+          const bound = tpls.find((t: any) => t.code === effectiveTemplate)
           if (bound && bound.declarationType && bound.declarationType !== formData.declarationType) {
+            // 模板一致性纠偏：URL 模板与申报类型不一致时（如集洛单误带内部模板），自动换选匹配模板
             const matched = tpls.filter((t: any) => (t.declarationType || 'EXTERNAL') === formData.declarationType)
             const swap = matched.find((t: any) => t.isDefault === 1) || matched[0]
             if (swap) effectiveTemplate = swap.code
           }
+        } else {
+          const matched = tpls.filter((t: any) => (t.declarationType || 'EXTERNAL') === formData.declarationType)
+          if (matched.length > 0) {
+            effectiveTemplate = (matched.find((t: any) => t.isDefault === 1) || matched[0]).code
+          } else {
+            message.warning(`没有与当前申报类型（${formData.declarationType}）匹配的流程模板，请联系管理员配置`)
+          }
         }
-      } catch {
-        // 校验失败保持 URL 模板，提交时后端会按申报类型兼容纠偏
       }
+    } catch {
+      // 校验失败保持 URL 模板，提交时后端会按申报类型兼容纠偏
+    }
+    if (effectiveTemplate) {
       formData.templateCode = effectiveTemplate
       // 根据模板配置加载区块显示
       loadTemplateSections(effectiveTemplate)

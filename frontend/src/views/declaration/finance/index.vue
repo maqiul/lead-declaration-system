@@ -193,7 +193,7 @@ const handleTableChange = (pag: any) => {
 }
 
 const handleViewDeclaration = (formId: number) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${formId}&mode=view`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${formId}&readonly=true`)
 }
 
 // ========== 选择申报单 ==========

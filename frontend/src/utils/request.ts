@@ -2,6 +2,18 @@ import axios, { AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { message } from 'ant-design-vue'
 import { getToken } from '@/utils/auth'
 
+// 错误提示去重：轮询/批量请求在会话失效、后端重启等场景会连续失败，
+// 短时间内相同内容的错误提示只弹一次，避免页面堆一堆重复通知
+let lastErrorMsg = ''
+let lastErrorTime = 0
+const showErrorOnce = (msg: string) => {
+  const now = Date.now()
+  if (msg === lastErrorMsg && now - lastErrorTime < 3000) return
+  lastErrorMsg = msg
+  lastErrorTime = now
+  message.error(msg)
+}
+
 // 创建axios实例
 const service = axios.create({
   baseURL: '/api',
@@ -30,7 +42,7 @@ service.interceptors.response.use(
     
     // 如果自定义代码不是200，则将其判断为错误
     if (res.code !== 200) {
-      message.error(res.message || 'Error')
+      showErrorOnce(res.message || 'Error')
       
       // 401: 未登录
       if (res.code === 401) {
@@ -44,9 +56,9 @@ service.interceptors.response.use(
     }
   },
   (error) => {
-    // 优先使用后端返回的业务错误信息
+    // 优先使用后端返回的业务错误信息（同样走去重）
     const backendMsg = error.response?.data?.message
-    message.error(backendMsg || error.message || '网络错误')
+    showErrorOnce(backendMsg || error.message || '网络错误')
     return Promise.reject(error)
   }
 )

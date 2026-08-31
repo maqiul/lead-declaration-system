@@ -74,6 +74,11 @@ public class DeclarationForm {
     private String tradeTerm;
 
     /**
+     * 杂费(EXW贸易方式时录入)
+     */
+    private BigDecimal miscFee;
+
+    /**
      * 到达港口(C组/D组贸易方式时必填)
      */
     private String arrivalPort;

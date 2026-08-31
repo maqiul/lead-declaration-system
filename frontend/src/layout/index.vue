@@ -21,6 +21,9 @@
         </div>
       </div>
       
+      <!-- 菜单滚动区：logo 固定置顶，菜单超长时内部滚动。
+           注意：必须让菜单 ul 自身作为滚动容器（antd 内联子菜单展开动画依赖此结构），
+           外包 wrapper 层会导致子菜单展开测量失效被压成 0px -->
       <a-menu
         v-model:selected-keys="selectedKeys"
         :open-keys="openKeys"
@@ -261,6 +264,12 @@ const selectedKeys = ref<string[]>(['dashboard'])
 const openKeys = ref<string[]>([])
 const menuData = ref<any[]>([])
 const loading = ref(false)
+const menuEl = ref<HTMLElement | null>(null)
+
+onMounted(() => {
+  // 菜单 ul 是 a-menu 的根元素，拿到它用于超长时滚动定位选中项
+  menuEl.value = document.querySelector('.modern-menu') as HTMLElement | null
+})
 
 // 面包屑
 const breadcrumbItems = computed(() => {
@@ -511,6 +520,11 @@ watch(() => route.fullPath, (path) => {
       openKeys.value = [parentPath]
     }
   }
+  // 菜单超长时滚动到选中项可见
+  nextTick(() => {
+    const el = menuEl.value?.querySelector('.ant-menu-item-selected') as HTMLElement | null
+    el?.scrollIntoView({ block: 'nearest' })
+  })
 }, { immediate: true })
 
 // 加载系统配置
@@ -872,9 +886,18 @@ onMounted(() => {
   background: #FFFFFF !important;
   box-shadow: 1px 0 0 #E2E8F0;
   border-right: 1px solid #E2E8F0;
+  overflow: hidden;
+}
+
+/* antd 会在 sider 内包一层 .ant-layout-sider-children（普通块级元素），
+   sider 上的 flex/overflow 传不到菜单。把包裹层变成纵向 flex 容器，
+   菜单作为 flex 项占满剩余高度并内部滚动。
+   注意：不能用 position:absolute 钉菜单——antd v4 内联子菜单展开测量依赖
+   父级 flex 布局，脱离流后子菜单会被压成 0px */
+:deep(.ant-layout-sider-children) {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  height: 100%;
 }
 
 /* 品牌区域 */
@@ -1215,19 +1238,20 @@ onMounted(() => {
   letter-spacing: 0.3px;
 }
 
-/* 菜单样式 */
+/* 菜单样式：作为 .ant-layout-sider-children 的 flex 项占满剩余高度并内部滚动（logo 固定置顶） */
 :deep(.modern-menu) {
-  background: transparent !important;
-  border: none !important;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   padding-bottom: 16px;
-  min-height: 0;
+  background: transparent !important;
+  border: none !important;
 }
 
 :deep(.modern-menu::-webkit-scrollbar) {
-  width: 4px;
+  width: 6px;
 }
 
 :deep(.modern-menu::-webkit-scrollbar-track) {
@@ -1235,12 +1259,12 @@ onMounted(() => {
 }
 
 :deep(.modern-menu::-webkit-scrollbar-thumb) {
-  background: rgba(0, 0, 0, 0.12);
-  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
 }
 
 :deep(.modern-menu::-webkit-scrollbar-thumb:hover) {
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.3);
 }
 
 :deep(.modern-menu .ant-menu-item) {

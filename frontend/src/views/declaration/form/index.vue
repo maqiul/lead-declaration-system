@@ -611,7 +611,7 @@
             <a-col :span="5">
               <div class="total-item">
                 <span class="total-label">总体积(CBM):</span>
-                <span class="total-value">{{ totals.totalVolume.toFixed(3) }}</span>
+                <span class="total-value">{{ totals.totalVolume.toFixed(4) }}</span>
               </div>
             </a-col>
             <a-col :span="5">
@@ -769,15 +769,17 @@
             </template>
             
             <template v-else-if="column.key === 'volume'">
+              <!-- 体积统一 4 位小数（与 DB decimal(12,4) 对齐） -->
               <a-input-number 
                 v-if="!isFormReadonly"
                 v-model:value="record.volume" 
                 :min="0"
-                :step="0.001"
+                :step="0.0001"
+                :precision="4"
                 size="small"
                 style="width: 100%"
               />
-              <span v-else class="value-display">{{ record.volume }} <span style="font-size: 12px; color: #999;">CBM</span></span>
+              <span v-else class="value-display">{{ Number(record.volume || 0).toFixed(4) }} <span style="font-size: 12px; color: #999;">CBM</span></span>
             </template>
             
             <template v-else-if="column.key === 'selectedProducts'">
@@ -3635,10 +3637,11 @@ const totals = computed(() => {
     totalAmount += parseFloat(item.amount) || 0
   })
   
-  // 箱子总体积直接累加（因为输入的就是总体积）
+  // 箱子总体积直接累加（因为输入的就是总体积）；全局体积保留4位小数
   cartonList.value.forEach(carton => {
     totalVolume += (carton.volume || 0)
   })
+  totalVolume = Math.round(totalVolume * 10000) / 10000
   
   return {
     totalQuantity,
@@ -4301,7 +4304,7 @@ const loadData = async () => {
   
   if (formId.value) {
     try {
-      const response = await getDeclarationDetail(formId.value, formStatus.value ?? undefined)
+      const response = await getDeclarationDetail(formId.value)
       console.log('=== 申报单详情 API 响应 ===', response)
       console.log('response.data:', response.data)
       

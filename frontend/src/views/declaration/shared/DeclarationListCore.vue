@@ -111,8 +111,9 @@
             <a-tag v-if="record.pendingSupplementId && record.pendingSupplementStatus === -1" color="blue" style="margin-top: 2px;">
               补交草稿
             </a-tag>
+            <!-- 草稿已提交审核（status=0）：明确展示待审档，避免误读为仍在补交 -->
             <a-tag v-else-if="record.pendingSupplementId" color="orange" style="margin-top: 2px;">
-              资料补交中
+              补交待审核
             </a-tag>
             <a-tag v-if="record.exemptionStatus === 0" color="blue" style="margin-top: 2px;">
               豁免审核中
@@ -137,7 +138,7 @@
 
               <!-- 待初审状态: 初审按钮 -->
               <template v-if="!onlyPendingSupplement && hasMyTaskForStatus(record, 1, 'deptAudit')">
-                <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any, 'deptAudit')">
+                <a-button type="link" size="small" style="color: #faad14;" @click="handleAudit(record as any)">
                   <template #icon><CheckCircleOutlined /></template>
                   初审
                 </a-button>
@@ -532,7 +533,6 @@ import { useRouter, useRoute } from 'vue-router'
 import { DownloadOutlined, EditOutlined, CheckCircleOutlined, DeleteOutlined, SendOutlined, UploadOutlined, FileTextOutlined, FileOutlined, PictureOutlined, FileUnknownOutlined, ReloadOutlined, MoneyCollectOutlined, DownOutlined, HistoryOutlined, SearchOutlined, CloseOutlined, AuditOutlined, UndoOutlined, EyeOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { checkPermission } from '@/directives/permission'
 import { getEnabledTransportModes } from '@/api/system/transportMode'
-import { getAvailableFlowTemplates } from '@/api/business/declaration'
 import type { Dayjs } from 'dayjs'
 import {
   getDeclarationList, deleteDeclaration as deleteDeclarationApi, getDeclarationDetail,
@@ -611,30 +611,7 @@ const pagination = reactive({ current: 1, pageSize: 10, total: 0, showSizeChange
 
 const handleAdd = async () => {
   try {
-    const [flowRes, transportRes] = await Promise.all([
-      getAvailableFlowTemplates('declaration'),
-      getEnabledTransportModes()
-    ])
-
-    let templates: any[] = []
-    if (flowRes.data?.code === 200) {
-      templates = (flowRes.data.data || []).filter((t: any) => t.status === 1)
-    }
-
-    if (templates.length === 0) {
-      message.warning('没有可用的流程模板，请联系管理员配置')
-      return
-    }
-
-    // 模板选择已不开放给用户：严格按当前页面 declarationType 同步匹配模板，
-    // 保证 template 与 declarationType 始终一致（集洛页→EXTERNAL 模板，内部页→SELF 模板）
-    const currentDt = currentDeclarationType.value
-    const matchedTemplates = templates.filter((t: any) => (t.declarationType || 'EXTERNAL') === currentDt)
-    if (matchedTemplates.length === 0) {
-      message.warning(`没有与当前申报类型（${currentDt}）匹配的流程模板，请联系管理员配置`)
-      return
-    }
-    const tpl = matchedTemplates.find((t: any) => t.isDefault === 1) || matchedTemplates[0]
+    const transportRes = await getEnabledTransportModes()
 
     // 运输方式：自动选择第一个（如果只有一个）
     let transport = ''
@@ -643,15 +620,14 @@ const handleAdd = async () => {
       if (modes.length === 1) transport = modes[0]
     }
 
+    // 申报类型由路由前缀推导、模板由表单页按类型自动匹配默认值（规则与原列表页选择一致），
+    // URL 只需携带运输方式预选
     const params = new URLSearchParams()
-    params.set('template', tpl.code)
-    // type/declarationType 均以当前页面类型为准，与模板保持同步，避免两者不一致
-    params.set('type', currentDt)
     if (transport) params.set('transport', transport)
-    params.set('declarationType', currentDt)
-    router.push(`${declarationPrefix.value}/form-v2?${params.toString()}`)
+    const query = params.toString()
+    router.push(`${declarationPrefix.value}/form-v2${query ? '?' + query : ''}`)
   } catch {
-    message.warning('加载流程模板失败')
+    message.warning('加载运输方式失败')
   }
 }
 
@@ -718,7 +694,7 @@ const resetColumns = () => {
 
 const columns = computed(() => [
   ...allColumns.filter(c => visibleColumnKeys.value.includes(c.key)),
-  { title: '操作', key: 'action', width: 240, fixed: 'right' as const }
+  { title: '操作', key: 'action', width: 400, fixed: 'right' as const }
 ])
 
 const scrollX = computed(() => columns.value.reduce((sum, c: any) => sum + (c.width || 100), 0))
@@ -878,9 +854,15 @@ const loadData = async () => {
 }
 
 let refreshTimer: number | null = null
+/** 页面从后台回到前台：补一次列表刷新（后台期间定时器被跳过） */
+const handleListVisibilityChange = () => {
+  if (!document.hidden) loadData()
+}
 const startAutoRefresh = () => {
   if (refreshTimer) clearInterval(refreshTimer)
   refreshTimer = window.setInterval(() => {
+    // 页面在后台（切走标签页/锁屏）时跳过刷新，避免回前台后积压补跳连续发请求堆提示
+    if (document.hidden) return
     // 查询状态 1-9 的申报单的活跃任务
     const processingIds = dataSource.value.filter((r: any) => r.status >= 1 && r.status <= 9 && r.status !== 11).map((r: any) => r.id)
     if (processingIds.length > 0) {
@@ -903,6 +885,7 @@ const startAutoRefresh = () => {
     // 同步刷新资料上传进度
     refreshMaterialProgress()
   }, 30000)
+  document.addEventListener('visibilitychange', handleListVisibilityChange)
 }
 
 /** 批量刷新在途补交单标记（pendingSupplementId），供首次加载与定时刷新复用 */
@@ -935,22 +918,23 @@ const refreshMaterialProgress = async () => {
     }
   } catch (e: any) { console.error('查询资料进度失败:', e) }
 }
-const stopAutoRefresh = () => { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null } }
+const stopAutoRefresh = () => { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }; document.removeEventListener('visibilitychange', handleListVisibilityChange) }
 
 const resetSearch = () => { searchForm.formNo = ''; searchForm.status = ''; searchForm.consignee = ''; searchForm.shipper = ''; searchForm.invoiceNo = ''; searchForm.dateRange = undefined; pagination.current = 1; loadData() }
 const handleTableChange = (pag: any) => { pagination.current = pag.current; pagination.pageSize = pag.pageSize; loadData() }
-const handleView = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&readonly=true&status=${record.status}`) }
+const handleView = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&readonly=true`) }
 const handleStatusSubmit = (record: DeclarationRecord) => {
   // 跳转到编辑页并自动触发提交：完整复用编辑页 handleSubmit 的校验与提交逻辑，避免两处维护
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&autoSubmit=1`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&autoSubmit=1`)
 }
-const handleEdit = (record: DeclarationRecord) => { if (record.status !== 0) { message.warning('只有草稿状态可编辑'); return }; router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}`) }
-const handleAudit = (record: DeclarationRecord, taskKey?: string) => { const q: any = { id: record.id, mode: 'audit' }; if (taskKey) q.taskKey = taskKey; router.push({ path: `${declarationPrefix.value}/form-v2`, query: q }) }
-const handleMaterialSubmit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&scrollTo=material`) }
-const handleMaterialAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=materialAudit&scrollTo=material`) }
-const handleExemptionAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?exemptionId=${record.pendingExemptionId}&mode=exemptionAudit`) }
+const handleEdit = (record: DeclarationRecord) => { if (record.status !== 0) { message.warning('只有草稿状态可编辑'); return }; router.push(`${declarationPrefix.value}/form-v2?id=${record.id}`) }
+// 跳转只带 id：入口模式由表单页按后端实时任务/状态推断（兼容带 mode 的老链接）
+const handleAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}`) }
+const handleMaterialSubmit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=material`) }
+const handleMaterialAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=material`) }
+const handleExemptionAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?exemptionId=${record.pendingExemptionId}`) }
 const handleGoMode = (record: DeclarationRecord, mode: string) => {
-  // 根据 mode 确定滚动位置
+  // 根据 mode 确定滚动位置（mode 不再随 URL 传递，仅供滚动映射使用）
   const scrollMap: Record<string, string> = {
     'supplement': 'supplement',
     'supplementAudit': 'supplement',
@@ -960,10 +944,10 @@ const handleGoMode = (record: DeclarationRecord, mode: string) => {
     'invoiceAudit': 'invoice'
   }
   const scrollTo = scrollMap[mode] || ''
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=${mode}${scrollTo ? '&scrollTo=' + scrollTo : ''}`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}${scrollTo ? '&scrollTo=' + scrollTo : ''}`)
 }
-const handleGoSubmitInvoice = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceUpload&scrollTo=invoice`) }
-const handleInvoiceAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=invoiceAudit&scrollTo=invoice`) }
+const handleGoSubmitInvoice = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=invoice`) }
+const handleInvoiceAudit = (record: DeclarationRecord) => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=invoice`) }
 
 // ==================== 资料补交（列表页发起/审核） ====================
 
@@ -973,7 +957,7 @@ const openSupplementStart = async (record: DeclarationRecord) => {
   try {
     const res = await startMaterialSupplement({ formId: record.id, reason: '' })
     if (res.data?.code === 200) {
-      router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&supplementDraft=1`)
+      router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&supplementDraft=1`)
     } else {
       message.error(res.data?.message || '发起补交失败')
     }
@@ -983,7 +967,7 @@ const openSupplementStart = async (record: DeclarationRecord) => {
 }
 /** 继续补交：草稿补交单重新进入补交上传模式（同样不滚动，保持页面顶部） */
 const handleContinueSupplement = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&mode=material&supplementDraft=1`)
+  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&supplementDraft=1`)
 }
 /** 取消补交：作废草稿补交单（同时清除草稿期上传的增量资料） */
 const handleCancelSupplement = (record: DeclarationRecord) => {
@@ -1011,7 +995,8 @@ const handleCancelSupplement = (record: DeclarationRecord) => {
 }
 /** 补交审核：进入详情页补交审核模式，审核卡片置顶展示，不再滚动到资料区 */
 const handleSupplementAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&status=${record.status}&supplementId=${record.pendingSupplementId}&mode=materialSupplementAudit`)
+  // 只带 supplementId：表单页反查补交单后自动进入补交审核模式（带 id 会跳过反查）
+  router.push(`${declarationPrefix.value}/form-v2?supplementId=${record.pendingSupplementId}`)
 }
 /** 更多菜单：无活跃任务时恢复流程（非迁移场景） */
 const canShowResumeFlow = (record: DeclarationRecord) => {
@@ -1112,7 +1097,7 @@ const submitRollbackAudit = async () => {
 }
 
 const handleDownload = async (record: DeclarationRecord) => {
-  try { loading.value = true; currentDeclaration.value = record; const r = await getDeclarationDetail(record.id, record.status)
+  try { loading.value = true; currentDeclaration.value = record; const r = await getDeclarationDetail(record.id)
     if (r.data?.code === 200) { currentAttachments.value = r.data.data.attachments || []
       try { currentContractsLoading.value = true; const cr = await getContractsByDeclaration(record.id); currentContracts.value = cr.data?.code === 200 ? cr.data.data || [] : [] } catch { currentContracts.value = [] } finally { currentContractsLoading.value = false }
       attachmentModalVisible.value = true } else message.error('获取附件列表失败')
@@ -1199,7 +1184,7 @@ const handleReplaceAttachment = async () => {
   if (!currentReplacingAttachment.value || !replaceFileList.value.length) { message.warning('请选择文件'); return }
   replaceLoading.value = true
   try { const fd = new FormData(); fd.append('file', replaceFileList.value[0]); const r = await fetch(`/api/v1/declarations/${currentReplacingAttachment.value.formId}/attachments/${currentReplacingAttachment.value.id}/replace`, { method: 'POST', body: fd }); const res = await r.json()
-    if (res.code === 200) { message.success('替换成功'); replaceModalVisible.value = false; if (currentAttachments.value.length) { const fId = currentAttachments.value[0].formId; const dr = await getDeclarationDetail(fId, 8); if (dr.data?.code === 200) currentAttachments.value = dr.data.data.attachments || [] } } else message.error('替换失败')
+    if (res.code === 200) { message.success('替换成功'); replaceModalVisible.value = false; if (currentAttachments.value.length) { const fId = currentAttachments.value[0].formId; const dr = await getDeclarationDetail(fId); if (dr.data?.code === 200) currentAttachments.value = dr.data.data.attachments || [] } } else message.error('替换失败')
   } catch { message.error('替换失败: 网络错误') } finally { replaceLoading.value = false }
 }
 
@@ -1232,7 +1217,7 @@ const viewReturnHistory = async (r: DeclarationRecord) => {
 
 onMounted(() => {
   loadData(); startAutoRefresh()
-  if (route.query.action === 'audit' && route.query.id) { const id = Number(route.query.id); if (!isNaN(id)) setTimeout(() => router.push(`${declarationPrefix.value}/form-v2?id=${id}&mode=audit`), 300) }
+  if (route.query.action === 'audit' && route.query.id) { const id = Number(route.query.id); if (!isNaN(id)) setTimeout(() => router.push(`${declarationPrefix.value}/form-v2?id=${id}`), 300) }
 })
 
 // keep-alive 缓存页：从表单提交/审核返回时自动刷新列表（跳过首次挂载，数据已由 onMounted 加载）
