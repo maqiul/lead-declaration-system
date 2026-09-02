@@ -115,11 +115,14 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         String filePath = Paths.get(formDir.getAbsolutePath(), fileName).toString();
         File targetFile = new File(filePath);
 
-        // 准备数据
+        // 准备数据：发票（CI）按产品汇总、一产品一行；装箱单（PL）按「箱子 × 产品」逐行
         Map<String, Object> fillData = prepareFillData(form);
+        List<ExportDataRequest.ProductInfo> invoiceProductList = createInvoiceProductListData(form);
         List<ExportDataRequest.ProductInfo> productList = createProductListData(form);
         Map<String, Object> packingData = preparePackingListData(form);
-        System.out.println("输出数据:" + productList.get(0).getContonEN());
+        if (!productList.isEmpty()) {
+            log.debug("[导出诊断] 装箱单首行箱型英文: {}", productList.get(0).getContonEN());
+        }
 
         // 计算装箱单的合并策略
         // temple.xlsx: 装箱单在Sheet 1（index=1），数据从第9行开始（0-indexed row=8）
@@ -135,7 +138,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                 WriteSheet invoiceSheet = FesodSheet.writerSheet(0).build();
                 FillConfig invoiceConfig = FillConfig.builder().forceNewRow(false).build();
                 writer.fill(fillData, invoiceSheet);
-                writer.fill(productList, invoiceConfig, invoiceSheet);
+                writer.fill(invoiceProductList, invoiceConfig, invoiceSheet);
 
                 // 第二个工作表：装箱单 (注册合并策略)
                 ExcelWriterSheetBuilder packingSheetBuilder = FesodSheet
@@ -439,6 +442,102 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         return map2;
     }
 
+    /**
+     * 英文计量单位（发票/装箱单 Quantity 列使用）：数量 &gt; 1 用复数，否则用单数；
+     * 未配置单位时回退 PCS，单数名缺失时回退复数名
+     */
+    private String resolveUnitEn(String unitCode, int quantity) {
+        MeasurementUnit measurementUnit = measurementUnitService.getByUnitCode(unitCode);
+        if (measurementUnit == null) {
+            return "PCS";
+        }
+        if (quantity > 1) {
+            return measurementUnit.getUnitNameEn();
+        }
+        return StrUtil.blankToDefault(measurementUnit.getUnitNameEnSingular(), measurementUnit.getUnitNameEn());
+    }
+
+    /**
+     * 金额按行数量分摊：优先 单价 × 数量，无单价时按数量占比分摊。
+     * 逐行分摊可能有尾差，合计以表单汇总字段为准
+     */
+    private String allocateAmount(com.declaration.entity.DeclarationProduct p, int rowQty) {
+        if (p.getUnitPrice() != null) {
+            return p.getUnitPrice().multiply(BigDecimal.valueOf(rowQty)).setScale(2, RoundingMode.HALF_UP).toPlainString();
+        }
+        if (p.getAmount() == null) {
+            return "0.00";
+        }
+        int totalQty = p.getQuantity() != null ? p.getQuantity() : 0;
+        if (totalQty <= 0) {
+            return p.getAmount().setScale(2, RoundingMode.HALF_UP).toPlainString();
+        }
+        return p.getAmount().multiply(BigDecimal.valueOf(rowQty))
+                .divide(BigDecimal.valueOf(totalQty), 2, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    /**
+     * 商业发票产品列表：一条产品一行，不按箱子展开。
+     * 发票模板（CI Sheet）只有 品名/数量/单位/单价/金额 列，没有箱号、箱数、体积；
+     * 旧实现复用按「箱子 × 产品」展开的装箱单列表，导致跨箱产品被拆成多行，
+     * 且每行金额都是产品整行金额，发票合计成倍放大
+     */
+    private List<ExportDataRequest.ProductInfo> createInvoiceProductListData(DeclarationForm form) {
+        List<ExportDataRequest.ProductInfo> productList = new ArrayList<>();
+        if (form.getProducts() == null || form.getProducts().isEmpty()) {
+            return productList;
+        }
+
+        List<com.declaration.entity.DeclarationProduct> sortedProducts = new ArrayList<>(form.getProducts());
+        sortedProducts.sort((a, b) -> {
+            Long aid = a.getId(), bid = b.getId();
+            if (aid == null && bid == null) return 0;
+            if (aid == null) return 1;
+            if (bid == null) return -1;
+            return aid.compareTo(bid);
+        });
+
+        for (com.declaration.entity.DeclarationProduct p : sortedProducts) {
+            int qty = p.getQuantity() != null ? p.getQuantity() : 0;
+            ExportDataRequest.ProductInfo info = new ExportDataRequest.ProductInfo();
+            info.setProductName(p.getProductEnglishName());
+            info.setHsCode(p.getHsCode());
+            info.setQuantity(qty);
+            info.setUnit(resolveUnitEn(p.getUnitCode(), qty));
+            info.setUnitPrice(p.getUnitPrice());
+            // 发票金额直接取产品整行金额（一产品一行，不存在重复）
+            info.setAmount(p.getAmount() != null ? p.getAmount().toString() : "0.00");
+            info.setGrossWeight(p.getGrossWeight());
+            info.setNetWeight(p.getNetWeight());
+            info.setVolume(p.getVolume());
+            info.setCurrency(form.getCurrency());
+            info.setCartons(p.getCartons());
+            info.setWgt("KGS");
+            info.setDeclarationElements(buildElementMaps(p));
+            productList.add(info);
+        }
+        return productList;
+    }
+
+    /** 申报要素转模板用的 name/value 列表（未配置时返回 null，保持原行为） */
+    private List<Map<String, Object>> buildElementMaps(com.declaration.entity.DeclarationProduct p) {
+        if (p.getElementValues() == null) {
+            return null;
+        }
+        List<Map<String, Object>> elements = new ArrayList<>();
+        p.getElementValues().forEach(ev -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("name", ev.getElementName());
+            map.put("value", ev.getElementValue());
+            elements.add(map);
+        });
+        return elements;
+    }
+
+    /**
+     * 装箱单产品列表：一行 = 一个「箱子 × 产品」组合（装箱单必须逐箱列示）。
+     * 发票 Sheet 请使用 {@link #createInvoiceProductListData}
+     */
     private List<ExportDataRequest.ProductInfo> createProductListData(DeclarationForm form) {
         List<ExportDataRequest.ProductInfo> productList = new ArrayList<>();
 
@@ -483,17 +582,6 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                     com.declaration.entity.DeclarationProduct p = productMap.get(productId);
                     if (p == null) continue;
 
-                    String unit = "PCS";
-                    String unitCode = p.getUnitCode();
-                    MeasurementUnit measurementUnit = measurementUnitService.getByUnitCode(unitCode);
-                    if(measurementUnit !=null){
-                        if(p.getQuantity()>1){
-                            unit = measurementUnit.getUnitNameEn();
-                        }else {
-                            unit = measurementUnit.getUnitNameEnSingular();
-                        }
-                    }
-
                     ExportDataRequest.ProductInfo info = new ExportDataRequest.ProductInfo();
                     info.setProductName(p.getProductEnglishName());
                     info.setHsCode(p.getHsCode());
@@ -502,15 +590,19 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                     Integer cartonQty = cartonProductQuantityMap.get(cpKey);
                     java.math.BigDecimal cartonGw = cartonProductGrossWeightMap.get(cpKey);
                     java.math.BigDecimal cartonNw = cartonProductNetWeightMap.get(cpKey);
-                    info.setQuantity(cartonQty != null ? cartonQty : p.getQuantity());
-                    info.setUnit(unit);
+                    int rowQty = cartonQty != null ? cartonQty : (p.getQuantity() != null ? p.getQuantity() : 0);
+                    info.setQuantity(rowQty);
+                    // 单位单复数跟随本行数量（旧实现固定按产品总量判断，拆箱后会出现“1 KILOS”）
+                    info.setUnit(resolveUnitEn(p.getUnitCode(), rowQty));
                     info.setUnitPrice(p.getUnitPrice());
-                    info.setAmount(p.getAmount() != null ? p.getAmount().toString() : "0.00");
+                    // 金额按本行数量分摊（当前装箱单模板不展示金额，避免整单金额逐行重复）
+                    info.setAmount(allocateAmount(p, rowQty));
                     info.setGrossWeight(cartonGw != null ? cartonGw : p.getGrossWeight());
                     info.setNetWeight(cartonNw != null ? cartonNw : p.getNetWeight());
-                    info.setVolume(p.getVolume());
+                    // PKGS / MEAS 列是“本箱”的箱数与体积（同箱多产品时这两列会被纵向合并）
+                    info.setVolume(carton.getVolume());
                     info.setCurrency(form.getCurrency());
-                    info.setCartons(p.getCartons());
+                    info.setCartons(carton.getQuantity());
                     info.setWgt("KGS");
 
                     // 设置当前箱子的信息
@@ -518,22 +610,16 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                     info.setCartonQuantity(carton.getQuantity());
                     info.setCartonVolume(carton.getVolume());
                     String contonEn = carton.getTypeEnglish();
-                    info.setContonEN(contonEn);
-                    if(carton.getQuantity()==1){
-                        info.setContonEN(contonEn.substring(0,contonEn.length()-1));
+                    // 老数据可能没有箱型英文名，跳过去单数处理避免 NPE
+                    if (StrUtil.isNotBlank(contonEn)) {
+                        info.setContonEN(contonEn);
+                        if (carton.getQuantity() != null && carton.getQuantity() == 1) {
+                            info.setContonEN(contonEn.substring(0, contonEn.length() - 1));
+                        }
                     }
 
                     // 设置申报要素
-                    if (p.getElementValues() != null) {
-                        List<Map<String, Object>> elements = new ArrayList<>();
-                        p.getElementValues().forEach(ev -> {
-                            Map<String, Object> map = new HashMap<>();
-                            map.put("name", ev.getElementName());
-                            map.put("value", ev.getElementValue());
-                            elements.add(map);
-                        });
-                        info.setDeclarationElements(elements);
-                    }
+                    info.setDeclarationElements(buildElementMaps(p));
 
                     productList.add(info);
                 }
@@ -860,6 +946,8 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         Map<String, Object> fillData = prepareAllTempleFillData(form);
         Map<String, Object> otherData = prepareFillData(form);
         List<CustomsItemDTO> productListData = createAllTempleProductListData(form, mergeProducts);
+        // 发票 Sheet 用按产品汇总的列表，装箱单 Sheet 用按箱子展开的列表
+        List<ExportDataRequest.ProductInfo> invoiceProductList = createInvoiceProductListData(form);
         List<ExportDataRequest.ProductInfo> productList = createProductListData(form);
 
         List<List<Object>> elementListData = createSingleRowProductListData(form);
@@ -1059,7 +1147,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
                 // Sheet 2: 发票
                 WriteSheet invoiceSheet = FesodSheet.writerSheet(1).build();
                 writer.fill(otherData, invoiceSheet);
-                writer.fill(productList, FillConfig.builder().forceNewRow(false).build(), invoiceSheet);
+                writer.fill(invoiceProductList, FillConfig.builder().forceNewRow(false).build(), invoiceSheet);
 
                 // Sheet 3: 装箱单
                 ExcelWriterSheetBuilder packingSheetBuilder = FesodSheet.writerSheet(2);
