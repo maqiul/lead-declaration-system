@@ -73,4 +73,10 @@ public interface ICityInfoService extends IService<CityInfo> {
      * @return 启用的城市列表
      */
     List<CityInfo> getEnabledList();
+
+    /**
+     * 获取城市数据中出现的所有国家名（缓存预热用）
+     * @return 国家名列表
+     */
+    List<String> getDistinctCountryNames();
 }

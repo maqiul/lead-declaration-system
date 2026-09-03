@@ -7,9 +7,12 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
 
 /**
  * 缓存预热器
@@ -25,9 +28,13 @@ public class CachePreloader implements ApplicationRunner {
     private final CountryInfoService countryInfoService;
     private final PaymentMethodService paymentMethodService;
     private final TransportModeService transportModeService;
+    private final TradeTermService tradeTermService;
     private final ProductTypeConfigService productTypeConfigService;
     private final BankAccountConfigService bankAccountConfigService;
+    private final EntityConfigService entityConfigService;
+    private final ICityInfoService cityInfoService;
     private final CacheManager cacheManager;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -53,8 +60,11 @@ public class CachePreloader implements ApplicationRunner {
                     "sys:dict:countries",
                     "sys:dict:payment-methods",
                     "sys:dict:transport-modes",
-                    "sys:dict:product-types",
-                    "sys:dict:bank-accounts"
+                    "sys:dict:trade-terms",
+                    "sys:dict:entity-configs",
+                    "sys:dict:bank-accounts",
+                    // 城市列表的 key 是国家名，clear() 会按 sys:dict:cities::* 前缀全部清掉
+                    "sys:dict:cities"
             };
             for (String name : cacheNames) {
                 Cache cache = cacheManager.getCache(name);
@@ -64,25 +74,49 @@ public class CachePreloader implements ApplicationRunner {
             }
             // 触发 AOP 代理的 @Cacheable 方法，重新将最新数据写回 Redis
             measurementUnitService.getActiveUnits();
-            log.info("[1/7] 计量单位数据预热/刷新完成");
+            log.info("[1/10] 计量单位数据预热/刷新完成");
 
             currencyInfoService.getEnabledList();
-            log.info("[2/7] 货币数据预热/刷新完成");
+            log.info("[2/10] 货币数据预热/刷新完成");
 
             countryInfoService.getEnabledList();
-            log.info("[3/7] 国家数据预热/刷新完成");
+            log.info("[3/10] 国家数据预热/刷新完成");
 
             paymentMethodService.getEnabledList();
-            log.info("[4/7] 支付方式预热/刷新完成");
+            log.info("[4/10] 支付方式预热/刷新完成");
 
             transportModeService.getEnabledList();
-            log.info("[5/7] 运输方式预热/刷新完成");
+            log.info("[5/10] 运输方式预热/刷新完成");
 
+            tradeTermService.getEnabledList();
+            log.info("[6/10] 贸易方式预热/刷新完成");
+
+            // HS商品类型走的是 redisTemplate 手工缓存（裸 key，无前缀），
+            // cacheManager.clear() 删不到，必须先手工删除才会回源
+            try {
+                redisTemplate.delete("sys:dict:product-types");
+                Set<String> hsCodeKeys = redisTemplate.keys("sys:dict:product-types:hscode:*");
+                if (hsCodeKeys != null && !hsCodeKeys.isEmpty()) {
+                    redisTemplate.delete(hsCodeKeys);
+                }
+            } catch (Exception e) {
+                log.warn("清理HS商品类型手工缓存失败: {}", e.getMessage());
+            }
             productTypeConfigService.getEnabledList();
-            log.info("[6/7] HS商品类型预热/刷新完成");
+            log.info("[7/10] HS商品类型预热/刷新完成");
 
             bankAccountConfigService.getEnabledList(null);
-            log.info("[7/7] 打款账户预热/刷新完成");
+            log.info("[8/10] 打款账户预热/刷新完成");
+
+            entityConfigService.getEnabledList();
+            log.info("[9/10] 主体配置预热/刷新完成");
+
+            // 城市缓存是国家名动态键，只能按库里实际存在的国家逐个回源回填
+            List<String> cityCountries = cityInfoService.getDistinctCountryNames();
+            for (String country : cityCountries) {
+                cityInfoService.getCitiesByCountry(country);
+            }
+            log.info("[10/10] 城市数据预热/刷新完成，国家数: {}", cityCountries.size());
 
             log.info("============== 字典缓存预热/定时刷新完毕！==============");
             

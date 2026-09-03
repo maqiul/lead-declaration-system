@@ -74,6 +74,8 @@ public class TradeTermServiceImpl extends ServiceImpl<TradeTermDao, TradeTerm> i
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    // 内部用 super.save 写入，不会触发 save() 上的 @CacheEvict，必须在入口方法上重复声明
+    @CacheEvict(value = "sys:dict:trade-terms", allEntries = true)
     public boolean saveTradeTerm(TradeTerm tradeTerm) {
         boolean saved = super.save(tradeTerm);
         if (saved && tradeTerm.getTransportModes() != null) {
@@ -86,6 +88,8 @@ public class TradeTermServiceImpl extends ServiceImpl<TradeTermDao, TradeTerm> i
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    // 同理：super.updateById 绕过代理，关联运输方式的变更必须靠这里的缓存清除才能反映到下拉框
+    @CacheEvict(value = "sys:dict:trade-terms", allEntries = true)
     public boolean updateTradeTerm(TradeTerm tradeTerm) {
         boolean updated = super.updateById(tradeTerm);
         if (updated) {

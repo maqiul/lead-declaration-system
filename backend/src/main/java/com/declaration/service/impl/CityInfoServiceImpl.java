@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * 城市信息服务实现类
@@ -107,6 +109,16 @@ public class CityInfoServiceImpl extends ServiceImpl<CityInfoDao, CityInfo> impl
                .orderByAsc(CityInfo::getSort)
                .orderByDesc(CityInfo::getId);
         return this.list(wrapper);
+    }
+
+    @Override
+    public List<String> getDistinctCountryNames() {
+        // sys:dict:cities 的 key 是国家名（动态键），预热前得先知道库里到底有哪几个国家，才能逐个回源
+        List<Object> values = baseMapper.selectObjs(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<CityInfo>()
+                        .select("DISTINCT country_name")
+                        .isNotNull("country_name"));
+        return values.stream().filter(Objects::nonNull).map(String::valueOf).collect(Collectors.toList());
     }
 
     // @Override
