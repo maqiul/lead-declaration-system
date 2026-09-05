@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import { withAuthToken } from '@/utils/auth'
 
 /**
  * 分页查询合同模板
@@ -78,9 +79,10 @@ export function getContractDownloadUrl(id: number): string {
 
 /**
  * 下载合同文件
+ * 受权限保护的接口，新窗口带不上自定义请求头，靠 withAuthToken 把凭证拼进查询参数
  */
 export function downloadContract(id: number) {
-  window.open(getContractDownloadUrl(id), '_blank')
+  window.open(withAuthToken(getContractDownloadUrl(id)), '_blank')
 }
 
 /**

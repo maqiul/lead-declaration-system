@@ -390,29 +390,11 @@ export function exportInvoiceNotification(id: number) {
   })
 }
 
-// 查询已保存的20%拆分产品列表
-export function getInvoiceSplitItems(id: number) {
-  return request({
-    url: `/v1/financial-supplements/form/${id}/split-items`,
-    method: 'get'
-  })
-}
-
-// 保存20%拆分产品列表
-export function saveInvoiceSplitItems(id: number, items: any[]) {
-  return request({
-    url: `/v1/financial-supplements/form/${id}/split-items`,
-    method: 'post',
-    data: { items }
-  })
-}
-
-// 下载开票文件包(80%+20% ZIP)
-export function exportInvoicePackage(id: number, splitItems: any[]) {
+// 下载开票文件包(开票通知书 + 合同 ZIP)
+export function exportInvoicePackage(id: number) {
   return request({
     url: `/v1/financial-supplements/form/${id}/export-invoice-package`,
-    method: 'post',
-    data: { splitItems }
+    method: 'post'
   })
 }
 

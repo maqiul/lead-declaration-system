@@ -94,16 +94,22 @@
 
       <!-- 多标签页导航 -->
       <div class="tabs-bar">
-        <div ref="tabsScrollRef" class="tabs-scroll">
+        <div ref="tabsScrollRef" class="tabs-scroll" @wheel.prevent="onTabsWheel">
           <div
             v-for="tab in visitedTabs"
-            :key="tab.path"
-            :class="['tab-item', { 'tab-item--active': tab.path === activeTabPath }]"
+            :key="tab.key"
+            :class="['tab-item', { 'tab-item--active': tab.key === activeTabKey }]"
             @click="goTab(tab)"
             @contextmenu="openTabMenu($event, tab)"
           >
             <span class="tab-dot" />
-            <span class="tab-label">{{ tab.title }}</span>
+            <span
+              v-if="tab.bizType"
+              :class="['tab-type', tab.bizType === 'SELF' ? 'tab-type--self' : 'tab-type--ext']"
+            >{{ getDeclarationTypeLabel(tab.bizType) }}</span>
+            <span v-tab-marquee class="tab-label" :title="tabLabel(tab)">
+              <span class="tab-label__inner">{{ tabLabel(tab) }}</span>
+            </span>
             <close-outlined
               v-if="!tab.affix"
               class="tab-close"
@@ -138,9 +144,8 @@
       <a-layout-content class="content">
         <router-view v-slot="{ Component }">
           <keep-alive :max="20">
-            <component :is="Component" v-if="isCacheable" :key="cacheKey" />
+            <component :is="Component" :key="cacheKey" />
           </keep-alive>
-          <component :is="Component" v-if="!isCacheable" :key="cacheKey" />
         </router-view>
       </a-layout-content>
 
@@ -173,6 +178,23 @@
     </a-form>
   </a-modal>
 
+  <!-- 关闭标签前的草稿确认：三态可选，“继续填写”（含右上角×与 ESC）会中止关闭并留在该页 -->
+  <a-modal
+    :open="draftAskVisible"
+    :width="460"
+    :mask-closable="false"
+    :closable="true"
+    title="关闭前是否保存草稿？"
+    @cancel="answerDraftAsk('cancel')"
+  >
+    <p class="draft-ask-tip">{{ draftAskTip }}</p>
+    <template #footer>
+      <a-button @click="answerDraftAsk('cancel')">继续填写</a-button>
+      <a-button danger @click="answerDraftAsk('discard')">不保存关闭</a-button>
+      <a-button type="primary" @click="answerDraftAsk('save')">保存为草稿</a-button>
+    </template>
+  </a-modal>
+
   <!-- 标签右键菜单 -->
   <teleport to="body">
     <div
@@ -196,13 +218,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, h, watch, reactive, nextTick } from 'vue'
+import { ref, computed, onMounted, h, watch, reactive, nextTick, type Directive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { getUserRoutes } from '@/api/system'
 import { changePassword } from '@/api/user'
 import { getSystemBasicInfo, getUiConfig } from '@/api/system/config'
 import { message } from 'ant-design-vue'
+import { getTabKey, getFormTabTitle, getFormTabTitleByFullPath, getRouteCacheBase, isFormTabPath, getFormTabDeclarationType, getDeclarationTypeLabel, getNewFormTabKey, isNewFormTabKey, type DeclarationTabType } from '@/utils/tabKey'
+import { findTabGuards, findTabGuardByPath, dropTabGuards, registerTabMetaSetter } from '@/composables/useTabGuard'
 import { 
   MenuUnfoldOutlined, 
   MenuFoldOutlined,
@@ -284,27 +308,29 @@ const breadcrumbItems = computed(() => {
 })
 
 // ========== 多标签页 ==========
-interface TabItem { path: string; title: string; affix?: boolean }
-const HOME_TAB: TabItem = { path: '/dashboard', title: '首页', affix: true }
+interface TabItem { key: string; fullPath: string; title: string; affix?: boolean; bizType?: DeclarationTabType; invoiceNo?: string }
+const HOME_TAB: TabItem = { key: '/dashboard', fullPath: '/dashboard', title: '首页', affix: true }
 const visitedTabs = ref<TabItem[]>([{ ...HOME_TAB }])
 const tabsScrollRef = ref<HTMLElement | null>(null)
-const activeTabPath = computed(() => route.path)
+const activeTabKey = computed(() => getTabKey(route))
 
 // ========== 页面缓存（keep-alive）==========
-// 不缓存的页面（表单/详情类，需要每次打开获取最新数据）
-const NO_CACHE_PATTERNS = ['/form', '/form-v2']
-const isCacheable = computed(() => !NO_CACHE_PATTERNS.some(p => route.path.includes(p)))
-// 刷新计数：同一路径 nonce 变化时强制重新挂载
+// 刷新计数：缓存键变化时强制重新挂载
 const refreshNonce = ref<Record<string, number>>({})
+// 标签代号：同一标签键下的多个入口地址（readonly / scrollTo 变体）共享，关闭标签即整体作废
+const tabGeneration = ref<Record<string, number>>({})
 const cacheKey = computed(() => {
-  // 可缓存页按 path 缓存（忽略 query，保留组件内的搜索/分页状态）；不缓存页按 fullPath 区分
-  const base = isCacheable.value ? route.path : route.fullPath
-  const n = refreshNonce.value[route.path] || 0
-  return n ? `${base}#r${n}` : base
+  // 表单页按 fullPath 区分（每个入口各自保留编辑状态），其余页按 path 区分（忽略 query，保留搜索/分页状态）
+  const base = getRouteCacheBase(route)
+  const gen = tabGeneration.value[getTabKey(route)] || 0
+  const n = refreshNonce.value[base] || 0
+  return `${base}#g${gen}${n ? `r${n}` : ''}`
 })
 
-// 取当前路由标题（拼接上一级菜单名，如“出口申报 / 申报管理”）
+// 取当前路由标题（表单页直接给出“新建申报/查看申报”，其余拼接上一级菜单名）
 const getRouteTitle = (): string => {
+  const formTitle = getFormTabTitle(route)
+  if (formTitle) return formTitle
   const titles: string[] = []
   route.matched.forEach(r => {
     if (r.meta?.title && r.path !== '/') {
@@ -326,78 +352,259 @@ const scrollToActive = () => {
   })
 }
 
-// 记录已访问页面
+// 标签区域鼠标滚轮转横向滚动（标签过多时可滑动）
+const onTabsWheel = (e: WheelEvent) => {
+  const el = tabsScrollRef.value
+  if (!el) return
+  const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX
+  if (delta) el.scrollBy({ left: delta })
+}
+
+// 记录已访问页面：同键标签复用，离开后不再自动关闭
 const addTab = () => {
-  const path = route.path
-  if (path === '/login' || path === '/404') return
-  if (!visitedTabs.value.some(t => t.path === path)) {
-    visitedTabs.value.push({ path, title: getRouteTitle() })
+  if (route.path === '/login' || route.path === '/404') return
+  const key = getTabKey(route)
+  const title = getRouteTitle()
+  const bizType = getFormTabDeclarationType(route)
+  const existing = visitedTabs.value.find(t => t.key === key)
+  if (existing) {
+    // 同一单据切换入口（查看/编辑/资料提交）时，标签跟随最近一次访问的地址
+    existing.fullPath = route.fullPath
+    existing.title = title
+    // 路由定得出类型才刷新，定不出时保留页面回写的值，避免徽标闪没
+    if (bizType) existing.bizType = bizType
+    scrollToActive()
+    return
+  }
+  // 新建标签在首次保存为草稿后原地转为“查看申报”，避免残留一个已失效的新建标签
+  // 只转同一表单路径下的新建标签：新建槽位按申报类型独立，同套的 /form 与 /form-v2 不互相顶替
+  const draftTab = isFormTabPath(route.path)
+    ? visitedTabs.value.find(t => t.key === getNewFormTabKey(route.path) && t.fullPath.split('?')[0] === route.path)
+    : undefined
+  if (draftTab) {
+    draftTab.key = key
+    draftTab.fullPath = route.fullPath
+    draftTab.title = title
+    if (bizType) draftTab.bizType = bizType
+  } else {
+    visitedTabs.value.push({ key, fullPath: route.fullPath, title, bizType: bizType || undefined })
   }
   scrollToActive()
 }
 
-const goTab = (tab: TabItem) => {
-  if (tab.path !== activeTabPath.value) {
-    router.push(tab.path).catch(() => {})
+// 表单页装载完成后回写展示元信息：老链接（/declaration/*）推不出类型时纠正徽标，发票号到位后标签改显发票号
+registerTabMetaSetter((tabKey, meta) => {
+  const tab = visitedTabs.value.find(t => t.key === tabKey)
+  if (!tab) return
+  if (meta.bizType) tab.bizType = meta.bizType
+  if (meta.invoiceNo !== undefined) tab.invoiceNo = meta.invoiceNo || undefined
+})
+
+/** 标签展示文案：表单页在页面回写发票号后以发票号替代数据库编号 */
+const tabLabel = (tab: TabItem): string => getFormTabTitleByFullPath(tab.fullPath, tab.invoiceNo) || tab.title
+
+/**
+ * 标签文字溢出检测（配合 CSS 跑马灯）
+ * 纯 CSS 判不出溢出（文本比可视区窄时同一位移动画会反向跑出左边界），必须实测宽度；
+ * 溢出量同时写成 CSS 变量，位移与时长跟着内容走，长发票号不会一闪而过
+ */
+const measureTabOverflow = (el: HTMLElement) => {
+  const inner = el.querySelector<HTMLElement>('.tab-label__inner')
+  if (!inner) return
+  const shift = Math.max(inner.offsetWidth - el.clientWidth, 0)
+  el.classList.toggle('tab-label--scroll', shift > 1)
+  el.style.setProperty('--tab-marquee-shift', `${shift}px`)
+  el.style.setProperty('--tab-marquee-duration', `${Math.min(Math.max(shift / 22, 5), 16)}s`)
+}
+
+const tabMarqueeObserver = new WeakMap<HTMLElement, ResizeObserver>()
+
+/** 局部指令：只服务于标签栏，不全局注册 */
+const vTabMarquee: Directive<HTMLElement> = {
+  mounted(el) {
+    measureTabOverflow(el)
+    // 发票号是页面异步回写的，文本变长后需重新测量（只观察内层文字，避开自身样式写入引发的循环）
+    if (typeof ResizeObserver === 'undefined') return
+    const inner = el.querySelector<HTMLElement>('.tab-label__inner')
+    if (!inner) return
+    const ro = new ResizeObserver(() => measureTabOverflow(el))
+    ro.observe(inner)
+    tabMarqueeObserver.set(el, ro)
+  },
+  updated(el) {
+    measureTabOverflow(el)
+  },
+  unmounted(el) {
+    tabMarqueeObserver.get(el)?.disconnect()
+    tabMarqueeObserver.delete(el)
   }
 }
 
-const closeTab = (tab: TabItem) => {
-  const idx = visitedTabs.value.findIndex(t => t.path === tab.path)
+const goTab = (tab: TabItem) => {
+  if (tab.key !== activeTabKey.value) {
+    router.push(tab.fullPath).catch(() => {})
+  }
+}
+
+// 关闭含未保存内容的标签前，询问是否先保存为草稿
+/** 草稿确认结果：save 存草稿后关闭，discard 不存直接关闭，cancel 中止关闭并留在该页继续填 */
+type DraftAskAction = 'save' | 'discard' | 'cancel'
+
+const draftAskVisible = ref(false)
+const draftAskTitle = ref('')
+let draftAskResolve: ((action: DraftAskAction) => void) | null = null
+
+const draftAskTip = computed(() =>
+  `“${draftAskTitle.value}” 存在未保存的内容。可以先存为草稿，之后到申报录入列表里继续填写。`
+)
+
+/**
+ * 弹出草稿确认
+ * 用受控 a-modal 而非 Modal.confirm：confirm 只能给两个按钮，且右上角×与 ESC 等同于取消按钮，
+ * 无法单独表达“不关了、我还在填”这个选项
+ */
+const askSaveDraft = (title: string): Promise<DraftAskAction> => new Promise(resolve => {
+  draftAskTitle.value = title
+  draftAskVisible.value = true
+  draftAskResolve = resolve
+})
+
+/** 应答草稿确认：右上角×与 ESC 由 a-modal 的 cancel 事件进来，同样算“继续填写” */
+const answerDraftAsk = (action: DraftAskAction) => {
+  draftAskVisible.value = false
+  const resolve = draftAskResolve
+  draftAskResolve = null
+  resolve?.(action)
+}
+
+/**
+ * 关闭前先把视图切到目标标签（可选切到该标签下真正有未保存内容的那个地址）
+ * 导航被守卫中断时再试一程 replace（replace 不改历史，总能落到目标页），
+ * 避免“弹窗在另一张页面上弹”的错乱感
+ */
+const focusTab = async (tab: TabItem, address?: string): Promise<void> => {
+  const target = address || tab.fullPath
+  if (route.fullPath === target) return
+  await router.push(target).catch(() => {})
+  await nextTick()
+  if (tab.key !== activeTabKey.value) {
+    await router.replace(target).catch(() => {})
+    await nextTick()
+  }
+}
+
+/** 逐个标签确认关闭（保存失败时中止，避免已填写内容静默丢失） */
+const ensureTabsClosable = async (tabs: TabItem[]): Promise<boolean> => {
+  for (const tab of tabs) {
+    if (tab.affix) continue
+    // 一个标签键下可能活着多个表单实例（重复点新建、/form 与 /form-v2 共用新建槽位），
+    // 任意一个有未保存内容就要问；优先用标签当前地址那份，否则用最近一个脏实例并跳到它自己的页面
+    let dirtyGuards = findTabGuards(tab.key).filter(guard => guard.isDirty())
+    // 兜底：标签键与页面注册的键对不上时（历史快照按旧算法算的）按地址再认一次
+    if (dirtyGuards.length === 0) {
+      const byPath = findTabGuardByPath(tab.fullPath)
+      if (byPath && byPath.isDirty()) dirtyGuards = [byPath]
+    }
+    if (dirtyGuards.length === 0) continue
+    const target = dirtyGuards.find(guard => guard.fullPath === tab.fullPath)
+      || dirtyGuards[dirtyGuards.length - 1]
+    // 先置顶再弹询问：让用户看清关的是哪张单，保存也发生在可见页面上
+    await focusTab(tab, target.fullPath)
+    const action = await askSaveDraft(tabLabel(tab))
+    // 继续填写：整批关闭到此中止，标签保留，视图已停在用户要填的那张单上
+    if (action === 'cancel') return false
+    if (action === 'discard') continue
+    if (!(await target.save())) return false
+  }
+  return true
+}
+
+const closeTab = async (tab: TabItem) => {
+  if (!(await ensureTabsClosable([tab]))) return
+  const idx = visitedTabs.value.findIndex(t => t.key === tab.key)
   if (idx === -1) return
   visitedTabs.value.splice(idx, 1)
+  purgeTabCache([tab])
   // 关闭的是当前活跃标签时，跳转到相邻标签
-  if (tab.path === activeTabPath.value) {
+  if (tab.key === activeTabKey.value) {
     const next = visitedTabs.value[idx] || visitedTabs.value[idx - 1] || HOME_TAB
-    router.push(next.path).catch(() => {})
+    router.push(next.fullPath).catch(() => {})
   }
 }
 
 // 关闭指定标签左侧的所有标签（保留 affix）
-const closeLeftOf = (tab: TabItem) => {
-  const idx = visitedTabs.value.findIndex(t => t.path === tab.path)
+const closeLeftOf = async (tab: TabItem) => {
+  const idx = visitedTabs.value.findIndex(t => t.key === tab.key)
   if (idx <= 0) return
+  const removing = visitedTabs.value.filter((t, i) => i < idx && !t.affix)
+  if (!(await ensureTabsClosable(removing))) return
   visitedTabs.value = visitedTabs.value.filter((t, i) => t.affix || i >= idx)
-  if (!visitedTabs.value.some(t => t.path === activeTabPath.value)) {
-    router.push(tab.path).catch(() => {})
+  purgeTabCache(removing)
+  if (!visitedTabs.value.some(t => t.key === activeTabKey.value)) {
+    router.push(tab.fullPath).catch(() => {})
   }
 }
 
 // 关闭指定标签右侧的所有标签（保留 affix）
-const closeRightOf = (tab: TabItem) => {
-  const idx = visitedTabs.value.findIndex(t => t.path === tab.path)
+const closeRightOf = async (tab: TabItem) => {
+  const idx = visitedTabs.value.findIndex(t => t.key === tab.key)
   if (idx === -1) return
+  const removing = visitedTabs.value.filter((t, i) => i > idx && !t.affix)
+  if (!(await ensureTabsClosable(removing))) return
   visitedTabs.value = visitedTabs.value.filter((t, i) => t.affix || i <= idx)
-  if (!visitedTabs.value.some(t => t.path === activeTabPath.value)) {
-    router.push(tab.path).catch(() => {})
+  purgeTabCache(removing)
+  if (!visitedTabs.value.some(t => t.key === activeTabKey.value)) {
+    router.push(tab.fullPath).catch(() => {})
   }
 }
 
 // 关闭除指定标签外的其他标签（保留 affix）
-const closeOthersOf = (tab: TabItem) => {
-  visitedTabs.value = visitedTabs.value.filter(t => t.affix || t.path === tab.path)
-  if (activeTabPath.value !== tab.path) {
-    router.push(tab.path).catch(() => {})
+const closeOthersOf = async (tab: TabItem) => {
+  const removing = visitedTabs.value.filter(t => !t.affix && t.key !== tab.key)
+  if (!(await ensureTabsClosable(removing))) return
+  visitedTabs.value = visitedTabs.value.filter(t => t.affix || t.key === tab.key)
+  purgeTabCache(removing)
+  if (activeTabKey.value !== tab.key) {
+    router.push(tab.fullPath).catch(() => {})
   }
 }
 
 // 关闭全部（保留 affix，回到首页）
-const closeAllTabs = () => {
+const closeAllTabs = async () => {
+  const removing = visitedTabs.value.filter(t => !t.affix)
+  if (!(await ensureTabsClosable(removing))) return
   visitedTabs.value = visitedTabs.value.filter(t => t.affix)
-  if (activeTabPath.value !== HOME_TAB.path) {
-    router.push(HOME_TAB.path).catch(() => {})
+  purgeTabCache(removing)
+  if (activeTabKey.value !== HOME_TAB.key) {
+    router.push(HOME_TAB.fullPath).catch(() => {})
   }
 }
 
 // 刷新当前页（通过变更 cacheKey 强制重新挂载，不影响其他标签缓存）
 const refreshCurrent = () => {
-  const p = route.path
-  refreshNonce.value = { ...refreshNonce.value, [p]: (refreshNonce.value[p] || 0) + 1 }
+  const base = getRouteCacheBase(route)
+  refreshNonce.value = { ...refreshNonce.value, [base]: (refreshNonce.value[base] || 0) + 1 }
+}
+
+/**
+ * 关闭标签后作废其缓存实例与草稿守卫
+ * keep-alive 实例不随标签移除而销毁，不作废则下次打开同一张单会复活旧实例，
+ * 表现为“新建申报带着上一张单的数据”；按标签键轮换可同时覆盖同一单的所有入口地址
+ */
+const purgeTabCache = (tabs: TabItem[]) => {
+  if (tabs.length === 0) return
+  const next = { ...tabGeneration.value }
+  tabs.forEach(tab => {
+    next[tab.key] = (next[tab.key] || 0) + 1
+    // 标签已关闭，其关闭守卫一并作废；实例日后被重新激活时会自行重新注册
+    dropTabGuards(tab.key)
+  })
+  tabGeneration.value = next
 }
 
 // 右上角下拉菜单（作用于当前活跃标签）
 const handleTabAction = ({ key }: { key: string | number }) => {
-  const active = visitedTabs.value.find(t => t.path === activeTabPath.value) || HOME_TAB
+  const active = visitedTabs.value.find(t => t.key === activeTabKey.value) || HOME_TAB
   const k = String(key)
   if (k === 'refresh') {
     refreshCurrent()
@@ -431,8 +638,8 @@ const onCtx = (action: string) => {
   if (!tab) return
   switch (action) {
     case 'refresh':
-      if (tab.path !== activeTabPath.value) {
-        router.push(tab.path).then(() => refreshCurrent()).catch(() => {})
+      if (tab.key !== activeTabKey.value) {
+        router.push(tab.fullPath).then(() => refreshCurrent()).catch(() => {})
       } else {
         refreshCurrent()
       }
@@ -457,16 +664,41 @@ const onCtx = (action: string) => {
 }
 
 // ========== 标签持久化 ==========
-const TABS_STORAGE_KEY = 'app_visited_tabs'
+const TABS_STORAGE_KEY = 'app_visited_tabs_v2'
 
 const restoreTabs = () => {
   try {
     const raw = localStorage.getItem(TABS_STORAGE_KEY)
     if (!raw) return
-    const arr = JSON.parse(raw) as TabItem[]
-    if (Array.isArray(arr) && arr.length > 0) {
-      const hasHome = arr.some(t => t.path === HOME_TAB.path)
-      visitedTabs.value = hasHome ? arr : [{ ...HOME_TAB }, ...arr]
+    const arr = JSON.parse(raw) as Array<Partial<TabItem> & { path?: string }>
+    if (!Array.isArray(arr) || arr.length === 0) return
+    // 兼容旧格式（仅有 path 字段）：path 既当标签键也当跳转地址
+    const seenKeys = new Set<string>()
+    const list = arr
+      .map(item => {
+        const fullPath = item.fullPath || item.path || ''
+        const rawKey = item.key || item.path || item.fullPath || ''
+        // 新建标签按“每套申报一个”计算键，旧快照里的全局“#new”与“路径#new”统一重建，避免刷新后挂出重复新建标签
+        const formPathOnly = fullPath.split('?')[0]
+        const key = isNewFormTabKey(rawKey) && isFormTabPath(formPathOnly) ? getNewFormTabKey(formPathOnly) : rawKey
+        return {
+          key,
+          fullPath,
+          title: item.title || '未命名页面',
+          affix: !!item.affix,
+          // 旧快照没存类型时，按地址里的路径前缀兜底，刷新后徽标不丢
+          bizType: item.bizType || getFormTabDeclarationType({ path: fullPath.split('?')[0] }) || undefined,
+          invoiceNo: item.invoiceNo || undefined
+        }
+      })
+      .filter(item => {
+        if (!item.key || !item.fullPath || seenKeys.has(item.key)) return false
+        seenKeys.add(item.key)
+        return true
+      })
+    if (list.length > 0) {
+      const hasHome = list.some(t => t.key === HOME_TAB.key)
+      visitedTabs.value = hasHome ? list : [{ ...HOME_TAB }, ...list]
     }
   } catch {
     // 解析失败时保留默认
@@ -480,22 +712,15 @@ watch(visitedTabs, (val) => {
   localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(val))
 }, { deep: true })
 
-// 监听路由变化，自动新增标签；离开表单/详情类页面时自动关闭其标签
-let prevTabPath = ''
-watch(() => route.path, (newPath) => {
-  if (prevTabPath && prevTabPath !== newPath
-      && NO_CACHE_PATTERNS.some(p => prevTabPath.includes(p))) {
-    const idx = visitedTabs.value.findIndex(t => t.path === prevTabPath)
-    if (idx !== -1) visitedTabs.value.splice(idx, 1)
-  }
+// 监听路由变化自动新增标签（表单页离开后标签保留，可随时切回继续编辑）
+watch(() => route.fullPath, () => {
   addTab()
-  prevTabPath = newPath
 }, { immediate: true })
 
 // 系统配置
 const systemConfig = ref<Record<string, string>>({
-  'system.name': '线索申报系统',
-  'ui.footer.text': '线索申报系统 ©2026 Created by Admin',
+  'system.name': '海关申报系统',
+  'ui.footer.text': '海关申报系统 ©2026 宁波梓熠科技有限公司',
   'ui.footer.show': 'true'
 })
 
@@ -794,7 +1019,8 @@ const handleOpenChange = (keys: (string | number)[]) => {
 }
 
 const handleLogout = async () => {
-  await userStore.resetToken()
+  // 走 store.logout：先请服务端销毁 token，否则同账号会话数会堆积并触发顶号
+  await userStore.logout()
   router.push('/login')
 }
 
@@ -1121,6 +1347,62 @@ onMounted(() => {
 
 .tab-label {
   line-height: 1;
+  position: relative;
+  /* 发票号长度不可控：限宽后溢出部分滚动展示，不用省略号截断 */
+  max-width: 200px;
+  overflow: hidden;
+}
+
+.tab-label__inner {
+  display: inline-block;
+  /* 保持文本全宽（否则会被父容器压缩到可视宽，位移量算不出来） */
+  width: max-content;
+  white-space: nowrap;
+}
+
+/* 只在当前标签自动滚、其余悬停时滚：多张标签同时动会把整行变成干扰项 */
+.tab-item--active .tab-label--scroll .tab-label__inner,
+.tab-item:hover .tab-label--scroll .tab-label__inner {
+  animation: tab-label-marquee var(--tab-marquee-duration, 8s) ease-in-out infinite;
+}
+
+/* 滚到末尾停一拍再回到起点，比无缝循环更容易读完 */
+@keyframes tab-label-marquee {
+  0%, 10% { transform: translateX(0); }
+  90%, 100% { transform: translateX(calc(-1 * var(--tab-marquee-shift, 0px))); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-label__inner {
+    animation: none !important;
+  }
+}
+
+/* 申报类型徽标：在标签栏直接区分梓熠/理德与集洛 */
+.tab-type {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  border-radius: 3px;
+}
+
+.tab-type--self {
+  color: #1890FF;
+  background: #E6F7FF;
+}
+
+.tab-type--ext {
+  color: #722ED1;
+  background: #F9F0FF;
+}
+
+/* 草稿确认弹窗正文：与底部三个按钮拉开间距 */
+.draft-ask-tip {
+  margin: 8px 0 4px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.72);
 }
 
 .tab-close {

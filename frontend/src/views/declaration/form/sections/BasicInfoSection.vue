@@ -209,6 +209,31 @@
                 </a-form-item>
               </a-col>
             </a-row>
+            <!-- 乙方资料紧随发票号：与单证销货方取值直接相关，列宽与上一行发票号对齐 -->
+            <a-row :gutter="16">
+              <a-col :span="10">
+                <a-form-item label="乙方（销货方）">
+                  <PartyBSelector
+                    v-model="formData.partyBId"
+                    :options="partyBOptions"
+                    :disabled="isFormReadonly"
+                    @saved="handlePartyBSaved"
+                  />
+                </a-form-item>
+              </a-col>
+              <a-col :span="14">
+                <a-form-item label="销货方信息">
+                  <div class="party-b-summary" :title="partyBSummary || undefined">
+                    <template v-if="partyBSummaryParts.length">
+                      <span v-for="part in partyBSummaryParts" :key="part.label" class="party-b-summary__item">
+                        <span class="party-b-summary__label">{{ part.label }}：</span>{{ part.value }}
+                      </span>
+                    </template>
+                    <span v-else>未选择乙方，单证销货方信息保持留空</span>
+                  </div>
+                </a-form-item>
+              </a-col>
+            </a-row>
           </a-card>
           
           <!-- 产品明细 -->
@@ -869,6 +894,7 @@ import {
   FileDoneOutlined, UserOutlined, EditOutlined, ClockCircleOutlined, CloudUploadOutlined,
 } from '@ant-design/icons-vue'
 import { findUnitByCode } from '@/utils/measurement-unit'
+import PartyBSelector from '../PartyBSelector.vue'
 import { hasStage, isItemRequiredInStage } from '@/api/system/materialTemplate'
 import { canDeleteAttachment } from '@/api/business/materialItem'
 
@@ -906,6 +932,7 @@ const {
   handleCompanyChange, filterCompanyOption,
   onDepartureCityChange, filterCountrySelectOption,
   customerList, onCustomerSelect,
+  partyBOptions, partyBSummary, partyBSummaryParts, handlePartyBSaved,
   quickAddCustomerVisible, quickAddCustomerName, quickAddCustomerAddress,
   quickAddDestinationCountry, quickAddTradeCountry, quickAddCustomerSaving, handleQuickAddCustomer,
   handleQuantityOrPriceChange, handleUnitChange, handleAmountChange,
@@ -1103,6 +1130,28 @@ const filterProductOption = (input: string, option: any) => {
 </script>
 
 <style scoped>
+/* 销货方信息摘要：字段名与值成对展示，最多两行，折不下时靠 title 悬浮看全文 */
+.party-b-summary {
+  min-height: 32px;
+  max-height: 38px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  gap: 2px 16px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
+  color: #64748B;
+}
+
+.party-b-summary__item {
+  white-space: nowrap;
+}
+
+.party-b-summary__label {
+  color: #94A3B8;
+}
+
 /* 补交增量附件高亮：浅橙底色 + 橙色边框，与存量文件区分（与 MaterialManager 同款） */
 .att-invoice-card.att-increment {
   background: #fff7e6;

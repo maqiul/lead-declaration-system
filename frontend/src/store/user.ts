@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { login, getInfo } from '@/api/user'
+import { login, getInfo, logout as logoutApi } from '@/api/user'
 import { getToken, setToken, removeToken } from '@/utils/auth'
 import router, { asyncRoutes } from '@/router'
 import { filterAsyncRoutes } from '@/utils/route'
@@ -102,6 +102,21 @@ export const useUserStore = defineStore('user', {
       router.getRoutes().forEach(r => {
         console.log(`  ${r.path} -> ${String(r.name)}`)
       })
+    },
+
+    /**
+     * 退出登录
+     * 先请服务端销毁 token：is-share=false 下每次登录都会新建一个 token，
+     * 退出不清理会让同账号会话数堆积到 maxLoginCount 后把最早那个顶下线（表现为“token 突然失效”）
+     */
+    async logout() {
+      try {
+        await logoutApi()
+      } catch (error) {
+        // 凭证已失效或网络异常：本地照样清状态，不能把用户困在系统里
+        console.warn('服务端退出失败', error)
+      }
+      await this.resetToken()
     },
 
     // 重置token

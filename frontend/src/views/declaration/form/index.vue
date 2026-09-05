@@ -3,7 +3,7 @@
     <a-card :title="(isMaterialMode ? (isReadonly ? '申报资料查看' : '提交申报资料') : isMaterialAuditMode ? '申报单详情 - 资料审核' : isSupplementMode ? '申报单详情 - 补充资料提交' : isSupplementAuditMode ? '申报单详情 - 补充资料审核' : canSubmitInvoiceAmount ? '申报单详情 - 申请开票金额' : (canAuditInvoiceAmount || isInvoiceAmountAuditMode) ? '申报单详情 - 开票金额审核' : isInvoiceAmountMode ? '申报单详情 - 申请开票金额' : isInvoiceAuditMode ? '申报单详情 - 发票审核' : isInvoiceUploadMode ? '申报单详情 - 上传发票' : '出口申报表单')" >
       <template #extra>
         <a-space>
-          <a-button @click="goBack">
+          <a-button @click="goBackToList">
             <template #icon><RollbackOutlined /></template>
             返回列表
           </a-button>
@@ -183,7 +183,7 @@
           <!-- 普通模式下的按钮 -->
           <template v-else>
             <!-- 保存草稿按钮 -->
-            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" @click="handleSaveDraft" :loading="submitting" v-permission="['business:declaration:create']">
+            <a-button v-if="!isReadonly && (!formStatus || formStatus === 0)" @click="handleSaveDraft()" :loading="submitting" v-permission="['business:declaration:create']">
               <template #icon><SaveOutlined /></template>
               保存草稿
             </a-button>
@@ -369,6 +369,31 @@
               <a-tag :color="formData.declarationType === 'SELF' ? 'blue' : 'default'" style="font-size: 13px; padding: 4px 12px;">
                 {{ formData.declarationType === 'SELF' ? '梓熠、理德申报' : '集洛申报' }}
               </a-tag>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <!-- 乙方资料紧随发票号：与单证销货方取值直接相关，列宽与上一行发票号对齐 -->
+        <a-row :gutter="16">
+          <a-col :span="8">
+            <a-form-item label="乙方（销货方）">
+              <PartyBSelector
+                v-model="formData.partyBId"
+                :options="partyBOptions"
+                :disabled="isFormReadonly"
+                @saved="handlePartyBSaved"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :span="16">
+            <a-form-item label="销货方信息">
+              <div class="party-b-summary" :title="partyBSummary || undefined">
+                <template v-if="partyBSummaryParts.length">
+                  <span v-for="part in partyBSummaryParts" :key="part.label" class="party-b-summary__item">
+                    <span class="party-b-summary__label">{{ part.label }}：</span>{{ part.value }}
+                  </span>
+                </template>
+                <span v-else>未选择乙方，单证销货方信息保持留空</span>
+              </div>
             </a-form-item>
           </a-col>
         </a-row>
@@ -1598,17 +1623,15 @@
     <!-- 文件预览弹窗 -->
     <FilePreviewModal v-model:visible="previewVisible" :url="previewUrl" />
 
-    <!-- 20%拆分产品设置弹窗 -->
-    <InvoiceSplitModal ref="invoiceSplitModalRef" :form-id="formId!" :calc-detail="invoiceAmountCalcDetail" :readonly="!hasFinancePermission" @confirm="handleSplitConfirm" />
-
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, h, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onActivated, onUnmounted, watch, h, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
-import { message, Modal, Textarea } from 'ant-design-vue'
+// AutoComplete 在 vite.config 的组件解析里被 exclude，必须显式引入才能渲染（否则收货人公司名框位置空白）
+import { message, Modal, Textarea, AutoComplete as AAutoComplete } from 'ant-design-vue'
 import { checkPermission } from '@/directives/permission'
 import type { SelectValue } from 'ant-design-vue/lib/select';
 import {
@@ -1653,7 +1676,6 @@ import {
   getReturnAuditHistory,
   
   exportInvoicePackage,
-  getInvoiceSplitItems,
   // 业务发票 API 已废弃，统一使用资料项 INVOICE 环节
 } from '@/api/business/declaration'
 import {
@@ -1697,8 +1719,11 @@ import { getCitiesByCountry } from '@/api/system/city-info'
 import {  findUnitByCode } from '@/utils/measurement-unit'
 import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityConfig'
 import { getAllEnabledCustomers, type CustomerConfig } from '@/api/system/customerConfig'
+import { getAllEnabledPartyB, type PartyBConfig } from '@/api/system/partyBConfig'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
-import InvoiceSplitModal from './InvoiceSplitModal.vue'
+import PartyBSelector from './PartyBSelector.vue'
+import { getTabKey, type DeclarationTabType } from '@/utils/tabKey'
+import { registerTabGuard, setTabMeta } from '@/composables/useTabGuard'
 import { formatDate } from '@/utils/common'
 
 // 文件预览
@@ -2886,44 +2911,11 @@ const loadInvoiceAmountDetail = async () => {
   }
 }
 
-// 20%拆分弹窗
-const invoiceSplitModalRef = ref<InstanceType<typeof InvoiceSplitModal> | null>(null)
-
-/** 是否有财务权限（可编辑20%数据） */
-const hasFinancePermission = computed(() => {
-  return checkPermission(['business:declaration:finance:supplement'])
-})
-
-/** 下载开票文件包(80%+20%) */
+/** 下载开票文件包（开票通知书 + 合同） */
 const handleDownloadInvoicePackage = async () => {
   if (!formId.value) return
-
-  if (hasFinancePermission.value) {
-    // 有财务权限：打开弹窗，可编辑+下载
-    invoiceSplitModalRef.value?.open()
-  } else {
-    // 无财务权限：检查是否已配置20%数据，已配置则直接下载
-    try {
-      const res = await getInvoiceSplitItems(formId.value)
-      const savedItems = res.data?.data
-      if (!Array.isArray(savedItems) || savedItems.length === 0) {
-        message.warning('请先联系财务人员录入20%产品数据')
-        return
-      }
-    } catch {
-      message.warning('请先联系财务人员录入20%产品数据')
-      return
-    }
-    // 直接下载
-    await doDownloadInvoicePackage([])
-  }
-}
-
-/** 执行下载开票文件包 */
-const doDownloadInvoicePackage = async (splitItems: any[]) => {
-  if (!formId.value) return
   try {
-    const res = await exportInvoicePackage(formId.value!, splitItems)
+    const res = await exportInvoicePackage(formId.value)
     const downloadUrl = res.data?.data
     if (downloadUrl) {
       window.location.href = downloadUrl
@@ -2934,11 +2926,6 @@ const doDownloadInvoicePackage = async (splitItems: any[]) => {
   } catch (e: any) {
     message.error('下载失败: ' + (e.message || '未知错误'))
   }
-}
-
-/** 20%弹窗确认回调 */
-const handleSplitConfirm = async (splitItems: any[]) => {
-  await doDownloadInvoicePackage(splitItems)
 }
 
 const handleSubmitInvoiceAmount = async () => {
@@ -3174,6 +3161,8 @@ const handleQuantityOrPriceChange = (record: any) => {
 const formData = reactive({
   formNo: '',
   entityId: undefined as number | undefined,
+  // 后端 WriteLongAsString：Long 以字符串下发，回填后本页持有的是字符串 id
+  partyBId: undefined as number | string | undefined,
   shipperCompany: 'NINGBO ZIYI TECHNOLOGY CO.,LTD',
   shipperAddress: 'XIUFENG, GAOQIAO TOWN, HAISHU DISTRICT, NINGBO, ZHEJIANG, CHINA',
   consigneeCompany: '',
@@ -3227,9 +3216,10 @@ const filterCustomerOption = (input: string, option: any) => {
   return (option.label || '').toLowerCase().includes(input.toLowerCase())
 }
 
-// 选择常用客户后自动填充
-const onCustomerSelect = (value: string) => {
-  const customer = customerList.value.find(c => c.customerName === value)
+// 选择常用客户后自动填充（a-auto-complete 的 @select 入参由组件库类型控制）
+const onCustomerSelect = (value: any) => {
+  const name = String(value ?? '')
+  const customer = customerList.value.find(c => c.customerName === name)
   if (customer) {
     formData.consigneeCompany = customer.customerName
     formData.consigneeAddress = customer.customerAddress || ''
@@ -3251,6 +3241,68 @@ const loadCustomers = async () => {
     }
   } catch (error) {
     console.warn('加载常用客户失败', error)
+  }
+}
+
+// 乙方配置（仅用于单证乙方/销货方取值，不参与收货人自动填充）
+const partyBList = ref<PartyBConfig[]>([])
+const partyBOptions = computed(() =>
+  partyBList.value.map(p => ({
+    value: p.id,
+    label: p.partyBName
+  }))
+)
+
+// 加载乙方配置
+const loadPartyBList = async () => {
+  try {
+    const response = await getAllEnabledPartyB()
+    if (response.data?.code === 200) {
+      partyBList.value = response.data.data || []
+    }
+  } catch (error) {
+    console.warn('加载乙方配置失败', error)
+  }
+}
+
+/**
+ * 当前选中的乙方（用于单证销货方信息预览）
+ * 后端 WriteLongAsString 把 id 下发为字符串，与 PartyBSelector 同口径按字符串比
+ */
+const selectedPartyB = computed(() => {
+  const id = formData.partyBId
+  if (id === undefined || id === null || id === '' || id === 0) return undefined
+  return partyBList.value.find(p => String(p.id) === String(id))
+})
+
+/**
+ * 销货方信息摘要片段
+ * 字段名与值分开给，否则一排“111 | 15268034063 | 11”根本看不出哪段是地址、哪段是税号
+ */
+const partyBSummaryParts = computed(() => {
+  const p = selectedPartyB.value
+  if (!p) return [] as Array<{ label: string; value: string }>
+  const list: Array<{ label: string; value?: string }> = [
+    { label: '地址', value: p.partyBAddress },
+    { label: '联系电话', value: p.contactPhone },
+    { label: '纳税人识别号', value: p.taxId },
+    { label: '开户银行', value: p.bankName },
+    { label: '银行账号', value: p.bankAccount }
+  ]
+  return list.filter(item => !!item.value).map(item => ({ label: item.label, value: String(item.value) }))
+})
+
+/** 销货方信息摘要全文（悬浮提示用） */
+const partyBSummary = computed(() =>
+  partyBSummaryParts.value.map(item => `${item.label}：${item.value}`).join(' | ')
+)
+
+/** 乙方档案在申报页内维护后：刷新下拉，新增项自动选中 */
+const handlePartyBSaved = async (payload: { name: string; isNew: boolean }) => {
+  await loadPartyBList()
+  if (payload.isNew && !formData.partyBId) {
+    const created = partyBList.value.find(p => p.partyBName === payload.name)
+    if (created?.id) formData.partyBId = created.id
   }
 }
 
@@ -3956,18 +4008,24 @@ const onDepartureCityChange = (value: SelectValue) => {
 //   }
 // }
 
-// 返回列表
+// 返回列表（页头按钮）：固定跳所属类型的申报录入列表，history.back 会落到来源页，可能串到其它类型
+const goBackToList = () => {
+  router.push(entryListPath.value)
+}
+
+// 各审核/提交动作完成后的返回：优先回到来源列表页，无历史时兜底到申报录入
 const goBack = () => {
-  // 智能返回：优先返回上一页，无历史时返回申报录入
   if (window.history.length > 1) {
     router.back()
   } else {
-    router.push(formData.declarationType === 'SELF' ? '/declaration-self/entry' : '/declaration-external/entry')
+    goBackToList()
   }
 }
 
 // 保存草稿
-const handleSaveDraft = async () => {
+const handleSaveDraft = async (options?: { deferUrlSync?: boolean }) => {
+  // 延迟 URL 同步：关闭标签等场景下只落库、不改写地址，避免 keep-alive 重建页面实例
+  const deferUrlSync = options?.deferUrlSync === true
   submitting.value = true
   try {
     // 将关联箱子的 cartons 和 volume 赋值到产品中，并确保单位完整
@@ -4058,6 +4116,8 @@ const handleSaveDraft = async () => {
     }
     
     console.log('保存草稿数据:', draftData)
+    // 是否首次落库（新建）：新建单保存后按约定跳回申报录入列表
+    const createdDraft = !formId.value
     const response = await saveDraft(draftData as any)
     
     if (response.data && response.data.code === 200) {
@@ -4073,11 +4133,15 @@ const handleSaveDraft = async () => {
         console.log('当前草稿ID:', formId.value)
         formData.formNo = newDraftId.formNo
         formStatus.value = 0
-        router.replace({
-          path: route.path,
-          query: { ...route.query, id: newDraftId, status: 0 }
-        })
+        // 不再改写本页地址：新建单由下方直接跳回申报录入列表；
+        // 延迟同步场景（关闭标签守卫）保持原地址，避免 keep-alive 重建页面实例
       }
+      if (createdDraft && !deferUrlSync) {
+        router.push(entryListPath.value)
+      }
+      // 落库成功后清脏标记（本次保存会深度改写产品金额/单位，不能交给深度监听判定）
+      markSynced()
+      return true
     } else {
       message.error(response.data.message || '保存草稿失败')
     }
@@ -4087,6 +4151,7 @@ const handleSaveDraft = async () => {
   } finally {
     submitting.value = false
   }
+  return false
 }
 
 // 提交申报
@@ -4292,6 +4357,16 @@ const handleSubmit = async () => {
 
 // 加载数据
 const loadData = async () => {
+  // 程序化装载（首屏/审核后原地重载）不得计为用户未保存的编辑
+  dirtyTrackingOn = false
+  try {
+    await loadDataRaw()
+  } finally {
+    markSynced()
+  }
+}
+
+const loadDataRaw = async () => {
   // 并行加载配置数据
   await Promise.all([
     loadProductTypes(),
@@ -4368,6 +4443,7 @@ const loadData = async () => {
         // 填充基本表单数据
         formData.formNo = detailData.formNo || ''
         formData.entityId = detailData.entityId || undefined
+        formData.partyBId = detailData.partyBId || undefined
         formData.shipperCompany = detailData.shipperCompany || 'NINGBO ZIYI TECHNOLOGY CO.,LTD'
         formData.shipperAddress = detailData.shipperAddress || 'XIUFENG, GAOQIAO TOWN, HAISHU DISTRICT, NINGBO, ZHEJIANG, CHINA'
         formData.consigneeCompany = detailData.consigneeCompany || ''
@@ -4383,6 +4459,8 @@ const loadData = async () => {
         formData.currency = detailData.currency || currencyOptions.value[0]?.value || 'USD'
         formData.declarationDate = detailData.declarationDate ? dayjs(detailData.declarationDate) : undefined
         formData.declarationType = detailData.declarationType || 'EXTERNAL'
+        // 以单据真实类型刷新标签徽标（老链接路径前缀推不出时尤为必要）
+        applyTabMeta()
         
         // 如果 entityId 为空，根据发货公司名称自动匹配主体
         autoMatchEntity()
@@ -4623,21 +4701,175 @@ const scrollToQuerySection = () => {
   })
 }
 
+// ========== 标签页草稿保护 ==========
+// 新建申报存在未保存内容时，关闭标签前由 layout 询问是否先保存为草稿
+const formDirty = ref(false)
+let dirtyTrackingOn = false
+let unregisterTabGuard: (() => void) | null = null
+
+/** 本实例所属表单路径：路径前缀即申报类型的权威口径（切走标签后 route 会变，只能取装载时的值） */
+const ownFormPath = route.path
+
+/**
+ * 归属申报类型：表单路径前缀优先，其次单据字段（兼容 /declaration 老入口）
+ * 标签徽标与“返回列表”去向都以此为准，避免梓熠/理德与集洛互相串页
+ */
+const ownDeclarationType = computed<DeclarationTabType>(() => {
+  if (ownFormPath.startsWith('/declaration-self')) return 'SELF'
+  if (ownFormPath.startsWith('/declaration-external')) return 'EXTERNAL'
+  return formData.declarationType === 'SELF' ? 'SELF' : 'EXTERNAL'
+})
+
+/** 申报录入列表路由：两套申报各自一套菜单，跳错前缀等于跳错模块 */
+const entryListPath = computed(() =>
+  ownDeclarationType.value === 'SELF' ? '/declaration-self/entry' : '/declaration-external/entry'
+)
+
+/** 把已解析出的申报类型与发票号回写到所属标签：类型定徽标，发票号替代标签上的数据库编号 */
+const applyTabMeta = () => {
+  if (!isOwnRoute.value) return
+  setTabMeta(getTabKey(route), {
+    bizType: ownDeclarationType.value,
+    invoiceNo: String(formData.invoiceNo || '').trim()
+  })
+}
+
+// 发票号是手录字段，输一个字符就要同步到标签，否则标签上一直挂着无辨识度的 #id
+watch(() => formData.invoiceNo, () => { applyTabMeta() })
+
+watch([formData, productList, cartonList], () => {
+  if (dirtyTrackingOn) formDirty.value = true
+}, { deep: true })
+
+/**
+ * 标记“已与后端同步”：装载或保存成功后调用
+ * 保存与装载会深度改写 formData/productList（金额、单位等），
+ * 必须延后一拍再清脏标记，否则会被深度监听误判为用户编辑
+ */
+const markSynced = () => {
+  dirtyTrackingOn = false
+  nextTick(() => {
+    formDirty.value = false
+    dirtyTrackingOn = true
+  })
+}
+
+/**
+ * 装载静默期收尾：只恢复跟踪，已经填过就不清脏
+ * 固定延时到、期间用户已经开始录入时，无条件清脏会把未保存内容抹掉痕迹，
+ * 表现为关闭标签时不再询问是否存草稿
+ */
+const endLoadSilence = () => {
+  if (formDirty.value) {
+    dirtyTrackingOn = true
+    return
+  }
+  markSynced()
+}
+
+/** 本实例装载时的完整地址：表单页的 keep-alive 缓存键就由此派生，地址不再是我就说明我没在呈现 */
+const ownFullPath = route.fullPath
+
+/** 地址是否仍指向本实例：keep-alive 切走后 useRoute() 会指向别的页面，其派生值不可再用 */
+const isOwnRoute = computed(() => route.fullPath === ownFullPath)
+
+/**
+ * 本页只读态快照
+ * isFormReadonly 由全局 route 的 query 派生，本页被缓存（切走）后它会跟着当前呈现的那张单变化；
+ * 脏判定若直接读它，就会出现“另一张新建单被判成只读、关闭时既不跳转也不弹窗”
+ */
+const ownReadonly = ref(false)
+watch([isOwnRoute, isFormReadonly], () => {
+  if (isOwnRoute.value) ownReadonly.value = isFormReadonly.value
+}, { immediate: true })
+
+/**
+ * 新建未落库时的内容兜底判定
+ * formDirty 靠深度监听维护，而装载静默期、模板默认值回填、子组件内部状态（资料/水单等）
+ * 都可能让一笔改动没被记到，一漏记就是关闭时静默丢内容；
+ * 只要还没存过草稿、页面上已有实质录入，就当作有未保存的东西
+ * （发货公司等预置值不计入，避免新建空白单也弹提示）
+ */
+const hasUnsavedContent = () => {
+  if (formId.value) return false
+  return !!(formData.consigneeCompany || formData.consigneeAddress || formData.invoiceNo
+    || formData.partyBId || productList.value.length || cartonList.value.length)
+}
+
+/** 按当前路由所属标签注册守卫（一个实例一份，带本实例自己的地址） */
+const syncTabGuard = () => {
+  unregisterTabGuard?.()
+  unregisterTabGuard = registerTabGuard({
+    tabKey: getTabKey(route),
+    fullPath: route.fullPath,
+    // 脏判定 = 非只读 且（监听记到的改动 或 新建单上已有实质内容）
+    isDirty: () => !ownReadonly.value && (formDirty.value || hasUnsavedContent()),
+    save: async () => {
+      // 只读页无需保存（进来时本标签已置顶，ownReadonly 已是本页真实取值）
+      if (ownReadonly.value) return true
+      // 延迟 URL 同步：关闭标签场景下无需把地址改写为带 id，避免标签与缓存实例重建
+      const ok = await handleSaveDraft({ deferUrlSync: true })
+      // 保存未成功（校验不过/请求失败）时中止关闭，避免内容静默丢失
+      return ok === true
+    }
+  })
+}
+
+// keep-alive 下标签可能在多个缓存实例间切换（同一张单的多个入口地址），
+// 每次重新激活都重新注册，保证守卫始终属于标签当前呈现的那个实例
+onActivated(() => {
+  syncTabGuard()
+  // 标签可能已从持久化快照重建，徽标与发票号需重新回写
+  applyTabMeta()
+})
+
 onMounted(() => {
   // 新申报单时根据用户组织类型自动设置申报类型
   const userStore = useUserStore()
   if (!formId.value) {
     formData.declarationType = userStore.orgType === 'INTERNAL' ? 'SELF' : 'EXTERNAL'
   }
+  applyTabMeta()
   loadData()
   loadCountries()
   loadMeasurementUnits()
   loadEntityList()
   loadCustomers()
+  loadPartyBList()
+  // 草稿跟踪静默期：初始装载与异步回填全部落定后才识别用户编辑
+  setTimeout(endLoadSilence, 500)
+  syncTabGuard()
+})
+
+onUnmounted(() => {
+  unregisterTabGuard?.()
+  unregisterTabGuard = null
 })
 </script>
 
 <style scoped>
+/* 销货方信息摘要：字段名与值成对展示，最多两行，折不下时靠 title 悬浮看全文 */
+.party-b-summary {
+  min-height: 32px;
+  max-height: 38px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  gap: 2px 16px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
+  color: #64748B;
+}
+
+.party-b-summary__item {
+  white-space: nowrap;
+}
+
+.party-b-summary__label {
+  color: #94A3B8;
+}
+
 /* 统一UI风格 - 与系统管理页面完全一致 */
 :deep(.ant-card) {
   border-radius: 8px;

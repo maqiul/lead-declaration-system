@@ -620,12 +620,14 @@ const handleAdd = async () => {
       if (modes.length === 1) transport = modes[0]
     }
 
-    // 申报类型由路由前缀推导、模板由表单页按类型自动匹配默认值（规则与原列表页选择一致），
-    // URL 只需携带运输方式预选
+    // 新建入口地址必须固定：同类型只有一个新建标签槽位，地址一致才能回到己缓存的那个实例，
+    // 已填内容不会被刷新掉（参数口径与申报管理列表页完全一致，避免两处拼出不同地址而失配）
     const params = new URLSearchParams()
+    params.set('declarationType', currentDeclarationType.value)
     if (transport) params.set('transport', transport)
     const query = params.toString()
-    router.push(`${declarationPrefix.value}/form-v2${query ? '?' + query : ''}`)
+    // catch 避免已在该地址时的重复导航报错
+    router.push(`${declarationPrefix.value}/form-v2${query ? '?' + query : ''}`).catch(() => {})
   } catch {
     message.warning('加载运输方式失败')
   }

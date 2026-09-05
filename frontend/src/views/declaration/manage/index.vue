@@ -748,11 +748,31 @@ import { formatDate as fmtDateTime } from '@/utils/common'
 const router = useRouter()
 const route = useRoute()
 
-/** 根据 route query 中的 declarationType 确定路由前缀 */
-const declarationPrefix = computed(() => {
-  const dt = (route.query.declarationType as string) || 'EXTERNAL'
-  return dt === 'SELF' ? '/declaration-self' : '/declaration-external'
+/**
+ * 申报类型：query 优先，其次路由前缀
+ * 本页同时挂在 /declaration-self 与 /declaration-external 下，只看 query 会把梓熠/理德误判成集洛
+ */
+const currentDeclarationType = computed(() => {
+  const dt = route.query.declarationType as string
+  if (dt && ['SELF', 'EXTERNAL'].includes(dt)) return dt
+  if (route.path.startsWith('/declaration-self')) return 'SELF'
+  return 'EXTERNAL'
 })
+
+/** 根据 declarationType 确定路由前缀（新建入口无具体单据时沿用页面口径） */
+const declarationPrefix = computed(() => {
+  return currentDeclarationType.value === 'SELF' ? '/declaration-self' : '/declaration-external'
+})
+
+/**
+ * 单条记录的跳转前缀：本列表不按申报类型过滤，两套申报混排，
+ * 因此必须以单据自身的 declarationType 为准，否则梓熠/理德的单会跳到集洛路径下
+ */
+const prefixOf = (record?: DeclarationRecord): string => {
+  const dt = record?.declarationType
+  const resolved = dt === 'SELF' || dt === 'EXTERNAL' ? dt : currentDeclarationType.value
+  return resolved === 'SELF' ? '/declaration-self' : '/declaration-external'
+}
 
 // 文件预览
 const previewVisible = ref(false)
@@ -786,6 +806,8 @@ interface DeclarationRecord {
   activeTasks?: string[]
   needsFlowMigration?: boolean
   pendingExemptionId?: number
+  /** 申报类型 SELF-梓熠/理德，EXTERNAL-集洛 */
+  declarationType?: string
 }
 
 const dataSource = ref<DeclarationRecord[]>([])
@@ -1134,13 +1156,16 @@ const handleAdd = async () => {
     }
 
     // 模板由表单页按申报类型自动匹配默认值（规则与原列表页选择一致）；
-    // 申报类型优先沿用当前页面路由的 declarationType，否则由路由前缀推导
+    // 申报类型沿用当前页面口径（query 或路由前缀）
+    // 新建入口地址必须固定：同类型只有一个新建标签槽位，地址一致才能回到己缓存的那个实例，
+    // 已填内容不会被刷新掉
     const params = new URLSearchParams()
-    const currentDt = route.query.declarationType as string
-    if (currentDt && ['SELF', 'EXTERNAL'].includes(currentDt)) params.set('declarationType', currentDt)
+    const currentDt = currentDeclarationType.value
+    params.set('declarationType', currentDt)
     if (transport) params.set('transport', transport)
     const query = params.toString()
-    router.push(`${declarationPrefix.value}/form-v2${query ? '?' + query : ''}`)
+    // catch 避免已在该地址时的重复导航报错
+    router.push(`${declarationPrefix.value}/form-v2${query ? '?' + query : ''}`).catch(() => {})
   } catch {
     message.warning('加载运输方式失败')
   }
@@ -1152,7 +1177,7 @@ const previewTemplateId = ref<number | null>(null)
 
 // 查看详情
 const handleView = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&readonly=true`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}&readonly=true`)
 }
 
 // 提交操作 (从列表直接触发流程启动)
@@ -1170,7 +1195,7 @@ const handleStatusSubmit = async (record: DeclarationRecord) => {
         content: `${check.message}。是否前往编辑页补全？`,
         okText: '去补全',
         cancelText: '取消',
-        onOk: () => { router.push(`${declarationPrefix.value}/form-v2?id=${record.id}`) }
+        onOk: () => { router.push(`${prefixOf(record)}/form-v2?id=${record.id}`) }
       })
       return
     }
@@ -1195,7 +1220,7 @@ const handleEdit = (record: DeclarationRecord) => {
     message.warning('只有草稿状态的申报单可以编辑')
     return
   }
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}`)
 }
 
 // 付款操作（定金/尾款）- 跳转到水单提交模式
@@ -1213,7 +1238,7 @@ const handleEdit = (record: DeclarationRecord) => {
 
 // 审核申报单：跳转只带 id，入口模式由表单页按后端实时任务推断（兼容带 mode 的老链接）
 const handleAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}`)
 }
 
 // 财务补充 - 弹窗模式（有数据则编辑，无数据则新增）
@@ -1224,47 +1249,47 @@ const handleFinanceUpload = (record: DeclarationRecord) => {
 
 // 提交申报资料——跳转到主表单（入口由后端任务推断）
 const handleMaterialSubmit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=material`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}&scrollTo=material`)
 }
 
 // 资料审核（跳转到详情页审核）
 const handleMaterialAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=material`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}&scrollTo=material`)
 }
 
 // 豁免审核（跳转到豁免审核模式，表单页按 exemptionId 反查自动进入）
 const handleExemptionAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?exemptionId=${record.pendingExemptionId}`)
+  router.push(`${prefixOf(record)}/form-v2?exemptionId=${record.pendingExemptionId}`)
 }
 
 // 提交业务发票——跳转到主表单
 const handleGoSubmitInvoice = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=invoice`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}&scrollTo=invoice`)
 }
 
 // 发票审核（跳转到详情页审核）
 const handleInvoiceAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=invoice`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}&scrollTo=invoice`)
 }
 
 // 补充资料提交（跳转到详情页）
 const handleSupplementSubmit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=supplement`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}&scrollTo=supplement`)
 }
 
 // 补充资料审核（跳转到详情页审核）
 const handleSupplementAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=supplement`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}&scrollTo=supplement`)
 }
 
 // 申请开票金额提交（跳转到详情页）
 const handleInvoiceAmountSubmit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=invoice-amount`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}&scrollTo=invoice-amount`)
 }
 
 // 开票金额审核（跳转到详情页审核）
 const handleInvoiceAmountAudit = (record: DeclarationRecord) => {
-  router.push(`${declarationPrefix.value}/form-v2?id=${record.id}&scrollTo=invoice-amount`)
+  router.push(`${prefixOf(record)}/form-v2?id=${record.id}&scrollTo=invoice-amount`)
 }
 
 const canShowResumeFlow = (record: DeclarationRecord) => {

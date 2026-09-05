@@ -29,11 +29,12 @@ public class SwaggerConfig {
                     .name("开发团队")
                     .email("")))
             .components(new Components()
-                .addSecuritySchemes("satoken",
+                // 头名必须与 sa-token.token-name 一致，否则 Swagger 里填了 token 也过不了登录拦截器
+                .addSecuritySchemes("lead-decl-token",
                     new SecurityScheme()
                         .type(SecurityScheme.Type.APIKEY)
-                        .name("satoken")
+                        .name("lead-decl-token")
                         .in(SecurityScheme.In.HEADER)))
-            .addSecurityItem(new SecurityRequirement().addList("satoken"));
+            .addSecurityItem(new SecurityRequirement().addList("lead-decl-token"));
     }
 }

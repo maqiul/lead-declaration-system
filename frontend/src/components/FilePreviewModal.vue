@@ -45,7 +45,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue'
 import { DownloadOutlined } from '@ant-design/icons-vue'
-import { getToken } from '@/utils/auth'
+import { withAuthToken } from '@/utils/auth'
 
 interface Props {
   visible: boolean
@@ -86,13 +86,10 @@ const previewTitle = computed(() => {
   return '文件预览'
 })
 
-// 带认证参数的URL
+// 带认证参数的URL：预览/下载走 iframe 与新窗口，带不了请求头，只能把凭证拼在地址上
 const authedUrl = computed(() => {
   if (!props.url) return ''
-  const token = getToken()
-  if (!token) return props.url
-  const separator = props.url.includes('?') ? '&' : '?'
-  return `${props.url}${separator}satoken=${token}`
+  return withAuthToken(props.url)
 })
 
 // PDF iframe src

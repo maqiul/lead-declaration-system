@@ -58,7 +58,7 @@
         :columns="columns"
         :loading="loading"
         :pagination="pagination"
-        :scroll="{ x: 2050 }"
+        :scroll="{ x: showFeeConfig ? 2050 : 1840 }"
         @change="handleTableChange"
         rowKey="id"
         class="ui-table"
@@ -226,7 +226,7 @@
           />
         </a-form-item>
 
-        <a-form-item label="手续费率" name="serviceFeeRate">
+        <a-form-item v-if="showFeeConfig" label="手续费率" name="serviceFeeRate">
           <a-input-number
             v-model:value="formData.serviceFeeRate"
             :min="0"
@@ -238,7 +238,7 @@
           />
         </a-form-item>
 
-        <a-form-item label="最低操作费" name="minServiceFee">
+        <a-form-item v-if="showFeeConfig" label="最低操作费" name="minServiceFee">
           <a-input-number
             v-model:value="formData.minServiceFee"
             :min="0"
@@ -429,6 +429,9 @@ const pagination = reactive({
   showTotal: (total: number) => `共 ${total} 条记录`
 })
 
+// 手续费参数（手续费率/最低操作费）改由数据库直接维护，界面不再展示与录入；如需恢复置为 true
+const showFeeConfig: boolean = false
+
 // 表格列配置
 const columns = [
   {
@@ -490,19 +493,22 @@ const columns = [
     key: 'status',
     width: 80
   },
-  {
-    title: '手续费率',
-    dataIndex: 'serviceFeeRate',
-    key: 'serviceFeeRate',
-    width: 100
-  },
-  {
-    title: '最低操作费',
-    dataIndex: 'minServiceFee',
-    key: 'minServiceFee',
-    width: 110,
-    customRender: ({ record }: any) => record.minServiceFee != null ? record.minServiceFee : '-'
-  },
+  // 手续费率/最低操作费由数据库维护，列表暂不展示
+  ...(showFeeConfig ? [
+    {
+      title: '手续费率',
+      dataIndex: 'serviceFeeRate',
+      key: 'serviceFeeRate',
+      width: 100
+    },
+    {
+      title: '最低操作费',
+      dataIndex: 'minServiceFee',
+      key: 'minServiceFee',
+      width: 110,
+      customRender: ({ record }: any) => record.minServiceFee != null ? record.minServiceFee : '-'
+    },
+  ] : []),
   {
     title: '排序',
     dataIndex: 'sort',

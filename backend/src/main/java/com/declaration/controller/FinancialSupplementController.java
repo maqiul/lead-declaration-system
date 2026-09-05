@@ -9,8 +9,8 @@ import com.declaration.service.DeclarationAttachmentService;
 import com.declaration.service.ExcelExportService;
 import com.declaration.entity.EntityConfig;
 import com.declaration.service.EntityConfigService;
-import com.declaration.entity.InvoiceSplitItem;
-import com.declaration.dao.InvoiceSplitItemMapper;
+import com.declaration.entity.PartyBConfig;
+import com.declaration.service.PartyBConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -84,7 +84,7 @@ public class FinancialSupplementController {
     private final DeclarationAttachmentService attachmentService;
     private final com.declaration.service.SystemConfigService systemConfigService;
     private final EntityConfigService entityConfigService;
-    private final InvoiceSplitItemMapper splitItemMapper;
+    private final PartyBConfigService partyBConfigService;
     private final com.declaration.service.CurrencyInfoService currencyInfoService;
 
     @Value("${file.upload-path:uploads/exports/}")
@@ -96,7 +96,7 @@ public class FinancialSupplementController {
             DeclarationAttachmentService attachmentService,
             com.declaration.service.SystemConfigService systemConfigService,
             EntityConfigService entityConfigService,
-            InvoiceSplitItemMapper splitItemMapper,
+            PartyBConfigService partyBConfigService,
             com.declaration.service.CurrencyInfoService currencyInfoService) {
         this.supplementService = supplementService;
         this.formService = formService;
@@ -104,7 +104,7 @@ public class FinancialSupplementController {
         this.attachmentService = attachmentService;
         this.systemConfigService = systemConfigService;
         this.entityConfigService = entityConfigService;
-        this.splitItemMapper = splitItemMapper;
+        this.partyBConfigService = partyBConfigService;
         this.currencyInfoService = currencyInfoService;
     }
 
@@ -615,6 +615,16 @@ public class FinancialSupplementController {
             // === 2) 购货/销货单位 ===
             String buyerName = companyCn;
             String sellerName = form.getConsigneeCompany() != null ? form.getConsigneeCompany() : "-";
+            PartyBConfig partyB = getPartyB(form);
+            // 已选乙方则优先用乙方配置，未选保持历史口径（名称回退收货人、其余为 -）
+            if (partyB != null && !isBlank(partyB.getPartyBName())) {
+                sellerName = partyB.getPartyBName().trim();
+            }
+            String sellerTaxId = partyB != null && !isBlank(partyB.getTaxId()) ? partyB.getTaxId().trim() : "-";
+            String sellerAddrPhone = partyB != null
+                    ? defaultDash(joinWithSpace(partyB.getPartyBAddress(), partyB.getContactPhone())) : "-";
+            String sellerBankInfo = partyB != null
+                    ? defaultDash(joinWithSpace(partyB.getBankName(), partyB.getBankAccount())) : "-";
             String buyerTaxId = (entityConfig != null && entityConfig.getTaxId() != null) ? entityConfig.getTaxId() : "-";
             String buyerPhone = (entityConfig != null && entityConfig.getPhone() != null) ? entityConfig.getPhone() : "-";
             String buyerBank = (entityConfig != null && entityConfig.getBankAccount() != null) ? entityConfig.getBankAccount() : "-";
@@ -640,11 +650,11 @@ public class FinancialSupplementController {
             XSSFRow sellerNameRow = sheet.createRow(rowNum++);
             sellerNameRow.createCell(0).setCellValue("名称: " + sellerName);
             XSSFRow sellerTaxRow = sheet.createRow(rowNum++);
-            sellerTaxRow.createCell(0).setCellValue("纳税人识别号: -");
+            sellerTaxRow.createCell(0).setCellValue("纳税人识别号: " + sellerTaxId);
             XSSFRow sellerAddrRow = sheet.createRow(rowNum++);
-            sellerAddrRow.createCell(0).setCellValue("地址、电话: -");
+            sellerAddrRow.createCell(0).setCellValue("地址、电话: " + sellerAddrPhone);
             XSSFRow sellerBankRow = sheet.createRow(rowNum++);
-            sellerBankRow.createCell(0).setCellValue("开户行及账号: -");
+            sellerBankRow.createCell(0).setCellValue("开户行及账号: " + sellerBankInfo);
 
             rowNum++; // 空行
 
@@ -690,7 +700,7 @@ public class FinancialSupplementController {
 
             rowNum++; // 空行
 
-            // === 4) 开票金额计算（文件内应用80%基数） ===
+            // === 4) 开票金额计算（单证不体现扣款明细） ===
             BigDecimal amountWithTaxRefund = calcDetail.get("amountWithTaxRefund") instanceof BigDecimal
                     ? (BigDecimal) calcDetail.get("amountWithTaxRefund") : BigDecimal.ZERO;
             BigDecimal invoiceBase = amountWithTaxRefund.multiply(new BigDecimal("0.8")).setScale(2, java.math.RoundingMode.HALF_UP);
@@ -708,16 +718,8 @@ public class FinancialSupplementController {
             XSSFRow taxRefundRow = sheet.createRow(rowNum++);
             taxRefundRow.createCell(0).setCellValue(String.format("退税加成合计: %.2f CNY", amountWithTaxRefund.doubleValue()));
 
-            XSSFRow baseRow = sheet.createRow(rowNum++);
-            baseRow.createCell(0).setCellValue(String.format("开票基数(80%%): %.2f CNY", invoiceBase.doubleValue()));
-
-            XSSFRow deductRow = sheet.createRow(rowNum++);
-            deductRow.createCell(0).setCellValue(String.format("扣款合计: %.2f CNY (扣款项: %.2f + 手续费: %.2f)",
-                    deductTotal.doubleValue(), totalDeduction.doubleValue(), totalFeeAmount.doubleValue()));
-
             XSSFRow invoiceRow = sheet.createRow(rowNum++);
-            invoiceRow.createCell(0).setCellValue(String.format("开票金额: %.2f - %.2f = %.2f CNY",
-                    invoiceBase.doubleValue(), deductTotal.doubleValue(), fileInvoiceAmt.doubleValue()));
+            invoiceRow.createCell(0).setCellValue(String.format("开票金额: %.2f CNY", fileInvoiceAmt.doubleValue()));
             invoiceRow.getCell(0).setCellStyle(boldLeft);
 
             rowNum++; // 空行
@@ -838,53 +840,9 @@ public class FinancialSupplementController {
         return result.toString();
     }
 
-    @GetMapping("/form/{formId}/split-items")
-    @Operation(summary = "查询已保存的20%拆分产品列表")
-    public Result<List<InvoiceSplitItem>> getSplitItems(@PathVariable Long formId) {
-        List<InvoiceSplitItem> items = splitItemMapper.selectList(
-                new LambdaQueryWrapper<InvoiceSplitItem>()
-                        .eq(InvoiceSplitItem::getFormId, formId)
-                        .orderByAsc(InvoiceSplitItem::getSort));
-        return Result.success(items);
-    }
-
-    @PostMapping("/form/{formId}/split-items")
-    @Operation(summary = "保存20%拆分产品列表")
-    @RequiresPermissions("business:declaration:finance:supplement")
-    public Result<Void> saveSplitItems(@PathVariable Long formId, @RequestBody Map<String, Object> body) {
-        // 先删后插
-        splitItemMapper.delete(new LambdaQueryWrapper<InvoiceSplitItem>()
-                .eq(InvoiceSplitItem::getFormId, formId));
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> itemsData = (List<Map<String, Object>>) body.get("items");
-        if (itemsData != null) {
-            for (int i = 0; i < itemsData.size(); i++) {
-                Map<String, Object> row = itemsData.get(i);
-                InvoiceSplitItem item = new InvoiceSplitItem();
-                item.setFormId(formId);
-                item.setHsCode((String) row.get("hsCode"));
-                item.setProductName((String) row.get("productName"));
-                item.setSpec((String) row.get("spec"));
-                if (row.get("quantity") != null) {
-                    item.setQuantity(new BigDecimal(row.get("quantity").toString()));
-                }
-                if (row.get("unitPrice") != null) {
-                    item.setUnitPrice(new BigDecimal(row.get("unitPrice").toString()));
-                }
-                if (row.get("amount") != null) {
-                    item.setAmount(new BigDecimal(row.get("amount").toString()));
-                }
-                item.setSort(i);
-                splitItemMapper.insert(item);
-            }
-        }
-        return Result.success(null);
-    }
-
     @PostMapping("/form/{formId}/export-invoice-package")
-    @Operation(summary = "下载开票文件包(80%开票通知书+80%合同+20%开票通知书+20%合同)")
-    public Result<String> exportInvoicePackage(@PathVariable Long formId, @RequestBody Map<String, Object> body) {
+    @Operation(summary = "下载开票文件包(开票通知书+合同)")
+    public Result<String> exportInvoicePackage(@PathVariable Long formId) {
         try {
             DeclarationForm form = formService.getById(formId);
             if (form == null) throw new RuntimeException("申报单不存在");
@@ -892,27 +850,6 @@ public class FinancialSupplementController {
 
             Map<String, Object> calcDetail = supplementService.getCalculationDetail(formId);
             if (calcDetail == null) throw new RuntimeException("未找到开票明细数据");
-
-            // === 解析前端传入的20%产品列表 ===
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> splitItemsRaw = (List<Map<String, Object>>) body.get("splitItems");
-            List<Map<String, Object>> splitProducts = new ArrayList<>();
-            if (splitItemsRaw != null) {
-                for (Map<String, Object> si : splitItemsRaw) {
-                    Map<String, Object> pd = new java.util.LinkedHashMap<>();
-                    pd.put("productName", si.get("productName"));
-                    pd.put("spec", si.get("spec"));
-                    BigDecimal qty = si.get("quantity") != null ? new BigDecimal(si.get("quantity").toString()) : BigDecimal.ZERO;
-                    BigDecimal unitPrice = si.get("unitPrice") != null ? new BigDecimal(si.get("unitPrice").toString()) : BigDecimal.ZERO;
-                    BigDecimal amount = si.get("amount") != null ? new BigDecimal(si.get("amount").toString()) : qty.multiply(unitPrice);
-                    pd.put("quantity", qty.intValue());
-                    pd.put("unit", "个");
-                    pd.put("cnyAmount", amount);
-                    pd.put("unitPrice", unitPrice);
-                    pd.put("amount", amount);
-                    splitProducts.add(pd);
-                }
-            }
 
             // === 计算原始开票金额（统一基数） ===
             BigDecimal origAmountWithTaxRefund = calcDetail.get("amountWithTaxRefund") instanceof BigDecimal
@@ -924,21 +861,15 @@ public class FinancialSupplementController {
             BigDecimal originalInvoiceAmount = origAmountWithTaxRefund.subtract(origDeduction).subtract(origFee)
                     .setScale(2, java.math.RoundingMode.HALF_UP);
 
-            // === 构建80% calcDetail ===
-            Map<String, Object> calcDetail80 = buildScaledCalcDetail(calcDetail, new BigDecimal("0.8"), originalInvoiceAmount);
-            // === 构建20% calcDetail ===
-            Map<String, Object> calcDetail20 = buildCustomCalcDetail(calcDetail, splitProducts, originalInvoiceAmount);
+            // === 构建开票文档 calcDetail（金额口径按比例缩放，不拆分产品） ===
+            Map<String, Object> invoiceCalcDetail = buildScaledCalcDetail(calcDetail, new BigDecimal("0.8"), originalInvoiceAmount);
 
-            // 1) 80% 开票通知书
-            byte[] notification80 = generateNotificationWord(form, calcDetail80);
-            // 2) 80% 合同
-            byte[] contract80 = generateContractWord(form, calcDetail80);
-            // 3) 20% 开票通知书
-            byte[] notification20 = generateNotificationWord(form, calcDetail20);
-            // 4) 20% 合同
-            byte[] contract20 = generateContractWord(form, calcDetail20);
+            // 1) 开票通知书
+            byte[] notification = generateNotificationWord(form, invoiceCalcDetail);
+            // 2) 合同
+            byte[] contract = generateContractWord(form, invoiceCalcDetail);
 
-            // 5) 打包 ZIP
+            // 3) 打包 ZIP
             String uuidFileName = java.util.UUID.randomUUID().toString() + ".zip";
             String dateDir = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
             String uploadDirPath = uploadPath + formNo + "/" + dateDir + "/";
@@ -948,14 +879,10 @@ public class FinancialSupplementController {
             File zipFile = new File(dir, uuidFileName);
             try (java.io.FileOutputStream fos = new java.io.FileOutputStream(zipFile);
                  ZipOutputStream zos = new ZipOutputStream(fos)) {
-                zos.putNextEntry(new ZipEntry("开票通知书_80%_" + formNo + ".docx"));
-                zos.write(notification80); zos.closeEntry();
-                zos.putNextEntry(new ZipEntry("合同_80%_" + formNo + ".docx"));
-                zos.write(contract80); zos.closeEntry();
-                zos.putNextEntry(new ZipEntry("开票通知书_20%_" + formNo + ".docx"));
-                zos.write(notification20); zos.closeEntry();
-                zos.putNextEntry(new ZipEntry("合同_20%_" + formNo + ".docx"));
-                zos.write(contract20); zos.closeEntry();
+                zos.putNextEntry(new ZipEntry("开票通知书_" + formNo + ".docx"));
+                zos.write(notification); zos.closeEntry();
+                zos.putNextEntry(new ZipEntry("合同_" + formNo + ".docx"));
+                zos.write(contract); zos.closeEntry();
             }
 
             String relativePath = formNo + "/" + dateDir + "/" + uuidFileName;
@@ -1043,75 +970,6 @@ public class FinancialSupplementController {
         return result;
     }
 
-    /** 构建自定义产品的 calcDetail（用于20%文档）
-     *  统一基数：originalInvoiceAmount × 0.2
-     *  用户产品按比例缩放，产品合计 = 开票金额（扣减仅用于展示）
-     */
-    private Map<String, Object> buildCustomCalcDetail(Map<String, Object> original, List<Map<String, Object>> customProducts, BigDecimal originalInvoiceAmount) {
-        Map<String, Object> result = new java.util.LinkedHashMap<>(original);
-        // 目标开票金额 = 原始开票金额 × 0.2
-        BigDecimal targetInvoiceAmount = originalInvoiceAmount.multiply(new BigDecimal("0.2")).setScale(2, java.math.RoundingMode.HALF_UP);
-        // 20%的扣减（仅用于展示）
-        BigDecimal origDeduction = original.get("totalInvoiceDeduction") instanceof BigDecimal
-                ? (BigDecimal) original.get("totalInvoiceDeduction") : BigDecimal.ZERO;
-        BigDecimal scaledDeduction = origDeduction.multiply(new BigDecimal("0.2")).setScale(2, java.math.RoundingMode.HALF_UP);
-        // 产品合计目标 = 开票金额（不吸收扣减）
-        BigDecimal productTarget = targetInvoiceAmount;
-
-        // 计算用户产品原始合计
-        BigDecimal userProductTotal = BigDecimal.ZERO;
-        if (customProducts != null) {
-            for (Map<String, Object> pd : customProducts) {
-                BigDecimal amt = pd.get("cnyAmount") instanceof BigDecimal ? (BigDecimal) pd.get("cnyAmount") : BigDecimal.ZERO;
-                userProductTotal = userProductTotal.add(amt);
-            }
-        }
-        // 缩放比例：使产品合计 = productTarget
-        BigDecimal scaleRatio = userProductTotal.compareTo(BigDecimal.ZERO) > 0
-                ? productTarget.divide(userProductTotal, 10, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
-
-        List<Map<String, Object>> products = new ArrayList<>();
-        BigDecimal totalCnyAmount = BigDecimal.ZERO;
-        if (customProducts != null) {
-            for (int i = 0; i < customProducts.size(); i++) {
-                Map<String, Object> pd = customProducts.get(i);
-                Map<String, Object> sp = new java.util.LinkedHashMap<>(pd);
-                BigDecimal cnyAmt = pd.get("cnyAmount") instanceof BigDecimal ? (BigDecimal) pd.get("cnyAmount") : BigDecimal.ZERO;
-
-                // 按比例缩放，最后一个产品差额补齐
-                BigDecimal scaledAmt;
-                if (i == customProducts.size() - 1) {
-                    scaledAmt = productTarget.subtract(totalCnyAmount);
-                } else {
-                    scaledAmt = cnyAmt.multiply(scaleRatio).setScale(2, java.math.RoundingMode.HALF_UP);
-                }
-
-                sp.put("cnyAmount", scaledAmt);
-                sp.put("amountWithTaxRefund", scaledAmt);
-                sp.put("taxRefundRate", BigDecimal.ZERO);
-                Number qtyNum = pd.get("quantity") instanceof Number ? (Number) pd.get("quantity") : 0;
-                BigDecimal qtyBD = new BigDecimal(qtyNum.toString());
-                if (qtyBD.compareTo(BigDecimal.ZERO) > 0) {
-                    sp.put("unitPrice", scaledAmt.divide(qtyBD, 10, java.math.RoundingMode.HALF_UP));
-                }
-                products.add(sp);
-                totalCnyAmount = totalCnyAmount.add(scaledAmt);
-            }
-        }
-        result.put("productTaxDetails", products);
-        result.put("totalGoodsAmount", totalCnyAmount);
-        result.put("amountWithTaxRefund", totalCnyAmount);
-        result.put("totalCny", totalCnyAmount);
-        // 扣减仅用于文档展示
-        result.put("totalInvoiceDeduction", scaledDeduction);
-        result.put("totalFeeAmount", BigDecimal.ZERO);
-        result.put("bankFeeAmount", BigDecimal.ZERO);
-        result.put("internalBankFee", BigDecimal.ZERO);
-        result.put("invoiceAmount", targetInvoiceAmount);
-        result.put("totalOriginalAmount", totalCnyAmount);
-        return result;
-    }
-
     /** 生成开票通知书 Word 文档字节数组 */
     private byte[] generateNotificationWord(DeclarationForm form, Map<String, Object> calcDetail) throws Exception {
         XWPFDocument doc = new XWPFDocument();
@@ -1128,23 +986,30 @@ public class FinancialSupplementController {
             addWordParagraph(doc, "编号: " + (form.getInvoiceNo() != null ? form.getInvoiceNo() : "-") + "    DATE: " + dateStr, false, 10, ParagraphAlignment.RIGHT);
             addWordParagraph(doc, "", false, 10, ParagraphAlignment.LEFT);
 
-            // 购货/销货单位（销货方信息留空）
+            // 购货/销货单位左右分栏，与合同保持同一阅读口径（销货方信息留空）
             String buyerTaxId = (entityConfig != null && entityConfig.getTaxId() != null) ? entityConfig.getTaxId() : "-";
             String buyerPhone = (entityConfig != null && entityConfig.getPhone() != null) ? entityConfig.getPhone() : "-";
             String buyerBank = (entityConfig != null && entityConfig.getBankAccount() != null) ? entityConfig.getBankAccount() : "-";
             String buyerAddr = (entityConfig != null && entityConfig.getEntityAddressCn() != null) ? entityConfig.getEntityAddressCn() : "-";
             String buyerName = companyCn;
-            addWordParagraph(doc, "购货单位", true, 12, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "名称: " + buyerName, false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "纳税人识别号: " + buyerTaxId, false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "地址、电话: " + buyerAddr + " " + buyerPhone, false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "开户行及账号: " + buyerBank, false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "", false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "销货单位", true, 12, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "名称: ", false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "纳税人识别号: ", false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "地址、电话: ", false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "开户行及账号: ", false, 10, ParagraphAlignment.LEFT);
+            List<String> buyerLines = new ArrayList<>();
+            buyerLines.add("购货单位");
+            buyerLines.add("名称: " + buyerName);
+            buyerLines.add("纳税人识别号: " + buyerTaxId);
+            buyerLines.add("地址、电话: " + buyerAddr + " " + buyerPhone);
+            buyerLines.add("开户行及账号: " + buyerBank);
+
+            // 未关联乙方配置时保持原有留空口径，不影响历史单证
+            PartyBConfig partyB = getPartyB(form);
+            List<String> sellerLines = new ArrayList<>();
+            sellerLines.add("销货单位");
+            sellerLines.add("名称: " + partyBText(partyB, PartyBConfig::getPartyBName));
+            sellerLines.add("纳税人识别号: " + partyBText(partyB, PartyBConfig::getTaxId));
+            sellerLines.add("地址、电话: " + (partyB == null ? ""
+                    : defaultEmpty(joinWithSpace(partyB.getPartyBAddress(), partyB.getContactPhone()))));
+            sellerLines.add("开户行及账号: " + (partyB == null ? ""
+                    : defaultEmpty(joinWithSpace(partyB.getBankName(), partyB.getBankAccount()))));
+            addPartyColumnTable(doc, buyerLines, sellerLines);
             addWordParagraph(doc, "", false, 10, ParagraphAlignment.LEFT);
 
             // 商品明细表
@@ -1183,17 +1048,9 @@ public class FinancialSupplementController {
             addWordParagraph(doc, "", false, 6, ParagraphAlignment.LEFT);
             addWordParagraph(doc, "合计金额(大写): " + convertAmountToChineseWords(totalAmount), true, 12, ParagraphAlignment.LEFT);
 
-            // 收入与扣款摘要
-            BigDecimal totalDeductionAmt = calcDetail.get("totalInvoiceDeduction") instanceof BigDecimal ? (BigDecimal) calcDetail.get("totalInvoiceDeduction") : BigDecimal.ZERO;
-            BigDecimal totalFeeAmt = calcDetail.get("totalFeeAmount") instanceof BigDecimal ? (BigDecimal) calcDetail.get("totalFeeAmount") : BigDecimal.ZERO;
-            BigDecimal deductTotal = totalDeductionAmt.add(totalFeeAmt);
+            // 开票金额（单证不体现扣款明细）
             BigDecimal fileInvoiceAmt = calcDetail.get("invoiceAmount") instanceof BigDecimal ? (BigDecimal) calcDetail.get("invoiceAmount") : BigDecimal.ZERO;
             addWordParagraph(doc, "", false, 6, ParagraphAlignment.LEFT);
-            if (deductTotal.compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal beforeDeduction = fileInvoiceAmt.add(deductTotal);
-                addWordParagraph(doc, String.format("扣款前金额: %.2f CNY", beforeDeduction.doubleValue()), false, 10, ParagraphAlignment.LEFT);
-                addWordParagraph(doc, String.format("扣款合计: -%.2f CNY", deductTotal.doubleValue()), false, 10, ParagraphAlignment.LEFT);
-            }
             addWordParagraph(doc, String.format("开票金额: %.2f CNY", fileInvoiceAmt.doubleValue()), true, 11, ParagraphAlignment.LEFT);
 
             // 外销发票号 + 注意事项
@@ -1216,14 +1073,11 @@ public class FinancialSupplementController {
     private byte[] generateContractWord(DeclarationForm form, Map<String, Object> calcDetail) throws Exception {
         XWPFDocument doc = new XWPFDocument();
         try {
-            // 从主体配置获取中文名和中文地址
+            // 从主体配置获取中文名（甲方联系人信息用）
             EntityConfig entityConfig = form.getEntityId() != null ? entityConfigService.getById(form.getEntityId()) : null;
             String companyCn = (entityConfig != null && entityConfig.getEntityNameCn() != null) ? entityConfig.getEntityNameCn() : "-";
-            String companyAddressCn = (entityConfig != null && entityConfig.getEntityAddressCn() != null) ? entityConfig.getEntityAddressCn() : "-";
-            // 抬头
-            addWordParagraph(doc, companyCn, true, 16, ParagraphAlignment.CENTER);
+            // 抬头：不再打印公司名称与页码，直接以合同标题起头
             addWordParagraph(doc, "购 货 合 同", true, 18, ParagraphAlignment.CENTER);
-            addWordParagraph(doc, "第1页/共1页", false, 10, ParagraphAlignment.CENTER);
             addWordParagraph(doc, "", false, 10, ParagraphAlignment.LEFT);
 
             // 合同信息
@@ -1233,17 +1087,27 @@ public class FinancialSupplementController {
             addWordParagraph(doc, "签订时间: " + signDate, false, 11, ParagraphAlignment.LEFT);
             addWordParagraph(doc, "", false, 10, ParagraphAlignment.LEFT);
 
-            // 甲方（购买方）
-            addWordParagraph(doc, "甲方: " + companyCn, true, 12, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "地址: " + companyAddressCn, false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "业务联系人: -    电话: -", false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "财务/物流: -    电话: -", false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "", false, 10, ParagraphAlignment.LEFT);
+            // 甲方（本公司）：与开票通知书口径一致，只打印名称、地址、电话，联系人不再出现
+            String partyAPhone = (entityConfig != null && !isBlank(entityConfig.getPhone())) ? entityConfig.getPhone().trim() : "-";
+            String partyAAddress = (entityConfig != null && !isBlank(entityConfig.getEntityAddressCn()))
+                    ? entityConfig.getEntityAddressCn().trim()
+                    : (entityConfig != null && !isBlank(entityConfig.getEntityAddress())) ? entityConfig.getEntityAddress().trim() : "-";
+            List<String> partyALines = new ArrayList<>();
+            partyALines.add("甲方: " + companyCn);
+            partyALines.add("地址: " + partyAAddress);
+            partyALines.add("电话: " + partyAPhone);
 
-            // 乙方（销货方信息留空）
-            addWordParagraph(doc, "乙方: ", true, 12, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "联系人: ", false, 10, ParagraphAlignment.LEFT);
-            addWordParagraph(doc, "电话: ", false, 10, ParagraphAlignment.LEFT);
+            // 乙方（取自乙方配置，未关联时保持原有留空口径）
+            PartyBConfig partyB = getPartyB(form);
+            List<String> partyBLines = new ArrayList<>();
+            partyBLines.add("乙方: " + partyBText(partyB, PartyBConfig::getPartyBName));
+            if (partyB != null && !isBlank(partyB.getPartyBAddress())) {
+                partyBLines.add("地址: " + partyB.getPartyBAddress().trim());
+            }
+            // 乙方是供货方，联系人属于履约信息，单证上需要保留
+            partyBLines.add("联系人: " + partyBText(partyB, PartyBConfig::getContactPerson));
+            partyBLines.add("电话: " + partyBText(partyB, PartyBConfig::getContactPhone));
+            addPartyColumnTable(doc, partyALines, partyBLines);
             addWordParagraph(doc, "", false, 10, ParagraphAlignment.LEFT);
 
             // 商品表
@@ -1324,6 +1188,38 @@ public class FinancialSupplementController {
         }
     }
 
+    /** 读取申报单关联的乙方配置（未关联返回 null，单证保持原有留空口径） */
+    private PartyBConfig getPartyB(DeclarationForm form) {
+        return form.getPartyBId() != null ? partyBConfigService.getById(form.getPartyBId()) : null;
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    /** 取乙方单个字段，未配置返回空串（用于原本就留空的单证行） */
+    private String partyBText(PartyBConfig partyB, java.util.function.Function<PartyBConfig, String> getter) {
+        if (partyB == null) return "";
+        String v = getter.apply(partyB);
+        return isBlank(v) ? "" : v.trim();
+    }
+
+    /** 两段文本用空格拼接，全空返回 null */
+    private String joinWithSpace(String first, String second) {
+        String a = isBlank(first) ? "" : first.trim();
+        String b = isBlank(second) ? "" : second.trim();
+        if (a.isEmpty()) return b.isEmpty() ? null : b;
+        return b.isEmpty() ? a : a + " " + b;
+    }
+
+    private String defaultDash(String v) {
+        return v == null ? "-" : v;
+    }
+
+    private String defaultEmpty(String v) {
+        return v == null ? "" : v;
+    }
+
     /** Word 段落工具方法 */
     private void addWordParagraph(XWPFDocument doc, String text, boolean bold, int fontSize, ParagraphAlignment alignment) {
         XWPFParagraph p = doc.createParagraph();
@@ -1350,9 +1246,75 @@ public class FinancialSupplementController {
     private void setTableWidth(XWPFTable table, int width) {
         CTTblPr tblPr = table.getCTTbl().getTblPr();
         if (tblPr == null) tblPr = table.getCTTbl().addNewTblPr();
-        CTTblWidth tblWidth = tblPr.addNewTblW();
+        // POI 建表时已自带 tblW(auto)，只能改写不能新增：同一位置重复元素不合法，Word 会拼开文件
+        CTTblWidth tblWidth = tblPr.isSetTblW() ? tblPr.getTblW() : tblPr.addNewTblW();
         tblWidth.setW(java.math.BigInteger.valueOf(width));
         tblWidth.setType(STTblWidth.DXA);
+    }
+
+    /**
+     * 甲乙双方（购销单位）左右分栏：用一个两列无边框表格承载两段信息。
+     * 原本上下堆叠时甲方会把乙方挤到下一页，签字时得翻页对照；分栏后单页就能看全双方。
+     */
+    private void addPartyColumnTable(XWPFDocument doc, List<String> leftLines, List<String> rightLines) {
+        XWPFTable table = doc.createTable(1, 2);
+        setTableWidth(table, 9000);
+        fixTableLayout(table);
+        removeTableBorders(table);
+        XWPFTableRow row = table.getRow(0);
+        fillPartyColumn(row.getCell(0), leftLines, 4500);
+        fillPartyColumn(row.getCell(1), rightLines, 4500);
+    }
+
+    /** 细栏单元格写法：首行当作甲方/乙方抬头加粗，其余行正常字号 */
+    private void fillPartyColumn(XWPFTableCell cell, List<String> lines, int width) {
+        setCellWidth(cell, width);
+        // 单元格自带一个空段落，首行直接复用它，否则开头会多出一行空白
+        for (int i = 0; i < lines.size(); i++) {
+            XWPFParagraph paragraph = i == 0 ? cell.getParagraphs().get(0) : cell.addParagraph();
+            paragraph.setAlignment(ParagraphAlignment.LEFT);
+            XWPFRun run = paragraph.createRun();
+            run.setText(lines.get(i));
+            run.setBold(i == 0);
+            run.setFontSize(i == 0 ? 12 : 10);
+            run.setFontFamily("宋体");
+        }
+    }
+
+    /** 去掉表格边框：分栏表格只用于排版，带网格线会被当成未做完的表格 */
+    private void removeTableBorders(XWPFTable table) {
+        CTTblPr tblPr = table.getCTTbl().getTblPr() != null ? table.getCTTbl().getTblPr() : table.getCTTbl().addNewTblPr();
+        CTTblBorders borders = tblPr.isSetTblBorders() ? tblPr.getTblBorders() : tblPr.addNewTblBorders();
+        // POI 新建的表已自带 single 边框，必须改现有节点而不是再插一个
+        setBorderNone(borders.isSetTop() ? borders.getTop() : borders.addNewTop());
+        setBorderNone(borders.isSetBottom() ? borders.getBottom() : borders.addNewBottom());
+        setBorderNone(borders.isSetLeft() ? borders.getLeft() : borders.addNewLeft());
+        setBorderNone(borders.isSetRight() ? borders.getRight() : borders.addNewRight());
+        setBorderNone(borders.isSetInsideH() ? borders.getInsideH() : borders.addNewInsideH());
+        setBorderNone(borders.isSetInsideV() ? borders.getInsideV() : borders.addNewInsideV());
+    }
+
+    private void setBorderNone(CTBorder border) {
+        border.setVal(STBorder.NONE);
+        // 线宽/颜色残留会让部分 Word 版本继续画线，一并按无处理
+        if (border.isSetSz()) border.unsetSz();
+        if (border.isSetColor()) border.unsetColor();
+        if (border.isSetSpace()) border.unsetSpace();
+    }
+
+    /** 锁定为固定排版：自动列宽会被「地址、电话」这类长文本拉歪，两栏就不再对齐 */
+    private void fixTableLayout(XWPFTable table) {
+        CTTblPr tblPr = table.getCTTbl().getTblPr() != null ? table.getCTTbl().getTblPr() : table.getCTTbl().addNewTblPr();
+        if (!tblPr.isSetTblLayout()) tblPr.addNewTblLayout();
+        tblPr.getTblLayout().setType(STTblLayoutType.FIXED);
+    }
+
+    /** 固定单元格宽，让两栏均匀分摊页面宽度 */
+    private void setCellWidth(XWPFTableCell cell, int width) {
+        CTTcPr tcPr = cell.getCTTc().isSetTcPr() ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();
+        CTTblWidth cellWidth = tcPr.isSetTcW() ? tcPr.getTcW() : tcPr.addNewTcW();
+        cellWidth.setW(java.math.BigInteger.valueOf(width));
+        cellWidth.setType(STTblWidth.DXA);
     }
 
     private void createDataRow(XSSFSheet sheet, int rowNum, String label, String value, XSSFCellStyle headerStyle) {

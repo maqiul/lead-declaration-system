@@ -76,8 +76,10 @@ system:
 
 # Sa-Token配置
 sa-token:
-  # token名称 (同时也是cookie名称)
-  token-name: satoken
+  # token名称：同时也是 cookie 名、请求头名、查询参数名、Redis key 前缀（见 StpLogic.setTokenValueToCookie 的 setName(getTokenName())）
+  # 必须改成应用唯一名！默认名 satoken 在局域网开发机上几乎人人在用，而 cookie 只按 host 划分、不分端口，
+  # localhost 上另一个项目的 satoken cookie 会把本系统的凭证覆写掉，表现为“页面挂一会儿 token 变了 → 401”
+  token-name: lead-decl-token
   # token有效期，单位s 默认30天, -1代表永不过期 
   timeout: 2592000
   # token临时有效期 (指定时间内无操作就视为token过期) 单位: 秒
@@ -86,14 +88,24 @@ sa-token:
   is-concurrent: true
   # 在多人登录同一账号时，是否共用一个token (为true时所有登录共用一个token, 为false时每次登录新建一个token)
   is-share: false
+  # 同一账号最大登录数量，-1=不限：is-concurrent=true 且 is-share=false 时生效，超出后框架会注销最早那个登录
+  # 必须显式配：sa-token 默认值是 12，挂着的页面用的就是最早那个 token，别人（或自己）多登几次就被顶下线
+  max-login-count: -1
   # token风格
   token-style: uuid
   # 是否输出操作日志
   is-log: false
-  # 是否从请求体读取token（iframe等场景无法传header）
+  # 是否从请求体/查询参数读取token（iframe、新窗口下载等无法自定请求头的场景用 ?lead-decl-token= 传）
   is-read-body: true
-  # 是否从cookie读取token
+  # 是否从cookie读取token：必须开启！新窗口下载、<img>、iframe 预览这类请求带不了自定义请求头，
+  # 只能靠浏览器自动上送 cookie（SaInterceptor 对 /** 做 checkLogin，这些地址同样要凭证）。
+  # 跨端口覆写的隐患已由上面唯一的 token-name 消除，不再靠关闭读取来规避（关了会直接打断文件下载）
   is-read-cookie: true
+  # cookie 作用路径：sa-token 默认不写 Path，浏览器会按“设置该 cookie 的请求 URL 目录”定作用域
+  # （登录接口是 /api/user/login 就只覆盖 /api/user），导致 /api/v1/** 拿不到 cookie，故显式写到站点根
+  cookie:
+    path: /
+    same-site: Lax
   # 配置Sa-Token单独使用的Redis连接
   alone-redis:
     # Redis数据库索引（默认为0）

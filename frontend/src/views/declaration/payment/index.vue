@@ -81,6 +81,7 @@ import { PlusOutlined } from '@ant-design/icons-vue'
 import { getDeclarationDetail } from '@/api/business/declaration'
 import { completeTask } from '@/api/workflow'
 import { useUserStore } from '@/store/user'
+import { TOKEN_NAME } from '@/utils/auth'
 import type { Dayjs } from 'dayjs'
 
 const route = useRoute()
@@ -104,8 +105,9 @@ const paymentForm = reactive({
   vouchers: [] as string[]
 })
 
+// 上传组件自己发请求，不经 axios 拦截器，头名必须与后端 sa-token.token-name 保持一致
 const headers = {
-  satoken: (userStore.token || '') as string
+  [TOKEN_NAME]: (userStore.token || '') as string
 }
 
 const loadData = async () => {

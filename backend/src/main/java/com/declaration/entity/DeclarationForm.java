@@ -29,6 +29,13 @@ public class DeclarationForm {
     private Long entityId;
 
     /**
+     * 乙方ID（关联 party_b_config.id）
+     * 用 IGNORED 策略，保证前端清空乙方时能把 null 真正写回库
+     */
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
+    private Long partyBId;
+
+    /**
      * 申报单号
      */
     private String formNo;

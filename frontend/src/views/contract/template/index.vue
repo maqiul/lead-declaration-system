@@ -166,6 +166,7 @@ import { PlusOutlined, ReloadOutlined, SearchOutlined, EditOutlined, UploadOutli
 import type { TablePaginationConfig } from 'ant-design-vue'
 import { getTemplates, uploadTemplate } from '@/api/business/contract'
 import request from '@/utils/request'
+import { withAuthToken } from '@/utils/auth'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
 import { formatDate } from '@/utils/common'
 
@@ -360,10 +361,11 @@ const handlePreview = (record: any) => {
 }
 
 const handleDownload = (record: any) => {
+  // 新窗口/下载链接带不上请求头，合同接口有权限注解，必须把凭证拼在地址上
   if (record.id) {
-    window.open(`/api/v1/contract/download/${record.id}`, '_blank')
+    window.open(withAuthToken(`/api/v1/contract/download/${record.id}`), '_blank')
   } else if (record.filePath) {
-    window.open(`/api/v1/files/download?path=${record.filePath}`, '_blank')
+    window.open(withAuthToken(`/api/v1/files/download?path=${record.filePath}`), '_blank')
   }
 }
 

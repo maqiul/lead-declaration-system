@@ -25,6 +25,7 @@ const preloadComponents = [
   () => import('@/views/system/measurement-unit/index.vue'),
   () => import('@/views/system/entity-config/index.vue'),
   () => import('@/views/customer/index.vue'),
+  () => import('@/views/party-b/index.vue'),
   () => import('@/views/system/flow-template/index.vue'),
   () => import('@/views/system/flow-node/index.vue'),
   () => import('@/views/system/dict/index.vue')
@@ -432,6 +433,20 @@ export const asyncRoutes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/party-b',
+    component: Layout,
+    name: 'PartyB',
+    meta: { title: '乙方配置', icon: 'ShopOutlined' },
+    children: [
+      {
+        path: 'index',
+        name: 'PartyBConfig',
+        component: () => import('@/views/party-b/index.vue'),
+        meta: { title: '乙方管理', icon: 'TeamOutlined' }
+      }
+    ]
+  },
+  {
     path: '/contract',
     component: Layout,
     name: 'Contract',
@@ -476,8 +491,11 @@ router.beforeEach(async (to, _from, next) => {
           await userStore.getUserInfo()
           await userStore.generateRoutes()
           next({ ...to, replace: true })
-        } catch (error) {
-          await userStore.resetToken()
+        } catch (error: any) {
+          // 只在凭证确实无效时清 token；网络抖动/后端重启导致的失败保留凭证，重新进入即可继续用
+          if (error?.code === 401 || error?.response?.status === 401) {
+            await userStore.resetToken()
+          }
           next(`/login?redirect=${to.path}`)
         }
       } else {
