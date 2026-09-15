@@ -1404,6 +1404,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         data.put("portOfDepartureEng", form.getDepartureCity());
         data.put("destinationRegion", form.getDestinationCountry());
         data.put("departureCityEnglish", form.getDepartureCityEnglish());
+        data.put("miscFee", form.getMiscFee());
         // data.put("destinationCountry", form.getDestinationCountry());
         // data.put("packageType", "CARTONS");
 
