@@ -68,19 +68,6 @@
 
           <a-row :gutter="16">
             <a-col :span="12">
-              <a-form-item label="银行手续费率">
-                <a-input-number
-                  v-model:value="auditForm.bankFeeRate"
-                  :min="0"
-                  :max="100"
-                  :precision="4"
-                  style="width: 100%"
-                  addon-after="%"
-                  @change="recalcCreditedAmount"
-                />
-              </a-form-item>
-            </a-col>
-            <a-col :span="12">
               <a-form-item label="银行手续费">
                 <a-input-number
                   v-model:value="auditForm.bankFee"
@@ -91,9 +78,6 @@
                 />
               </a-form-item>
             </a-col>
-          </a-row>
-
-          <a-row :gutter="16">
             <a-col :span="12">
               <a-form-item label="入账金额">
                 <a-input-number
