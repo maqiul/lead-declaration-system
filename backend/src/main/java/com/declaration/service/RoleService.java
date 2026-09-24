@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.declaration.common.PageParam;
 import com.declaration.entity.Role;
+import com.declaration.entity.User;
 
 import java.util.List;
 
@@ -96,7 +97,7 @@ public interface RoleService extends IService<Role> {
      * @param roleId 角色ID
      * @return 用户列表
      */
-    List<com.declaration.entity.User> getRoleUsers(Long roleId);
+    List<User> getRoleUsers(Long roleId);
 
     /**
      * 批量为用户分配角色

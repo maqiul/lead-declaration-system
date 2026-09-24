@@ -7,6 +7,7 @@ import com.declaration.annotation.RequiresPermissions;
 import com.declaration.common.Result;
 import com.declaration.entity.ContractGeneration;
 import com.declaration.entity.ContractTemplate;
+import com.declaration.entity.DeclarationForm;
 import com.declaration.service.ContractGenerateService;
 import com.declaration.service.ContractGenerationService;
 import com.declaration.service.ContractTemplateService;
@@ -251,7 +252,7 @@ public class ContractController {
                 
                 // 填充申报单编号
                 if (generation.getDeclarationFormId() != null) {
-                    com.declaration.entity.DeclarationForm declarationForm = 
+                    DeclarationForm declarationForm = 
                         declarationFormService.getById(generation.getDeclarationFormId());
                     if (declarationForm != null) {
                         generation.setDeclarationFormCode(declarationForm.getFormNo());

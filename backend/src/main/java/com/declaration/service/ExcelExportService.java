@@ -2,6 +2,9 @@ package com.declaration.service;
 
 import com.declaration.entity.DeclarationAttachment;
 import com.declaration.entity.DeclarationForm;
+import com.declaration.entity.DeclarationRemittance;
+
+import java.io.IOException;
 
 /**
  * Excel导出服务类
@@ -14,7 +17,7 @@ public interface ExcelExportService {
      * @param form 完整的申报单信息（包含产品和箱子）
      * @return 生成的附件信息
      */
-    DeclarationAttachment generateAndSaveExportDocuments(DeclarationForm form) throws java.io.IOException;
+    DeclarationAttachment generateAndSaveExportDocuments(DeclarationForm form) throws IOException;
 
     /**
      * 生成并保存水单记录Excel
@@ -23,7 +26,7 @@ public interface ExcelExportService {
      * @param form       申报单
      * @return 附件记录
      */
-    DeclarationAttachment generateAndSaveRemittanceReport(com.declaration.entity.DeclarationRemittance remittance, DeclarationForm form) throws java.io.IOException;
+    DeclarationAttachment generateAndSaveRemittanceReport(DeclarationRemittance remittance, DeclarationForm form) throws IOException;
 
     /**
      * 为申报单生成全套单证(基于alltemple_template.xlsx)并保存
@@ -31,7 +34,7 @@ public interface ExcelExportService {
      * @param form           完整的申报单信息
      * @param mergeProducts  是否合并同款商品（按 中文名称+英文名称+HS编码+单价 分组聚合）
      */
-    DeclarationAttachment generateAndSaveAllTempleExportDocuments(DeclarationForm form, boolean mergeProducts) throws java.io.IOException;
+    DeclarationAttachment generateAndSaveAllTempleExportDocuments(DeclarationForm form, boolean mergeProducts) throws IOException;
 
     /**
      * 获取发票模板路径（供 Controller 层调用）

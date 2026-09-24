@@ -1547,12 +1547,12 @@ public class DeclarationFormController {
             try {
                 // 先关闭已有的运行中流程（驳回后重新提交场景）
                 String businessKey = String.valueOf(id);
-                List<org.flowable.engine.runtime.ProcessInstance> runningInstances = runtimeService
+                List<ProcessInstance> runningInstances = runtimeService
                         .createProcessInstanceQuery()
                         .processInstanceBusinessKey(businessKey)
                         .list();
                 if (!runningInstances.isEmpty()) {
-                    for (org.flowable.engine.runtime.ProcessInstance oldInstance : runningInstances) {
+                    for (ProcessInstance oldInstance : runningInstances) {
                         runtimeService.deleteProcessInstance(oldInstance.getId(), "驳回后重新提交，关闭旧流程");
                         log.info("申报单 {} 已关闭旧流程实例: {}", form.getFormNo(), oldInstance.getId());
                     }
@@ -1571,7 +1571,7 @@ public class DeclarationFormController {
                 try {
                     declarationTemplates = flowTemplateService.listByProcessType("declaration");
                 } catch (Exception ex) {
-                    declarationTemplates = java.util.Collections.emptyList();
+                    declarationTemplates = Collections.emptyList();
                     log.warn("查询申报流程模板列表失败", ex);
                 }
                 if (declarationType == null || declarationType.isEmpty()) {
@@ -1616,6 +1616,8 @@ public class DeclarationFormController {
                         : resolveProcessKey(declarationType);
                 log.info("准备启动流程：key={}, businessKey={}, variables={}", processKey, businessKey, variables);
 
+                // 注：本文件已 import Flowable 同名类 org.flowable.engine.runtime.ProcessInstance，
+                // 实体类此处保留全限定名以区分
                 com.declaration.entity.ProcessInstance processInstance = processInstanceService
                         .startProcessInstance(processKey, businessKey, variables);
 

@@ -11,6 +11,9 @@ import com.declaration.entity.EntityConfig;
 import com.declaration.service.EntityConfigService;
 import com.declaration.entity.PartyBConfig;
 import com.declaration.service.PartyBConfigService;
+import com.declaration.service.SystemConfigService;
+import com.declaration.service.CurrencyInfoService;
+import com.declaration.service.impl.FinancialSupplementServiceImpl;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -82,10 +85,10 @@ public class FinancialSupplementController {
     private final DeclarationFormService formService;
     private final DeclarationRemittanceService remittanceService;
     private final DeclarationAttachmentService attachmentService;
-    private final com.declaration.service.SystemConfigService systemConfigService;
+    private final SystemConfigService systemConfigService;
     private final EntityConfigService entityConfigService;
     private final PartyBConfigService partyBConfigService;
-    private final com.declaration.service.CurrencyInfoService currencyInfoService;
+    private final CurrencyInfoService currencyInfoService;
 
     @Value("${file.upload-path:uploads/exports/}")
     private String uploadPath;
@@ -94,10 +97,10 @@ public class FinancialSupplementController {
             DeclarationFormService formService, 
             DeclarationRemittanceService remittanceService, 
             DeclarationAttachmentService attachmentService,
-            com.declaration.service.SystemConfigService systemConfigService,
+            SystemConfigService systemConfigService,
             EntityConfigService entityConfigService,
             PartyBConfigService partyBConfigService,
-            com.declaration.service.CurrencyInfoService currencyInfoService) {
+            CurrencyInfoService currencyInfoService) {
         this.supplementService = supplementService;
         this.formService = formService;
         this.remittanceService = remittanceService;
@@ -316,14 +319,14 @@ public class FinancialSupplementController {
             // 基本信息（货代/报关发票号从申报资料项实时读取，financial_supplement 对应字段已废弃）
             createDataRow(sheet, rowNum++, "申报单号", form.getFormNo(), headerStyle);
             {
-                com.declaration.service.impl.FinancialSupplementServiceImpl impl =
-                        (supplementService instanceof com.declaration.service.impl.FinancialSupplementServiceImpl)
-                                ? (com.declaration.service.impl.FinancialSupplementServiceImpl) supplementService : null;
+                FinancialSupplementServiceImpl impl =
+                        (supplementService instanceof FinancialSupplementServiceImpl)
+                                ? (FinancialSupplementServiceImpl) supplementService : null;
                 String freightInvoiceNo = impl != null
-                        ? impl.getInvoiceNoFromMaterial(formId, com.declaration.service.impl.FinancialSupplementServiceImpl.getFreightCode())
+                        ? impl.getInvoiceNoFromMaterial(formId, FinancialSupplementServiceImpl.getFreightCode())
                         : (supp != null ? supp.getFreightInvoiceNo() : null);
                 String customsInvoiceNo = impl != null
-                        ? impl.getInvoiceNoFromMaterial(formId, com.declaration.service.impl.FinancialSupplementServiceImpl.getCustomsCode())
+                        ? impl.getInvoiceNoFromMaterial(formId, FinancialSupplementServiceImpl.getCustomsCode())
                         : (supp != null ? supp.getCustomsInvoiceNo() : null);
                 createDataRow(sheet, rowNum++, "货代发票号", freightInvoiceNo, headerStyle);
                 createDataRow(sheet, rowNum++, "报关代理发票号", customsInvoiceNo, headerStyle);

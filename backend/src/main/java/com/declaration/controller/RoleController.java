@@ -175,9 +175,9 @@ public class RoleController {
     @GetMapping("/users/{roleId}")
     @Operation(summary = "获取角色的所有用户列表")
     @RequiresPermissions("role:user")
-    public Result<List<com.declaration.entity.User>> getRoleUsers(
+    public Result<List<User>> getRoleUsers(
             @Parameter(description = "角色ID", required = true) @PathVariable Long roleId) {
-        List<com.declaration.entity.User> users = roleService.getRoleUsers(roleId);
+        List<User> users = roleService.getRoleUsers(roleId);
         return Result.success(users);
     }
 

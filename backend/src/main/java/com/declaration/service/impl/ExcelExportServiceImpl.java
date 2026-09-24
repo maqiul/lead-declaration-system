@@ -461,7 +461,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
      * 金额按行数量分摊：优先 单价 × 数量，无单价时按数量占比分摊。
      * 逐行分摊可能有尾差，合计以表单汇总字段为准
      */
-    private String allocateAmount(com.declaration.entity.DeclarationProduct p, int rowQty) {
+    private String allocateAmount(DeclarationProduct p, int rowQty) {
         if (p.getUnitPrice() != null) {
             return p.getUnitPrice().multiply(BigDecimal.valueOf(rowQty)).setScale(2, RoundingMode.HALF_UP).toPlainString();
         }
@@ -488,7 +488,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             return productList;
         }
 
-        List<com.declaration.entity.DeclarationProduct> sortedProducts = new ArrayList<>(form.getProducts());
+        List<DeclarationProduct> sortedProducts = new ArrayList<>(form.getProducts());
         sortedProducts.sort((a, b) -> {
             Long aid = a.getId(), bid = b.getId();
             if (aid == null && bid == null) return 0;
@@ -497,7 +497,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             return aid.compareTo(bid);
         });
 
-        for (com.declaration.entity.DeclarationProduct p : sortedProducts) {
+        for (DeclarationProduct p : sortedProducts) {
             int qty = p.getQuantity() != null ? p.getQuantity() : 0;
             ExportDataRequest.ProductInfo info = new ExportDataRequest.ProductInfo();
             info.setProductName(p.getProductEnglishName());
@@ -520,7 +520,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     }
 
     /** 申报要素转模板用的 name/value 列表（未配置时返回 null，保持原行为） */
-    private List<Map<String, Object>> buildElementMaps(com.declaration.entity.DeclarationProduct p) {
+    private List<Map<String, Object>> buildElementMaps(DeclarationProduct p) {
         if (p.getElementValues() == null) {
             return null;
         }
@@ -558,9 +558,9 @@ public class ExcelExportServiceImpl implements ExcelExportService {
         }
 
         // 建立产品ID到产品信息的映射
-        Map<Long, com.declaration.entity.DeclarationProduct> productMap = new HashMap<>();
+        Map<Long, DeclarationProduct> productMap = new HashMap<>();
         if (form.getProducts() != null) {
-            for (com.declaration.entity.DeclarationProduct p : form.getProducts()) {
+            for (DeclarationProduct p : form.getProducts()) {
                 productMap.put(p.getId(), p);
             }
         }
@@ -579,7 +579,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
                 // 为这个箱子中的每个产品创建记录
                 for (Long productId : productIds) {
-                    com.declaration.entity.DeclarationProduct p = productMap.get(productId);
+                    DeclarationProduct p = productMap.get(productId);
                     if (p == null) continue;
 
                     ExportDataRequest.ProductInfo info = new ExportDataRequest.ProductInfo();
@@ -642,7 +642,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     /**
      * 准备水单填充数据
      */
-    private Map<String, Object> prepareRemittanceData(com.declaration.entity.DeclarationRemittance remittance,
+    private Map<String, Object> prepareRemittanceData(DeclarationRemittance remittance,
             DeclarationForm form) {
         Map<String, Object> data = new HashMap<>();
 
@@ -807,7 +807,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
     @Override
     public DeclarationAttachment generateAndSaveRemittanceReport(
-            com.declaration.entity.DeclarationRemittance remittance, DeclarationForm form) throws IOException {
+            DeclarationRemittance remittance, DeclarationForm form) throws IOException {
         
         if (form == null) {
             log.warn("申报单为空,跳过水单报告生成, 水单ID: {}", remittance.getId());
@@ -1427,7 +1427,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             Map<Long, java.math.BigDecimal> productCartonGwMap = new HashMap<>();
             Map<Long, java.math.BigDecimal> productCartonNwMap = new HashMap<>();
             if (form.getCartonProducts() != null) {
-                for (com.declaration.entity.DeclarationCartonProduct cp : form.getCartonProducts()) {
+                for (DeclarationCartonProduct cp : form.getCartonProducts()) {
                     productToCartonsMap.computeIfAbsent(cp.getProductId(), k -> new ArrayList<>()).add(cp.getCartonId());
                     // 累加每个产品的数量/毛重/净重
                     if (cp.getQuantity() != null) {
@@ -1443,15 +1443,15 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             }
 
             // 建立箱子ID到箱子信息的映射
-            Map<Long, com.declaration.entity.DeclarationCarton> cartonMap = new HashMap<>();
+            Map<Long, DeclarationCarton> cartonMap = new HashMap<>();
             if (form.getCartons() != null) {
-                for (com.declaration.entity.DeclarationCarton c : form.getCartons()) {
+                for (DeclarationCarton c : form.getCartons()) {
                     cartonMap.put(c.getId(), c);
                 }
             }
 
             // 按箱子ID排序（取第一个箱子ID作为排序依据）
-            List<com.declaration.entity.DeclarationProduct> sortedProducts = new ArrayList<>(form.getProducts());
+            List<DeclarationProduct> sortedProducts = new ArrayList<>(form.getProducts());
             sortedProducts.sort((a, b) -> {
                 List<Long> cartonsA = productToCartonsMap.getOrDefault(a.getId(), new ArrayList<>());
                 List<Long> cartonsB = productToCartonsMap.getOrDefault(b.getId(), new ArrayList<>());
@@ -1469,11 +1469,11 @@ public class ExcelExportServiceImpl implements ExcelExportService {
 
             // 分组：按 中文名称+英文名称+HS编码+单价+规格型号 分组（仅当 mergeProducts=true 时才合并）
             LinkedHashMap<String, ProductGroup> groupMap = new LinkedHashMap<>();
-            for (com.declaration.entity.DeclarationProduct p : sortedProducts) {
+            for (DeclarationProduct p : sortedProducts) {
                 List<Long> cartonIds = productToCartonsMap.get(p.getId());
                 // 跳过无箱子关联的产品（保持原逻辑）
                 if (cartonIds == null || cartonIds.isEmpty()) continue;
-                com.declaration.entity.DeclarationCarton firstCarton = cartonMap.get(cartonIds.get(0));
+                DeclarationCarton firstCarton = cartonMap.get(cartonIds.get(0));
                 if (firstCarton == null) continue;
 
                 String specStr = buildElementSpecString(p);
@@ -1506,7 +1506,7 @@ public class ExcelExportServiceImpl implements ExcelExportService {
             // 生成合并后的 CustomsItemDTO 列表
             int no = 1;
             for (ProductGroup group : groupMap.values()) {
-                com.declaration.entity.DeclarationProduct rep = group.representative;
+                DeclarationProduct rep = group.representative;
                 String unit = "个";
                 String unitCode = rep.getUnitCode();
                 MeasurementUnit measurementUnit = measurementUnitService.getByUnitCode(unitCode);
@@ -1537,10 +1537,10 @@ public class ExcelExportServiceImpl implements ExcelExportService {
     /**
      * 拼接单个产品的申报要素为规格型号字符串（保持与原拼接顺序一致）
      */
-    private String buildElementSpecString(com.declaration.entity.DeclarationProduct p) {
+    private String buildElementSpecString(DeclarationProduct p) {
         StringBuilder sb = new StringBuilder();
         if (p.getElementValues() != null) {
-            for (com.declaration.entity.DeclarationElementValue ev : p.getElementValues()) {
+            for (DeclarationElementValue ev : p.getElementValues()) {
                 String eName = ev.getElementName() != null ? ev.getElementName() : "";
                 String eValue = ev.getElementValue() != null ? ev.getElementValue() : "";
                 sb.append(eName).append(":").append(eValue).append(";");
@@ -1562,8 +1562,8 @@ public class ExcelExportServiceImpl implements ExcelExportService {
      * 用于合并同款商品的临时分组结构
      */
     private static class ProductGroup {
-        com.declaration.entity.DeclarationProduct representative;
-        List<com.declaration.entity.DeclarationProduct> products = new ArrayList<>();
+        DeclarationProduct representative;
+        List<DeclarationProduct> products = new ArrayList<>();
         int totalQuantity = 0;
         BigDecimal totalAmount;
         BigDecimal totalGrossWeight;

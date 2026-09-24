@@ -84,7 +84,7 @@ public class OperationLogInterceptor implements HandlerInterceptor {
         if (operationLog != null) {
             try {
                 // 构建操作日志对象
-                com.declaration.entity.OperationLog logEntity = buildOperationLog(request, response, handlerMethod, operationLog, ex);
+                var logEntity = buildOperationLog(request, response, handlerMethod, operationLog, ex);
                 
                 // 异步保存操作日志
                 operationLogService.saveOperationLog(logEntity);
@@ -96,6 +96,8 @@ public class OperationLogInterceptor implements HandlerInterceptor {
 
     /**
      * 构建操作日志对象
+     * 注：本文件已 import 同名注解 com.declaration.annotation.OperationLog，
+     * Java 不允许两个同名类同时以简单名引入，故实体类此处保留全限定名
      */
     private com.declaration.entity.OperationLog buildOperationLog(HttpServletRequest request, HttpServletResponse response,
                                                                  HandlerMethod handlerMethod, OperationLog operationLog, Exception ex) {

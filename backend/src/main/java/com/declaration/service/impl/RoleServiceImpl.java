@@ -13,6 +13,8 @@ import com.declaration.entity.Menu;
 import com.declaration.entity.Role;
 import com.declaration.entity.RoleMenu;
 import com.declaration.entity.UserRole;
+import com.declaration.entity.User;
+import com.declaration.dao.UserDao;
 import com.declaration.service.MenuService;
 import com.declaration.service.PermissionService;
 import com.declaration.service.RoleService;
@@ -40,7 +42,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
     private final RoleMenuDao roleMenuDao;
     private final PermissionService permissionService;
     private final MenuService menuService;
-    private final com.declaration.dao.UserDao userDao;
+    private final UserDao userDao;
 
     @Override
     public IPage<Role> getRolePage(PageParam pageParam, Role role) {
@@ -250,7 +252,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
     }
 
     @Override
-    public List<com.declaration.entity.User> getRoleUsers(Long roleId) {
+    public List<User> getRoleUsers(Long roleId) {
         // 查询该角色下的所有用户ID
         List<UserRole> userRoles = userRoleDao.selectList(
                 new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, roleId));
@@ -324,15 +326,15 @@ public class RoleServiceImpl extends ServiceImpl<RoleDao, Role> implements RoleS
     /**
      * 根据用户ID列表查询用户
      */
-    private List<com.declaration.entity.User> listUsersByIds(List<Long> userIds) {
+    private List<User> listUsersByIds(List<Long> userIds) {
         if (CollUtil.isEmpty(userIds)) {
             return List.of();
         }
         
-        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.declaration.entity.User> wrapper = 
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
-        wrapper.in(com.declaration.entity.User::getId, userIds);
-        wrapper.eq(com.declaration.entity.User::getStatus, 1); // 只查询启用的用户
+        LambdaQueryWrapper<User> wrapper = 
+                new LambdaQueryWrapper<>();
+        wrapper.in(User::getId, userIds);
+        wrapper.eq(User::getStatus, 1); // 只查询启用的用户
         
         return userDao.selectList(wrapper);
     }
