@@ -599,11 +599,7 @@
                     v-model:value="record.typeChinese"
                     @change="(value) => {
                                     record.typeChinese = value;
-                                    if (value === '纸箱') {
-                                      record.typeEnglish = 'CARTONS';
-                                    } else if (value === '托盘') {
-                                      record.typeEnglish = 'PALLETS';
-                                    }
+                                    record.typeEnglish = getCartonEnglish(value, record.typeEnglish);
                                     // 类型前缀变了，全表箱号重排
                                     regenerateCartonNos();
                                   }"
@@ -611,8 +607,7 @@
                     size="small"
                     placeholder="选择类型"
                   >
-                    <a-select-option value="纸箱">纸箱</a-select-option>
-                    <a-select-option value="托盘">托盘</a-select-option>
+                    <a-select-option v-for="opt in cartonTypes" :key="opt.label" :value="opt.label">{{ opt.label }}</a-select-option>
                   </a-select>
                   <span v-else class="value-display">{{ record.typeChinese }}</span>
                 </template>
@@ -894,6 +889,7 @@ import {
   FileDoneOutlined, UserOutlined, EditOutlined, ClockCircleOutlined, CloudUploadOutlined,
 } from '@ant-design/icons-vue'
 import { findUnitByCode } from '@/utils/measurement-unit'
+import { useCartonTypes } from '@/composables/useCartonTypes'
 import PartyBSelector from '../PartyBSelector.vue'
 import { hasStage, isItemRequiredInStage } from '@/api/system/materialTemplate'
 import { canDeleteAttachment } from '@/api/business/materialItem'
@@ -938,6 +934,9 @@ const {
   handleQuantityOrPriceChange, handleUnitChange, handleAmountChange,
   updateProductName, onHsCodeChange,
 } = toRefs(state) as any
+
+// ========== 箱子类型（由 carton_type 字典维护，内置兜底纸箱/木箱/托盘） ==========
+const { options: cartonTypes, getEnglish: getCartonEnglish } = useCartonTypes()
 
 // 本地 UI 状态：申报要素弹窗
 const elementsModalVisible = ref(false)
@@ -1078,7 +1077,7 @@ function regenerateCartonNos() {
   let start = 1
   ;(cartonList.value || []).forEach((c: any) => {
     const qty = Number(c.quantity) || 1
-    const prefix = String(c.typeEnglish || (c.typeChinese === '托盘' ? 'PALLETS' : 'CARTONS')).toUpperCase()
+    const prefix = String(c.typeEnglish || getCartonEnglish(c.typeChinese)).toUpperCase()
     c.cartonNo = qty > 1 ? `${prefix}${start}-${start + qty - 1}` : `${prefix}${start}`
     start += qty
   })

@@ -542,6 +542,7 @@ import { getEnabledCurrencies } from '@/api/system/currency'
 import { getActiveMeasurementUnits, type MeasurementUnit } from '@/api/system/measurement-unit'
 import { getCitiesByCountry } from '@/api/system/city-info'
 import {  findUnitByCode } from '@/utils/measurement-unit'
+import { DEFAULT_CARTON_TYPE } from '@/utils/carton-type'
 import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityConfig'
 import { getAllEnabledCustomers, addCustomer, type CustomerConfig } from '@/api/system/customerConfig'
 import { getAllEnabledPartyB, type PartyBConfig } from '@/api/system/partyBConfig'
@@ -3254,14 +3255,14 @@ const addCarton = () => {
   
   cartonList.value.push({
     id: newId,
-    cartonNo: 'CARTONS1',
+    cartonNo: `${DEFAULT_CARTON_TYPE.english}1`,
     quantity: 1,
     lengthCm: null,
     widthCm: null,
     heightCm: null,
     volume: 0,
-    typeChinese: '纸箱', // 默认类型
-    typeEnglish: 'CARTONS', // 默认类型
+    typeChinese: DEFAULT_CARTON_TYPE.label, // 默认类型
+    typeEnglish: DEFAULT_CARTON_TYPE.english, // 默认类型
     selectedProducts: [],
     productDetails: []
   })

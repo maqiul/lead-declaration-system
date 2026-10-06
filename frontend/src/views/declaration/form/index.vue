@@ -766,18 +766,13 @@
                 v-model:value="record.typeChinese"
                 @change="(value) => {
                                 record.typeChinese = value;
-                                if (value === '纸箱') {
-                                  record.typeEnglish = 'CARTONS';
-                                } else if (value === '托盘') {
-                                  record.typeEnglish = 'PALLETS';
-                                }
+                                record.typeEnglish = getCartonEnglish(value, record.typeEnglish);
                               }"
                 style="width: 100%"
                 size="small"
                 placeholder="选择类型"
               >
-                <a-select-option value="纸箱">纸箱</a-select-option>
-                <a-select-option value="托盘">托盘</a-select-option>
+                <a-select-option v-for="opt in cartonTypes" :key="opt.label" :value="opt.label">{{ opt.label }}</a-select-option>
               </a-select>
               <span v-else class="value-display">{{ record.typeChinese }}</span>
             </template>
@@ -1717,6 +1712,8 @@ import { getEnabledCurrencies } from '@/api/system/currency'
 import { getActiveMeasurementUnits, type MeasurementUnit } from '@/api/system/measurement-unit'
 import { getCitiesByCountry } from '@/api/system/city-info'
 import {  findUnitByCode } from '@/utils/measurement-unit'
+import { DEFAULT_CARTON_TYPE } from '@/utils/carton-type'
+import { useCartonTypes } from '@/composables/useCartonTypes'
 import { getEnabledEntityConfigs, type EntityConfig } from '@/api/system/entityConfig'
 import { getAllEnabledCustomers, type CustomerConfig } from '@/api/system/customerConfig'
 import { getAllEnabledPartyB, type PartyBConfig } from '@/api/system/partyBConfig'
@@ -3662,6 +3659,9 @@ const productColumns = [
   { title: '操作', key: 'action', width: 80 }
 ]
 
+// 箱子类型（由 carton_type 字典维护，内置兜底纸箱/木箱/托盘）
+const { options: cartonTypes, getEnglish: getCartonEnglish } = useCartonTypes()
+
 // 箱子表格列配置
 const cartonColumns = [
   { title: '箱号', dataIndex: 'cartonNo', key: 'cartonNo', width: 120 },
@@ -3951,8 +3951,8 @@ const addCarton = () => {
     cartonNo: `CTN${String(newId).padStart(3, '0')}`,
     quantity: 1,
     volume: 0,
-    typeChinese: '纸箱', // 默认类型
-    typeEnglish: 'CARTONS', // 默认类型
+    typeChinese: DEFAULT_CARTON_TYPE.label, // 默认类型
+    typeEnglish: DEFAULT_CARTON_TYPE.english, // 默认类型
     selectedProducts: []
   })
   
