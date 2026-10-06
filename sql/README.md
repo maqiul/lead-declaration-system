@@ -27,6 +27,7 @@ mysql -uroot -p < sql/init/00-full-database-dump.sql
 ```
 
 > 该脚本内含 `DROP DATABASE IF EXISTS lead_declaration`，会**重建整个库**，仅用于全新环境。
+> 快照之后的增量脚本仍需按第二节顺序补执行。
 
 ### 方式 B：结构化初始化 + 迁移
 
@@ -52,6 +53,11 @@ mysql -uroot -p < sql/init/02-menu-seed.sql              # 初始菜单种子数
 ## 二、增量迁移（`migration/`）
 
 在已有数据库上**按序号从小到大**执行。脚本大多带 `IF NOT EXISTS` / `INSERT IGNORE` / `ON DUPLICATE KEY`，基本可重复执行，但仍建议逐个核对后执行。
+
+**编号规则**：序号即推荐执行顺序，新增脚本取当前最大号 +1（当前链尾为 **80**，下一个用 **81**）。
+一个序号只允许一个文件，禁止重号；历史遗留的 4 组重号已在 2026-10 统一理顺（见本节末尾映射表）。
+
+日期列取自脚本内注释的执行日期，未标注者取 git 入库日期。
 
 | 序号 | 文件 | 日期 | 说明 |
 |------|------|------|------|
@@ -81,11 +87,78 @@ mysql -uroot -p < sql/init/02-menu-seed.sql              # 初始菜单种子数
 | 24 | `24-flow-supplement-invoice-amount.sql` | 2026-05-11 | 补充资料 + 申请开票金额流程；申报单状态迁移 |
 | 25 | `25-migrate-legacy-declaration-flow.sql` | 2026-05-29 | 老申报单业务状态修正（资料审过→补充资料）；Flowable 需配合接口批量恢复 |
 | 26 | `26-supplement-invoice-amount-permissions.sql` | 2026-05-29 | 注册补充资料/开票金额按钮权限（修复提交按钮被 v-permission 隐藏） |
-| 27 | `27-invoice-amount-submit-for-declarant.sql` | 2026-05-29 | 为资料/补充资料申报角色补全开票金额提交权限 |
+| 27 | `27-invoice-amount-submit-for-declarant.sql` | 2026-05-29 | 为普通申报角色补全开票金额提交权限 |
+| 28 | `28-entity-config.sql` | 2026-06-12 | 多主体配置：新建 `entity_config`（公司主体 + 单证模板路径） |
+| 29 | `29-backfill-declaration-entity-id.sql` | 2026-06-12 | 按 `shipper_company` 匹配，回填存量申报单 `entity_id` |
+| 30 | `30-add-tax-refund-rate-and-min-service-fee.sql` | 2026-06-16 | HS 商品类型配置加退税率；银行账户配置加最低操作费 |
+| 31 | `31-remittance-menu-split.sql` | 2026-06-16 | 水单管理拆分为草稿/待审核/已审核/未关联四个菜单 |
+| 32 | `32-material-invoice-mode.sql` | 2026-07-01 | 资料模板加 `invoice_mode`（每个附件独立填写金额/发票号/日期） |
+| 33 | `33-entity-config-extra-fields.sql` | 2026-07-01 | 主体配置加纳税人识别号、电话、开户银行 |
+| 34 | `34-invoice-split-item.sql` | 2026-07-01 | 新建 `invoice_split_item`（开票 80%/20% 拆分产品明细） |
+| 35 | `35-invoice-split-item-hs-code.sql` | 2026-07-01 | `invoice_split_item` 加 `hs_code` |
+| 36 | `36-org-type-and-declaration-type.sql` | 2026-07-01 | 组织表加机构类型；申报单表加申报类型 |
+| 37 | `37-fix-internal-org-data.sql` | 2026-07-01 | 内部组织申报流程存量数据修复 |
+| 38 | `38-declaration-submit-others.sql` | 2026-07-07 | 新增「代提交申报单」权限（提交非本人创建的申报单） |
+| 39 | `39-flow-template-config.sql` | 2026-07-14 | 流程模板配置：表结构 + 预置数据 + 菜单权限 |
+| 40 | `40-flow-node-library.sql` | 2026-07-14 | 全局流程节点库 + 模板-节点编排表（替代 `flow_template_step`） |
+| 41 | `41-flow-node-process-type.sql` | 2026-07-14 | 流程节点/模板增加 `process_type` 分类字段 |
+| 42 | `42-sys-dict.sql` | 2026-07-14 | 系统字典表 `sys_dict` / `sys_dict_item` + 预置 process_type、form_section、node_type |
+| 43 | `43-declaration-template-permission.sql` | 2026-07-14 | 申报模板选择权限；`declaration_form` 加 `template_code` |
+| 44 | `44-carton-product-weight.sql` | 2026-07-14 | `declaration_carton_product` 加毛重/净重（按箱设置每个产品） |
+| 45 | `45-flow-node-delegate.sql` | 2026-07-14 | `flow_node` 加 `delegate_expression`（serviceTask 委托表达式） |
+| 46 | `46-material-invoice-category.sql` | 2026-07-14 | 资料模板加 `invoice_category`（区分扣款/进项发票） |
+| 47 | `47-material-template-binding.sql` | 2026-07-14 | 资料模板绑定表（流程 + 运输方式双维度） |
+| 48 | `48-declaration-rollback-permission.sql` | 2026-06-12 | 「退回上一步」申请与审核按钮权限（挂在旧菜单 202 下，**必须早于 54 执行**） |
+| 49 | `49-binding-required-override.sql` | 2026-07-14 | 绑定规则加 `required`，按规则覆盖模板全局必填设置 |
+| 50 | `50-payment-remittance.sql` | 2026-07-14 | 出款水单模块表结构（与申报单多对多关联） |
+| 51 | `51-payment-remittance-menu.sql` | 2026-07-14 | 出款水单管理菜单与权限 |
+| 52 | `52-form-section-remark.sql` | 2026-07-14 | `form_section` 字典项 `remark` 扩展 JSON（区块 UI 与流程映射） |
+| 53 | `53-declaration-view-internal-permission.sql` | 2026-07-14 | 「查看内部申报」「查看外部申报」权限按钮，控制菜单可见性 |
+| 54 | `54-declaration-menu-split.sql` | 2026-07-14 | 申报菜单拆分为 SELF/EXT 两套物理隔离菜单（含角色迁移） |
+| 55 | `55-customer-config.sql` | 2026-07-17 | 常用客户配置表 + 菜单权限 |
+| 56 | `56-customer-country-code-backfill.sql` | 2026-07-17 | 常用客户目的国/贸易国存量数据统一为英文全名 |
+| 57 | `57-trade-term.sql` | 2026-07-21 | 贸易方式（Incoterms）配置表 + 预置 11 条 + 菜单权限 |
+| 58 | `58-trade-term-transport-mode.sql` | 2026-07-21 | 贸易方式与运输方式多对多关联表 |
+| 59 | `59-declaration-add-trade-term.sql` | 2026-07-21 | 申报单加贸易方式与到达港口字段 |
+| 60 | `60-material-exemption.sql` | 2026-07-21 | 资料豁免审批记录表（必填文件不全时强制提交） |
+| 61 | `61-exemption-flow-template.sql` | 2026-07-21 | 豁免流程节点库 + 模板（普通 1 步 / 发票 2 步） |
+| 62 | `62-flow-node-reject-to-end.sql` | 2026-07-21 | `flow_node` 加 `reject_to_end`（驳回时直接结束流程） |
+| 63 | `63-rename-exemption-invoice-audit.sql` | 2026-07-21 | `exemptionInvoiceAudit` 节点名称改为「豁免复核」 |
+| 64 | `64-material-multi-stage.sql` | 2026-07-30 | 资料模板/资料项 `stage` 支持多环节（逗号分隔） |
+| 65 | `65-declaration-data-scope-permission.sql` | 2026-08-04 | 数据权限隔离：「查看下级申报」+「发起资料补交」权限点 |
+| 66 | `66-material-supplement-flow.sql` | 2026-08-04 | 独立资料补交流程（增量资料审核通过才转正） |
+| 67 | `67-template-required-stages.sql` | 2026-08-04 | 资料模板必填按环节配置（加 `required_stages`） |
+| 68 | `68-remittance-revoke-audit-permission.sql` | 2026-08-04 | 水单/出款水单反审核独立权限点 |
+| 69 | `69-supplement-flow.sql` | 2026-08-04 | 资料补交流程升级为 Flowable 工作流（独立实例、不阻塞主流程） |
+| 70 | `70-backfill-attachment-supplement-id.sql` | 2026-08-04 | 回填补交期内缺失 `supplement_id` 的附件 |
+| 71 | `71-cleanup-stale-supplement-marks.sql` | 2026-08-04 | 清理指向已失效补交单的历史标记 |
+| 72 | `72-supplement-file-snapshot.sql` | 2026-08-04 | 新建补交文件快照表（转正/驳回后保留增量留痕） |
+| 73 | `73-carton-dims-and-exw-misc-fee.sql` | 2026-08-31 | 箱子加单箱长宽高（cm）；EXW 贸易方式加杂费字段 |
+| 74 | `74-volume-4-decimals.sql` | 2026-08-31 | `volume` / `total_volume` 统一保留 4 位小数 |
+| 75 | `75-district-info.sql` | 2026-09-03 | 出发口岸精确到区/县（区县数据导入 `city_info`，含区划码修正） |
+| 76 | `76-party-b-config.sql` | 2026-09-05 | 乙方配置表 + 菜单权限（范式同「常用客户」） |
+| 77 | `77-template-node-approver.sql` | 2026-07-14 | `flow_template_node` 加 `assignee` / `candidate_groups`（模板级审批人覆盖） |
+| 78 | `78-supplement-initiate-grant.sql` | 2026-08-04 | 为普通申报角色补授「发起资料补交」权限（menu 81083） |
+| 79 | `79-supplement-audit-menu.sql` | 2026-08-04 | 新增「补充资料审核」独立菜单（SELF 922 / EXT 923） |
+| 80 | `80-carton-type-dict.sql` | 2026-10-06 | 箱子类型字典化 `carton_type`（纸箱/木箱/托盘）+ 修正历史 `CARTRONS` 拼写 |
 
 > 注：序号代表**推荐执行顺序**而非严格日期。多个脚本同日产生，序号在同日内按依赖关系排定
 > （例如 14 依赖 13）。01–03 为早期独立建表脚本，原仓库未纳入版本管理，日期不可考，
 > 在全新部署的「方式 A 完整快照」中其表结构已包含。
+
+### 重号修复映射（2026-10）
+
+历史上存在 4 组重号，已按下表重命名（**仅改文件名，脚本内容未改动**，已执行过的库无需重跑）。
+被挪号的脚本在其文件头都写了「编号说明」注释。
+
+| 原文件名 | 现文件名 | 处理理由 |
+|----------|----------|----------|
+| `26-declaration-rollback-permission.sql` | `48-declaration-rollback-permission.sql` | 与 26 重号；其按钮挂在旧菜单 202 下，必须早于 54，故占用同段空号 48 |
+| `46-template-node-approver.sql` | `77-template-node-approver.sql` | 与 46 重号；仅对 `flow_template_node` 增列，41–76 无脚本读写新列，可顺延链尾 |
+| `70-supplement-initiate-grant.sql` | `78-supplement-initiate-grant.sql` | 与 70 重号；只做角色授权补发，依赖 65/69，无后续脚本依赖它 |
+| `71-supplement-audit-menu.sql` | `79-supplement-audit-menu.sql` | 与 71 重号；新增菜单 922/923，依赖 54/69，无后续脚本依赖它 |
+
+修复后迁移链为 **01–80 连续、无重号、无断号**（原先缺失的 48 号已启用）。
 
 ---
 

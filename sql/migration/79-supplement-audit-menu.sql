@@ -1,5 +1,5 @@
 -- =============================================
--- 71-supplement-audit-menu.sql
+-- 79-supplement-audit-menu.sql（原 71，与 71-cleanup-stale-supplement-marks.sql 重号，顺延至链尾）
 -- 新增「补充资料审核」独立菜单（SELF + EXT 两套）
 -- 页面展示待审资料补交列表（申报人提交补交审核后才出现），
 -- 点击「去审核」进入详情页补交审核模式查看增量并通过/驳回。

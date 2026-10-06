@@ -1,4 +1,4 @@
--- 70-supplement-initiate-grant.sql
+-- 78-supplement-initiate-grant.sql（原 70，与 70-backfill-attachment-supplement-id.sql 重号，顺延至链尾）
 -- 修复：「发起资料补交」权限点（menu_id=81083, business:declaration:supplement:initiate）
 -- 此前仅授权给超级管理员（见 65）与 SUPPLEMENT_AUDITOR（见 69），
 -- 导致普通申报角色在资料区看不到「发起资料补交」按钮。
